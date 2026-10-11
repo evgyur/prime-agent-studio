@@ -14,10 +14,7 @@ const TITLES = {
 const fixture = await createStabilityFixture();
 const browser = await launchStudioBrowser({ channel: 'chrome' });
 const calls = (page, command) =>
-  page.evaluate(
-    (command) => window.updateFixture.calls.filter((c) => c.command === command),
-    command,
-  );
+  page.evaluate((command) => window.updateFixture.calls.filter((c) => c.command === command), command);
 // Mirror a backend event into both the live channel and the polled snapshot.
 const emit = (page, event) =>
   page.evaluate((event) => {
@@ -198,12 +195,35 @@ try {
     await expect($('details')).not.toHaveAttribute('open');
     assert.equal(await $('app-version').evaluate((node) => Boolean(node.closest('details'))), false);
     await mkdir('test-results/remarks', { recursive: true });
-    await page.screenshot({ path: `test-results/remarks/update-versions-${locale}.png`, animations: 'disabled' });
+    await page.screenshot({
+      path: `test-results/remarks/update-versions-${locale}.png`,
+      animations: 'disabled',
+    });
     await expect($('check')).toBeVisible();
     await expect($('restart')).toBeVisible();
     await expect($('install')).toBeHidden();
     await expect($('repair')).toBeHidden();
     await expect($('details')).not.toHaveAttribute('open');
+    // A previous installer handoff has an unknown outcome, not a fresh failure.
+    await setOperation(page, {
+      id: 'old-install',
+      kind: 'install',
+      stage: 'error',
+      code: 'operation_interrupted',
+      done: true,
+      terminal: true,
+      cancellable: false,
+    });
+    await reopenPanel(page);
+    await expect($('error')).toBeHidden();
+    await expect($('progress-detail')).toContainText(
+      locale === 'fr-FR' ? 'ne confirme pas un échec' : 'does not confirm an update failure',
+    );
+    await expect($('check')).toBeEnabled();
+    await expect($('restart')).toBeEnabled();
+    await expect($('stop-operation')).toBeHidden();
+    await setOperation(page, null);
+    await reopenPanel(page);
     // Check reveals update; notes are sanitized markdown, never raw HTML.
     await $('check').click();
     await expect($('install')).toBeVisible();
@@ -260,9 +280,17 @@ try {
     await expect($('stop-operation')).toBeDisabled();
     const now = Date.now();
     await setOperation(page, {
-      id: 'op-install', kind: 'install', stage: 'cancelled', startedAt: now - 3000,
-      updatedAt: now, receivedBytes: 420, totalBytes: 1000, percent: 42, cancellable: false,
-      done: false, terminal: false,
+      id: 'op-install',
+      kind: 'install',
+      stage: 'cancelled',
+      startedAt: now - 3000,
+      updatedAt: now,
+      receivedBytes: 420,
+      totalBytes: 1000,
+      percent: 42,
+      cancellable: false,
+      done: false,
+      terminal: false,
     });
     await expect($('stop-operation')).toBeHidden();
     assert.deepEqual(errors, []);
@@ -279,15 +307,30 @@ try {
     await openPanel(page, fixture.url);
     const now = Date.now();
     await setOperation(page, {
-      id: 'op-dl', kind: 'install', stage: 'downloading', startedAt: now - 2000,
-      updatedAt: Date.now(), receivedBytes: 420, totalBytes: 1000, percent: 42,
-      cancellable: true, done: false, terminal: false,
+      id: 'op-dl',
+      kind: 'install',
+      stage: 'downloading',
+      startedAt: now - 2000,
+      updatedAt: Date.now(),
+      receivedBytes: 420,
+      totalBytes: 1000,
+      percent: 42,
+      cancellable: true,
+      done: false,
+      terminal: false,
     });
     await expect($('progress')).toHaveAttribute('value', '42');
     await expect($('progress-detail')).not.toBeEmpty();
     await setOperation(page, {
-      id: 'op-dl', kind: 'install', stage: 'downloading', startedAt: now - 2000,
-      updatedAt: Date.now(), receivedBytes: 420, cancellable: true, done: false, terminal: false,
+      id: 'op-dl',
+      kind: 'install',
+      stage: 'downloading',
+      startedAt: now - 2000,
+      updatedAt: Date.now(),
+      receivedBytes: 420,
+      cancellable: true,
+      done: false,
+      terminal: false,
     });
     await expect($('progress')).not.toHaveAttribute('value');
     await expect($('progress-detail')).not.toBeEmpty();
@@ -374,10 +417,12 @@ try {
       window.updateFixture.mode = 'available';
     });
     const quitAndConfirm = () =>
-      expect.poll(async () => {
-        await page.evaluate(() => window.dispatchEvent(new Event('studio:quit-request')));
-        return await $('confirm').isVisible();
-      }).toBe(true);
+      expect
+        .poll(async () => {
+          await page.evaluate(() => window.dispatchEvent(new Event('studio:quit-request')));
+          return await $('confirm').isVisible();
+        })
+        .toBe(true);
     await quitAndConfirm();
     await expect($('confirm-title')).toHaveText(TITLES.quit['en-US']);
     await $('cancel').click();
@@ -407,13 +452,21 @@ try {
     page.on('pageerror', (error) => errors.push(error.message));
     const $ = (id) => page.locator('#studio-update-' + id);
     const mutating = () =>
-      page.evaluate(() =>
-        window.updateFixture.calls.filter((c) =>
-          ['desktop_update_install', 'desktop_server_restart', 'desktop_quit', 'desktop_update_check'].includes(c.command),
-        ).length,
+      page.evaluate(
+        () =>
+          window.updateFixture.calls.filter((c) =>
+            [
+              'desktop_update_install',
+              'desktop_server_restart',
+              'desktop_quit',
+              'desktop_update_check',
+            ].includes(c.command),
+          ).length,
       );
     const opPolls = () =>
-      page.evaluate(() => window.updateFixture.calls.filter((c) => c.command === 'desktop_update_operation').length);
+      page.evaluate(
+        () => window.updateFixture.calls.filter((c) => c.command === 'desktop_update_operation').length,
+      );
     await openPanel(page, fixture.url);
     await $('check').click();
     await $('install').click();
@@ -520,7 +573,9 @@ try {
     await openPanel(stranger, fixture.url);
     await expect($$('restart')).toBeDisabled();
     assert.equal(
-      await stranger.evaluate(() => window.updateFixture.calls.filter((c) => c.command === 'desktop_server_restart').length),
+      await stranger.evaluate(
+        () => window.updateFixture.calls.filter((c) => c.command === 'desktop_server_restart').length,
+      ),
       0,
     );
     await foreign.close();
@@ -602,7 +657,9 @@ try {
     await expect($('progress')).toHaveAttribute('value', '42');
     assert.deepEqual(errors, []);
     await context.close();
-    console.log(`prerelease opt-in ${locale}: default off, explicit channel, persistence, stale clear, confirm, busy guard OK`);
+    console.log(
+      `prerelease opt-in ${locale}: default off, explicit channel, persistence, stale clear, confirm, busy guard OK`,
+    );
   }
   // Prerelease channel mismatch surfaces a useful error and keeps retry available.
   {

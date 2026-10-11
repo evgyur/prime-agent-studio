@@ -821,19 +821,28 @@ function showComponentsUpdateBanner(result, kind) {
       ? result.installedEngine
       : result.components && result.components.engine && result.components.engine.version;
   const mode =
-    kind === 'activate'
-      ? result.server?.running && result.server?.canRestart === false
-        ? 'unverified'
-        : 'activate'
-      : 'install';
+    kind !== 'install' &&
+    result.server?.canRestart === false &&
+    (result.server.running || result.server.restartReason === 'server_port_occupied')
+      ? 'unverified'
+      : kind;
   componentsBannerState = {
     required: required ? String(required) : '',
     installed: installed ? String(installed) : '',
+    appVersion: result.appVersion || '',
+    serverVersion: result.server?.version || '',
     mode,
   };
   bindText(text, () => {
     if (!componentsBannerState) return '';
     if (componentsBannerState.mode === 'unverified') return tr('updates.banner_unverified');
+    if (componentsBannerState.mode === 'studio')
+      return tr('updates.banner_studio_restart', {
+        version: componentsBannerState.appVersion || tr('components.banner_unknown'),
+        active: componentsBannerState.serverVersion || tr('components.banner_unknown'),
+      });
+    if (componentsBannerState.mode === 'start') return tr('updates.banner_server_start');
+    if (componentsBannerState.mode === 'failed') return tr('components.activation_failed');
     if (componentsBannerState.mode === 'activate') {
       return tr('components.banner_activate_text', {
         required: componentsBannerState.required || tr('components.banner_unknown'),
@@ -887,10 +896,16 @@ async function checkComponentsUpdateBanner() {
       showComponentsUpdateBanner(result, 'install');
       return;
     }
-    if (restartNeeded) {
-      if (globalVisible) return;
-      showComponentsUpdateBanner(result, 'activate');
+    if (globalVisible) return;
+    if (result.serverUpdatePending === true) {
+      showComponentsUpdateBanner(result, 'studio');
+    } else if (result.server?.error && !['deferred', 'failed'].includes(result.activation)) {
+      // An unreadable runtime is not evidence that a new engine awaits activation.
       return;
+    } else if (result.needsStart === true || result.server?.running === false) {
+      showComponentsUpdateBanner(result, 'start');
+    } else if (restartNeeded) {
+      showComponentsUpdateBanner(result, result.activation === 'failed' ? 'failed' : 'activate');
     }
   } catch {
     // Lightweight read-only probe; never surface errors as a banner.
@@ -2298,29 +2313,43 @@ function restoreHostScrollState(saved) {
   $('scroll-bottom').hidden = state.projectOverview || atConversationBottom();
 }
 let renderScheduled = false;
+// Explicit per-frame owner routing: SSE deltas name their run; the frame
+// repaints only panes bound to a named run (null = unqualified, repaint all).
+// Identity-based (run object), never length/seq watermarks.
+const pendingRenderRuns = new Set();
 let bottomScrollFrame = 0;
 let followConversation = true;
 let lastConversationTop = 0;
-function scheduleMessages() {
-  if (renderScheduled) return;
+function scheduleMessages(onlyRun = null) {
+  pendingRenderRuns.add(onlyRun);
+  if (renderScheduled) {
+    // A concurrent second run widens the pending frame instead of stealing it.
+    return;
+  }
   renderScheduled = true;
   requestAnimationFrame(() => {
     renderScheduled = false;
-    renderMessages();
+    const onlyRuns = pendingRenderRuns.has(null) ? null : new Set(pendingRenderRuns);
+    pendingRenderRuns.clear();
+    renderMessages(false, onlyRuns);
     renderDetails();
     updateComposer();
   });
 }
-function renderMessages(forceScroll = false) {
+function renderMessages(forceScroll = false, onlyRuns = null) {
   // Live routing: the host column always shows the primary view; the focused
   // dynamic view renders in its own shell. Force applies to the focused target
   // only, so selecting a session never yanks the primary pane. Undocked (or
   // pre-enable) keeps the legacy single-view path verbatim.
+  // Owner-routed frame: only panes bound to a pending run repaint. Unrelated
+  // focused/primary transcripts keep their DOM; needed chrome still refreshes
+  // in the scheduleMessages frame via renderDetails/updateComposer.
   if (convViews?.composerLive?.() && dockingUI?.active) {
     const primary = convViews.byId(PRIMARY_VIEW_ID);
-    renderHostPrimary(forceScroll && convViews.isFocused(PRIMARY_VIEW_ID), primary);
+    renderHostPrimary(forceScroll && convViews.isFocused(PRIMARY_VIEW_ID), primary, onlyRuns);
     const focused = convViews.focused();
-    if (focused && focused.id !== PRIMARY_VIEW_ID) convViews.renderViewNow(focused.id, forceScroll);
+    if (focused && focused.id !== PRIMARY_VIEW_ID && (!onlyRuns || onlyRuns.has(runForView(focused))))
+      convViews.renderViewNow(focused.id, forceScroll);
     return;
   }
   cancelAnimationFrame(bottomScrollFrame);
@@ -2357,9 +2386,10 @@ function renderMessages(forceScroll = false) {
 // the singleton (focused run) — a documented transient edge when a background
 // run holds pending questions while primary is visible; the standalone root
 // below the transcript always shows the focused run.
-function renderHostPrimary(forceScroll = false, primary = null) {
+function renderHostPrimary(forceScroll = false, primary = null, onlyRuns = null) {
   const view = primary || (convViews ? convViews.byId(PRIMARY_VIEW_ID) : null);
   if (!view || (dockingUI?.active && !dockingUI.visiblePanels().includes(PRIMARY_VIEW_ID))) return;
+  if (onlyRuns && !onlyRuns.has(runForView(view))) return;
   cancelAnimationFrame(bottomScrollFrame);
   bottomScrollFrame = 0;
   if (forceScroll) followConversation = true;
@@ -3330,8 +3360,9 @@ function applyRunEvent(run, e) {
   }
   if (convViews?.composerLive?.()) {
     // Coalesce live deltas per frame; never repaint the full history in the SSE callback.
+    // The frame is owner-routed: only panes bound to this run repaint.
     convViews.notifyRunEvent(run, e.kind);
-    scheduleMessages();
+    scheduleMessages(run);
   } else if (convViews) {
     const origin = convViews.byRun(run.id);
     if (origin && convViews.isFocused(origin.id)) {

@@ -422,6 +422,19 @@ fn operation_snapshot_uses_terminal_not_done_code() {
 }
 
 #[test]
+fn restart_marker_reconciles_only_against_a_verified_current_backend() {
+    let app = "4.3.0-beta.3";
+    let check = |v: serde_json::Value| super::is_verified_current_backend(&v, app);
+    assert!(check(serde_json::json!({"running":true,"version":app,"ownership":"managed","canRestart":true})));
+    assert!(check(serde_json::json!({"running":true,"version":app,"ownership":"recoverable"})));
+    assert!(!check(serde_json::json!({"running":true,"version":"4.3.0-beta.2","ownership":"managed","canRestart":true})));
+    assert!(!check(serde_json::json!({"running":false,"version":app,"ownership":"managed","canRestart":false})));
+    assert!(!check(serde_json::json!({"running":true,"version":app,"ownership":"foreign","canRestart":false})));
+    assert!(!check(serde_json::json!({"running":true,"version":app,"managed":false,"canRestart":false})));
+    assert!(!check(serde_json::json!({"managed":false,"error":"server_status_failed"})));
+}
+
+#[test]
 fn component_preparation_app_updates_and_restarts_share_one_operation() {
     let state = super::updates::Updates::default();
     let preparation = super::updates::begin(&state).unwrap();

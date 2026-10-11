@@ -4,6 +4,14 @@
 
 Les changements par version. Retrouvez les installateurs et les archives du code source dans les [releases GitHub](https://github.com/zerr0o/prime-agent-studio/releases).
 
+## 4.3.0-beta.4
+
+- **Rendu des conversations ciblé** : le streaming ne recalcule plus les historiques des panneaux non concernés. Les mises à jour concurrentes restent regroupées, sans tronquer les messages ni perdre les brouillons.
+- **Reprise après mise à jour** : un serveur déjà à jour et dont l’identité est vérifiée ne redemande plus inutilement un redémarrage. Le guide affiche le bouton de redémarrage et conserve la confirmation lorsque des agents travaillent.
+- **États plus clairs** : les messages distinguent la version de Studio, celle du moteur et un serveur arrêté. Une vérification indisponible n’est plus présentée comme une activation en attente ; une opération ancienne non confirmée après relance ne signifie pas que l’installation a échoué.
+- **Démarrage Windows** : une préférence impossible à lire est affichée comme inconnue dans le lanceur et les Préférences, sans la remplacer par « désactivé ». L’identité de l’application et les protections de l’installateur pour les réglages et raccourcis existants sont couvertes par des contrôles supplémentaires.
+- **Limites connues** : le coût des très grands historiques du panneau actif reste à optimiser. Le test de retour du focus après fermeture de Skills échoue également sur beta.3 et reste suivi séparément. Les protections Windows ont été contrôlées sans exécuter une mise à jour réelle du poste.
+
 ## 4.3.0-beta.3
 
 - **Streaming multi-conversations plus fluide** : les mises à jour sont regroupées au lieu de recalculer immédiatement chaque événement en arrière-plan, et les panneaux masqués ne sont plus redessinés. Les aperçus de dépôt ne sont actualisés que si nécessaire et les aperçus en attente sont annulés à la fin du geste.

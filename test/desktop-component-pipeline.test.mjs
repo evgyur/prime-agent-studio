@@ -594,6 +594,166 @@ test('recordComponentFailure persists only allowlisted fields and never leaks st
   assert.ok(!/Error:|secret|token|Bearer|PATH=/i.test(raw));
 });
 
+test('unknown runtime probe is not a restart: ready plus running plus app match stays quiet', async (t) => {
+  const f = await fixture(t);
+  await writeInstallation(f.dataRoot, {});
+  await writeResource(f.resourceDir, { version: '9.9.9' });
+  let fetches = 0;
+  const deps = {
+    quickReceipt: async () => ({ ok: true }),
+    serverStatus: async () => ({ running: true, managed: true, activeRuns: 0, version: '9.9.9' }),
+    fetch: async () => {
+      fetches++;
+      throw new Error('probe_timeout');
+    },
+  };
+  const result = await runComponents(
+    { action: 'status', dataRoot: f.dataRoot, resourceDir: f.resourceDir, port: 32201 },
+    {},
+    deps,
+  );
+  assert.equal(result.ready, true);
+  assert.ok(result.server.error, 'probe failure stays visible as detail');
+  assert.equal(result.needsRestart, false);
+  assert.equal(result.needsStart, false);
+  assert.equal(result.serverUpdatePending, false);
+  assert.equal(fetches, 1);
+});
+
+test('stopped server is start-needed, never activation-pending', async (t) => {
+  const f = await fixture(t);
+  await writeInstallation(f.dataRoot, {});
+  await writeResource(f.resourceDir, { version: '9.9.9' });
+  const deps = {
+    quickReceipt: async () => ({ ok: true }),
+    serverStatus: async () => ({ running: false, managed: true, activeRuns: 0 }),
+    fetch: async () => {
+      throw new Error('must_not_fetch_when_down');
+    },
+  };
+  const result = await runComponents(
+    { action: 'status', dataRoot: f.dataRoot, resourceDir: f.resourceDir, port: 32202 },
+    {},
+    deps,
+  );
+  assert.equal(result.ready, true);
+  assert.equal(result.needsRestart, false);
+  assert.equal(result.needsStart, true);
+  assert.equal(result.serverUpdatePending, false);
+});
+
+test('unknown runtime probe with an old live server version stays pending', async (t) => {
+  const f = await fixture(t);
+  await writeInstallation(f.dataRoot, {});
+  await writeResource(f.resourceDir, { version: '9.9.9' });
+  const deps = {
+    quickReceipt: async () => ({ ok: true }),
+    serverStatus: async () => ({ running: true, managed: true, activeRuns: 0, version: '9.9.8' }),
+    fetch: async () => {
+      throw new Error('probe_timeout');
+    },
+  };
+  const result = await runComponents(
+    { action: 'status', dataRoot: f.dataRoot, resourceDir: f.resourceDir, port: 32203 },
+    {},
+    deps,
+  );
+  assert.equal(result.ready, true);
+  assert.ok(result.server.error, 'probe failure stays visible as detail');
+  assert.equal(result.needsRestart, true);
+  assert.equal(result.needsStart, false);
+  assert.equal(result.serverUpdatePending, true);
+});
+
+test('known unavailable engine without version stays pending', async (t) => {
+  const f = await fixture(t);
+  await writeInstallation(f.dataRoot, {});
+  await writeResource(f.resourceDir, { version: '9.9.9' });
+  const deps = {
+    quickReceipt: async () => ({ ok: true }),
+    serverStatus: async () => ({ running: true, managed: true, activeRuns: 0, version: '9.9.9' }),
+    fetch: async () => ({ ok: true, json: async () => ({ available: false }) }),
+  };
+  const result = await runComponents(
+    { action: 'status', dataRoot: f.dataRoot, resourceDir: f.resourceDir, port: 32205 },
+    {},
+    deps,
+  );
+  assert.equal(result.ready, true);
+  assert.equal(result.server.engineAvailable, false);
+  assert.equal(result.needsRestart, true);
+  assert.equal(result.needsStart, false);
+  assert.equal(result.serverUpdatePending, false);
+});
+
+test('old live app version with a known engine stays pending', async (t) => {
+  const f = await fixture(t);
+  await writeInstallation(f.dataRoot, {});
+  await writeResource(f.resourceDir, { version: '9.9.9' });
+  const deps = {
+    quickReceipt: async () => ({ ok: true }),
+    serverStatus: async () => ({ running: true, managed: true, activeRuns: 0, version: '9.9.8' }),
+    fetch: async (url, init) => {
+      assert.match(url, /^http:\/\/127\.0\.0\.1:\d+\/api\/version$/);
+      assert.ok(init && init.signal, 'version fetch is bounded');
+      return { ok: true, json: async () => ({ available: true, version: COMPONENT_POLICY.engine }) };
+    },
+  };
+  const result = await runComponents(
+    { action: 'status', dataRoot: f.dataRoot, resourceDir: f.resourceDir, port: 32206 },
+    {},
+    deps,
+  );
+  assert.equal(result.ready, true);
+  assert.equal(result.needsRestart, true);
+  assert.equal(result.needsStart, false);
+  assert.equal(result.serverUpdatePending, true);
+});
+
+test('failed server status probe stays fail-closed, never start-needed', async (t) => {
+  const f = await fixture(t);
+  await writeInstallation(f.dataRoot, {});
+  await writeResource(f.resourceDir, { version: '9.9.9' });
+  const deps = {
+    quickReceipt: async () => ({ ok: true }),
+    serverStatus: async () => {
+      throw new Error('probe_down');
+    },
+    fetch: async () => {
+      throw new Error('must_not_fetch_without_server');
+    },
+  };
+  const result = await runComponents(
+    { action: 'status', dataRoot: f.dataRoot, resourceDir: f.resourceDir, port: 32204 },
+    {},
+    deps,
+  );
+  assert.equal(result.ready, true);
+  assert.equal(result.server.error, 'probe_down');
+  assert.equal(result.needsRestart, true);
+  assert.equal(result.needsStart, false);
+});
+
+test('incomplete runtime responses stay unknown instead of claiming pending activation', async (t) => {
+  const f = await fixture(t);
+  await writeInstallation(f.dataRoot, {});
+  await writeResource(f.resourceDir, { version: '9.9.9' });
+  for (const runtime of [null, {}, { available: true }, { available: 'true', version: '0.9.8' }]) {
+    const result = await runComponents(
+      { action: 'status', dataRoot: f.dataRoot, resourceDir: f.resourceDir, port: 32207 },
+      {},
+      {
+        quickReceipt: async () => ({ ok: true }),
+        serverStatus: async () => ({ running: true, managed: true, version: '9.9.9' }),
+        fetch: async () => ({ ok: true, json: async () => runtime }),
+      },
+    );
+    assert.equal(result.server.error, 'server_validation_failed');
+    assert.equal(result.needsRestart, false);
+    assert.equal(result.serverUpdatePending, false);
+  }
+});
+
 test('prepare repairs components but never implicitly restarts or stops an active server', async (t) => {
   const f = await fixture(t);
   await writeInstallation(f.dataRoot, {});

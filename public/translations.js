@@ -151,8 +151,8 @@ export const messages = {
     en: 'Numpad 1 to 6  /  Esc to cancel  /  Titles A to Z',
   },
   'updates.operation_interrupted': {
-    fr: 'L’opération précédente a été interrompue. Vérifiez les versions avant de réessayer.',
-    en: 'The previous operation was interrupted. Check the versions before retrying.',
+    fr: 'Studio a redémarré avant de confirmer le résultat de l’opération précédente. Vérifiez les versions affichées ; ce message ne confirme pas un échec de la mise à jour.',
+    en: 'Studio restarted before confirming the previous operation’s result. Check the displayed versions; this message does not confirm an update failure.',
   },
   'providers.serper_name': { fr: 'Serper (recherche web)', en: 'Serper (web search)' },
   'providers.serper_guidance': {
@@ -6189,8 +6189,16 @@ export const messages = {
     en: 'Engine {installed} running, version {required} required. Open updates to prepare the required version.',
   },
   'components.banner_activate_text': {
-    fr: 'Moteur {required} préparé, activation en attente. Ouvrez les mises à jour pour activer sans interrompre.',
-    en: 'Engine {required} prepared, activation pending. Open updates to activate without interrupting.',
+    fr: 'Moteur {required} prêt. Le serveur doit redémarrer pour l’utiliser. Ouvrez les mises à jour pour vérifier les agents en cours.',
+    en: 'Engine {required} is ready. The server needs to restart to use it. Open updates to check active agents.',
+  },
+  'updates.banner_studio_restart': {
+    fr: 'Studio {version} est installé, mais son serveur utilise encore {active}. Ouvrez les mises à jour pour redémarrer le serveur Studio.',
+    en: 'Studio {version} is installed, but its server still uses {active}. Open updates to restart the Studio server.',
+  },
+  'updates.banner_server_start': {
+    fr: 'Les composants sont prêts, mais le serveur Studio est arrêté. Ouvrez les mises à jour pour le démarrer.',
+    en: 'Components are ready, but the Studio server is stopped. Open updates to start it.',
   },
   'components.banner_engine_missing': {
     fr: 'Moteur Prime Agent introuvable. Version {required} requise. Ouvrez les mises à jour pour l’installer.',
@@ -6207,6 +6215,10 @@ export const messages = {
   'settings.autostart_error': {
     fr: 'Le démarrage avec Windows n’a pas pu être modifié. Réessayez.',
     en: 'Could not change the start with Windows setting. Try again.',
+  },
+  'settings.autostart_unavailable': {
+    fr: 'Le réglage de démarrage Windows ne peut pas être lu. Il n’a pas été modifié.',
+    en: 'The Windows startup setting could not be read. It has not been changed.',
   },
   'worktrees.nouvelle_tache': { fr: 'Nouveau worktree', en: 'New worktree' },
   'worktrees.creer_tache_title': { fr: 'Nouveau worktree', en: 'New worktree' },

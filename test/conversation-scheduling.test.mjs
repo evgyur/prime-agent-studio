@@ -33,6 +33,7 @@ for (const variant of ['background', 'hidden', 'focused', 'primary']) {
       dockedActive: true,
       focusedId: focused ? id : 'another',
       renderScheduled: false,
+      pendingRenderRuns: new Set(),
       state: { viewRunId: focused ? 'R' : 'other' },
       requestAnimationFrame(fn) {
         frames.push(fn);

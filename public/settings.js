@@ -745,14 +745,22 @@ export function createSettings({
     }
     row.hidden = false;
     input.disabled = true;
+    let known = false;
     try {
       const state = await window.__TAURI__.core.invoke('desktop_state');
-      if (typeof state?.autostart === 'boolean') input.checked = state.autostart;
-      error('settings-system-error');
+      known = typeof state?.autostart === 'boolean';
+      if (known) input.checked = state.autostart;
     } catch {
-      // Keep last value; a dedicated message appears only on explicit change failure.
+      // Keep the last value, but do not present an unreadable setting as on or off.
     } finally {
-      input.disabled = false;
+      input.indeterminate = !known;
+      input.disabled = !known;
+      const note = row.querySelector('p[data-i18n]');
+      if (note) {
+        const key = known ? 'settings.autostart_note' : 'settings.autostart_unavailable';
+        note.dataset.i18n = key;
+        bindText(note, () => t(key));
+      }
     }
   }
   const autostartInput = $('settings-autostart');

@@ -138,8 +138,12 @@ export function createDesktopUpdates({ api, getContext }) {
     $('repair').hidden = !v.repair || Boolean(version);
     $('restart').disabled = v.restartDisabled || !allowed();
     message('restart', snapshot?.running === false ? 'updates.start_now' : 'updates.restart_now');
+    // A persisted handoff has an unknown outcome after relaunch, not a confirmed failure.
+    const interrupted =
+      operation?.terminal && codeOf(operation.code || operation.error) === 'operation_interrupted';
     const currentError =
-      errorCode || (operation?.stage === 'error' ? codeOf(operation.code || operation.error) : '');
+      errorCode ||
+      (operation?.stage === 'error' && !interrupted ? codeOf(operation.code || operation.error) : '');
     $('error').hidden = !currentError;
     if (currentError) {
       const componentKey = componentsErrorKey(currentError);
@@ -161,7 +165,9 @@ export function createDesktopUpdates({ api, getContext }) {
     $('app-version').textContent = snapshot?.appVersion || '?';
     $('server-version').textContent = !snapshot
       ? '?'
-      : snapshot.running ? snapshot.version || '?' : t('updates.stopped');
+      : snapshot.running
+        ? snapshot.version || '?'
+        : t('updates.stopped');
     message(
       'server-note',
       !snapshot
@@ -203,6 +209,7 @@ export function createDesktopUpdates({ api, getContext }) {
     else $('progress').value = numbers.percent;
     const number = (value) => Math.round(value).toLocaleString(document.documentElement.lang || 'fr');
     const detail = [];
+    if (interrupted) detail.push(t('updates.operation_interrupted'));
     if (numbers.total)
       detail.push(
         t('updates.bytes_total', { received: number(numbers.received), total: number(numbers.total) }),

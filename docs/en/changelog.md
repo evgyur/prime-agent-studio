@@ -4,6 +4,14 @@
 
 Changes by version. See [GitHub releases](https://github.com/zerr0o/prime-agent-studio/releases) for installers and source archives.
 
+## 4.3.0-beta.4
+
+- **Owner-targeted conversation rendering**: streaming no longer repaints transcripts in unrelated panes. Concurrent updates remain coalesced, without truncating messages or losing drafts.
+- **Update recovery**: an already-current server with verified identity no longer requests an unnecessary restart. The recovery guide exposes the restart button and retains confirmation when agents are working.
+- **Clearer states**: messages distinguish the Studio version, the engine version and a stopped server. An unavailable probe is no longer presented as pending activation; an old operation whose outcome was not confirmed after relaunch does not mean installation failed.
+- **Windows startup**: an unreadable preference is shown as unknown in both the launcher and Preferences, rather than being replaced by “off”. Additional checks cover the stable app identity and installer protections for existing settings and shortcuts.
+- **Known limits**: very large active transcripts still have a rendering cost to optimize. The Skills focus-return test also fails on beta.3 and remains tracked separately. Windows protections were inspected without running a real upgrade on the workstation.
+
 ## 4.3.0-beta.3
 
 - **Smoother multi-conversation streaming**: coalesces live transcript updates instead of rendering immediately for every background event, and avoids painting hidden conversation panes. Dock drop previews only update when needed and pending previews are cancelled on drop or cancel.

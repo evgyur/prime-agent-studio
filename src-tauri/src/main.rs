@@ -295,6 +295,20 @@ fn is_restart_success(value: &serde_json::Value) -> bool {
     // Real prod helper: used by restart finish below.
     value.get("restarted").and_then(|v| v.as_bool()).unwrap_or(false)
 }
+fn is_verified_current_backend(status: &serde_json::Value, app_version: &str) -> bool {
+    // Live backend already serving this release on a restartable lineage.
+    let running = status.get("running").and_then(|v| v.as_bool()).unwrap_or(false);
+    let version_ok = status.get("version").and_then(|v| v.as_str()) == Some(app_version);
+    let lineage_ok = status
+        .get("canRestart")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+        || matches!(
+            status.get("ownership").and_then(|v| v.as_str()),
+            Some("managed" | "recoverable")
+        );
+    running && version_ok && lineage_ok
+}
 fn restart_refusal_reason(value: &serde_json::Value) -> String {
     // Real prod helper: terminal error reason when restarted != true.
     value
@@ -352,8 +366,11 @@ fn desktop_state(
 ) -> Result<serde_json::Value, String> {
     update_window_only(&window, &app)?;
     let prefs = state.prefs.lock().map_err(|e| e.to_string())?.clone();
+    // Best-effort autostart read: a query failure must not fail the whole
+    // state command. None serializes as null (unknown), never as false, so
+    // the shell can display unknown/disabled without implying opt-out.
     Ok(
-        serde_json::json!({"version":app.package_info().version.to_string(),"started":prefs.started,"legacyRoot":prefs.legacy_root,"imported":state.root.join("data").exists(),"autostart":app.autolaunch().is_enabled().map_err(|e| e.to_string())?}),
+        serde_json::json!({"version":app.package_info().version.to_string(),"started":prefs.started,"legacyRoot":prefs.legacy_root,"imported":state.root.join("data").exists(),"autostart":app.autolaunch().is_enabled().ok()}),
     )
 }
 #[tauri::command]
@@ -442,14 +459,27 @@ async fn desktop_start(
     // Explicit background flag only gates error-window pop (constrained UI,
     // no privilege). Always logged via desktop-error.log below.
     let background = background.unwrap_or(false);
+    let app_version = app.package_info().version.to_string();
     let requested = fs::read(state.root.join("restart-after-update.json"))
         .ok()
         .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
-        .is_some_and(|request| request["version"] == app.package_info().version.to_string());
+        .is_some_and(|request| request["version"] == app_version);
     let allow_unconfigured = allow_unconfigured.unwrap_or(false);
     let result = tauri::async_runtime::spawn_blocking(move || {
         let options = serde_json::json!({"resourceDir":resources,"dataRoot":root,"port":port,"legacyRoot":legacy,"allowUnconfigured":allow_unconfigured});
+        // Drop the marker only for a verified current backend; any other
+        // outcome keeps today's restart path with its ownership gates.
+        let mut pending_restart = requested;
         if requested {
+            let status_options = serde_json::json!({"action":"status","dataRoot":root,"resourceDir":resources,"port":port});
+            if let Ok(status) = run_desktop_control(&resources, &status_options) {
+                if is_verified_current_backend(&status, &app_version) {
+                    let _ = fs::remove_file(root.join("restart-after-update.json"));
+                    pending_restart = false;
+                }
+            }
+        }
+        if pending_restart {
             let restart = run_desktop_control(&resources, &options);
             // Keep restart-after-update.json until restart is confirmed.
             // A busy server needs a fresh, explicit confirmation in main.
@@ -468,7 +498,7 @@ async fn desktop_start(
         let output = command.output().map_err(|e| format!("Impossible de lancer le Studio. / Could not start Studio: {e}"))?;
         if !output.status.success() { return Err(String::from_utf8_lossy(&output.stderr).chars().take(3000).collect::<String>()) }
         let mut value = serde_json::from_slice::<serde_json::Value>(&output.stdout).map_err(|e| e.to_string())?;
-        if requested { value["showUpdates"] = true.into(); }
+        if pending_restart { value["showUpdates"] = true.into(); }
         Ok(value)
     }).await.map_err(|e|e.to_string()).and_then(|r|r);
     state.starting.store(false, Ordering::SeqCst);

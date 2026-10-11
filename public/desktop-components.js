@@ -45,6 +45,7 @@ export function normalizeComponentsResult(raw) {
     server,
     needsUpdate: typeof raw.needsUpdate === 'boolean' ? raw.needsUpdate : undefined,
     needsRestart: typeof raw.needsRestart === 'boolean' ? raw.needsRestart : undefined,
+    needsStart: typeof raw.needsStart === 'boolean' ? raw.needsStart : undefined,
     serverUpdatePending: typeof raw.serverUpdatePending === 'boolean' ? raw.serverUpdatePending : undefined,
   };
 }

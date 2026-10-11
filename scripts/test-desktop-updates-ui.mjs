@@ -31,8 +31,18 @@ const VIEWPORTS = {
   mobile: { width: 390, height: 844 },
 };
 const TEXT = {
-  'fr-FR': { update: 'Mettre \u00e0 jour Studio', repair: 'R\u00e9parer Studio', restart: 'Red\u00e9marrer maintenant', back: 'Retour au Studio' },
-  'en-US': { update: 'Update Studio', repair: 'Repair Studio', restart: 'Restart now', back: 'Back to Studio' },
+  'fr-FR': {
+    update: 'Mettre \u00e0 jour Studio',
+    repair: 'R\u00e9parer Studio',
+    restart: 'Red\u00e9marrer maintenant',
+    back: 'Retour au Studio',
+  },
+  'en-US': {
+    update: 'Update Studio',
+    repair: 'Repair Studio',
+    restart: 'Restart now',
+    back: 'Back to Studio',
+  },
 };
 try {
   for (const locale of ['fr-FR', 'en-US']) {
@@ -42,6 +52,11 @@ try {
         window.calls = [];
         window.mode = 'available';
         window.op = null;
+        const params = new URLSearchParams(location.search);
+        const recovery = params.has('recovery');
+        const readyComponents = params.get('components') !== 'missing';
+        const startup = params.get('startup');
+        window.restarted = false;
         window.__TAURI__ = {
           event: { listen: async () => {} },
           core: {
@@ -49,12 +64,52 @@ try {
             invoke: async (command, args) => {
               window.calls.push(command);
               if (command === 'desktop_state')
-                return { version: '2.8.0', started: false, imported: true, autostart: false };
+                return {
+                  version: '2.8.0',
+                  started: false,
+                  imported: true,
+                  autostart: startup === 'unknown' ? null : startup === 'on',
+                };
               if (command === 'desktop_update_status')
-                return { managed: true, running: true, version: '2.8.0', activeRuns: 1, canRestart: true, restartReason: null, ownership: 'managed', operation: null };
+                return {
+                  managed: true,
+                  running: true,
+                  version: recovery && !window.restarted ? '2.7.0' : '2.8.0',
+                  appVersion: '2.8.0',
+                  activeRuns: 1,
+                  canRestart: true,
+                  restartReason: null,
+                  ownership: 'managed',
+                  operation: null,
+                };
+              if (command === 'desktop_start') return { showUpdates: recovery && !window.restarted };
+              if (command === 'desktop_server_restart') {
+                window.restartArguments = args;
+                window.restarted = true;
+                return { restarted: true };
+              }
               if (command === 'desktop_update_operation') return { operation: window.op || null, log: [] };
               if (command === 'desktop_update_cancel') return { operation: null, log: [] };
-              if (command === 'desktop_components') return { cancelled: true };
+              if (command === 'desktop_components')
+                return recovery
+                  ? {
+                      ready: readyComponents,
+                      appVersion: '2.8.0',
+                      requiredEngine: '0.9.8',
+                      installedEngine: '0.9.8',
+                      needsRestart: readyComponents && !window.restarted,
+                      serverUpdatePending: !window.restarted,
+                      server: {
+                        running: true,
+                        version: window.restarted ? '2.8.0' : '2.7.0',
+                        engineVersion: '0.9.8',
+                        engineAvailable: true,
+                      },
+                      components: {
+                        engine: { status: readyComponents ? 'ready' : 'missing', version: '0.9.8' },
+                      },
+                    }
+                  : { cancelled: true };
               if (command === 'desktop_components_cancel') return {};
               if (command === 'desktop_update_check') {
                 if (window.mode === 'offline') throw 'check_failed';
@@ -116,7 +171,13 @@ try {
       );
       // A running noncancellable handoff still refuses without a fake cancel.
       await page.evaluate(() => {
-        window.op = { terminal: false, done: false, cancellable: false, stage: 'installing', kind: 'install' };
+        window.op = {
+          terminal: false,
+          done: false,
+          cancellable: false,
+          stage: 'installing',
+          kind: 'install',
+        };
       });
       await page.locator('#server-restart').click();
       await expect(page.locator('#restart-confirm')).toBeHidden();
@@ -157,11 +218,66 @@ try {
       });
       await page.locator('#update-install').click();
       await expect(page.locator('#update-progress')).toHaveAttribute('value', '42');
-      await page.screenshot({ path: `test-results/desktop-updates-progress-${locale}-${device}.png`, fullPage: true });
+      await page.screenshot({
+        path: `test-results/desktop-updates-progress-${locale}-${device}.png`,
+        fullPage: true,
+      });
       await expect(page.locator('#update-check')).toBeDisabled();
       await expect(page.locator('#update-install')).toBeDisabled();
       await page.evaluate(() => window.updateChannel.onmessage({ stage: 'verifying' }));
       await expect(page.locator('#update-progress')).not.toHaveAttribute('value');
+      // A foreground update-recovery guide must expose its one safe restart action.
+      // Hydration reads the existing startup choice; it never changes Windows settings.
+      for (const startup of ['on', 'off', 'unknown']) {
+        await page.goto(`${url}/?recovery&startup=${startup}`);
+        await expect(page.locator('#updates')).toBeVisible();
+        await expect(page.locator('#server-restart')).toBeVisible();
+        await expect(page.locator('#server-restart')).toBeEnabled();
+        await expect(page.locator('#components-status')).toContainText(
+          locale === 'fr-FR' ? 'composants sont déjà prêts' : 'Components are already ready',
+        );
+        assert.deepEqual(
+          await page.locator('#autostart').evaluate((el) => ({
+            checked: el.checked,
+            indeterminate: el.indeterminate,
+            disabled: el.disabled,
+          })),
+          {
+            checked: startup === 'on',
+            indeterminate: startup === 'unknown',
+            disabled: startup === 'unknown',
+          },
+        );
+        assert.equal((await page.evaluate(() => window.calls)).includes('desktop_autostart'), false);
+        if (startup === 'unknown')
+          await expect(page.locator('#startup-note')).toContainText(
+            locale === 'fr-FR' ? 'ne peut pas être lu' : 'could not be read',
+          );
+        await page.locator('#server-restart').click();
+        await expect(page.locator('#restart-confirm')).toBeVisible();
+        await page.locator('#restart-cancel').click();
+        assert.equal((await page.evaluate(() => window.calls)).includes('desktop_server_restart'), false);
+        await page.locator('#server-restart').click();
+        await page.locator('#restart-proceed').click();
+        await expect(page.locator('#start')).toHaveText(
+          locale === 'fr-FR' ? 'Ouvrir le Studio' : 'Open Studio',
+        );
+        await expect(page.locator('#components-status')).toHaveText(
+          locale === 'fr-FR' ? 'Tous les composants sont prêts.' : 'All components are ready.',
+        );
+        assert.equal((await page.evaluate(() => window.restartArguments)).force, true);
+        assert.equal(
+          (await page.evaluate(() => window.calls)).filter((c) => c === 'desktop_server_restart').length,
+          1,
+        );
+        assert.equal((await page.evaluate(() => window.calls)).includes('desktop_update_install'), false);
+      }
+      await page.goto(`${url}/?recovery&components=missing`);
+      await expect(page.locator('#components-install')).toBeVisible();
+      await expect(page.locator('#components-status')).not.toContainText(
+        locale === 'fr-FR' ? 'prêts' : 'ready',
+      );
+      assert.equal((await page.evaluate(() => window.calls)).includes('desktop_server_restart'), false);
       assert.deepEqual(errors, []);
       await context.close();
       console.log(`desktop updates ${locale} ${device}: 3 actions + back, folded details, update journey OK`);

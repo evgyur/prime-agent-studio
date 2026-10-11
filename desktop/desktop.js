@@ -15,7 +15,7 @@ const messages = {
     componentsPort: 'Le port est occupé par un autre service. Libérez-le sans arrêter les agents du Studio.',
     updateGuideTitle: 'Terminer la mise à jour du Studio',
     updateGuideNote:
-      'L’application a été mise à jour, mais l’ancien serveur est encore actif. Réparez si besoin, puis redémarrez. Les agents en cours ne seront pas interrompus sans confirmation.',
+      'La nouvelle version de Studio est installée, mais son serveur local doit encore être redémarré. Le moteur Prime Agent peut rester à la même version : réparez les composants seulement si besoin. Les agents en cours ne seront pas interrompus sans confirmation.',
     componentsDiagnose: 'Vérifier à nouveau',
     componentsExisting: 'Choisir une installation existante',
     componentsExistingNote:
@@ -62,7 +62,8 @@ const messages = {
     serverStopped: 'Le serveur est arrêté.',
     serverIdle: 'Aucune exécution en cours.',
     serverBusy: 'Des agents travaillent. Le redémarrage demandera confirmation.',
-    serverUnmanaged: 'L’identité du serveur n’a pas pu être vérifiée. Aucun processus ne sera arrêté. Consultez les détails et réessayez la vérification.',
+    serverUnmanaged:
+      'L’identité du serveur n’a pas pu être vérifiée. Aucun processus ne sera arrêté. Consultez les détails et réessayez la vérification.',
     restart: 'Redémarrer maintenant',
     restarting: 'Redémarrage du serveur…',
     restarted: 'Le serveur utilise maintenant la version installée.',
@@ -80,6 +81,9 @@ const messages = {
     quitCancel: 'Annuler',
     quitProceed: 'Arrêter et quitter',
     repairDone: 'Les composants sont prêts. Redémarrez maintenant pour les utiliser.',
+    studioRestart:
+      'Les composants sont déjà prêts. Redémarrez le serveur Studio pour terminer la mise à jour de l’application.',
+    autostartUnavailable: 'Le réglage de démarrage Windows ne peut pas être lu. Il n’a pas été modifié.',
     noOperation: 'Aucune opération en cours.',
     eyebrow: 'VOTRE APPLICATION DE BUREAU',
     title: 'Votre espace de travail, prêt à vous suivre.',
@@ -140,7 +144,7 @@ const messages = {
     componentsPort: 'Another service is using the port. Free it without stopping Studio agents.',
     updateGuideTitle: 'Finish the Studio update',
     updateGuideNote:
-      'The app was updated, but the previous server is still running. Repair if needed, then restart. Running agents will not be interrupted without confirmation.',
+      'The new Studio version is installed, but its local server still needs to restart. The Prime Agent engine may stay on the same version; repair components only if needed. Running agents will not be interrupted without confirmation.',
     componentsDiagnose: 'Check again',
     componentsExisting: 'Choose an existing installation',
     componentsExistingNote:
@@ -185,7 +189,8 @@ const messages = {
     serverStopped: 'The server is stopped.',
     serverIdle: 'No active runs.',
     serverBusy: 'Agents are working. Restarting will require confirmation.',
-    serverUnmanaged: 'The server identity could not be verified. No process will be stopped. Check the details and retry the check.',
+    serverUnmanaged:
+      'The server identity could not be verified. No process will be stopped. Check the details and retry the check.',
     restart: 'Restart now',
     restarting: 'Restarting the server…',
     restarted: 'The server is now using the installed version.',
@@ -203,6 +208,8 @@ const messages = {
     quitCancel: 'Cancel',
     quitProceed: 'Stop and quit',
     repairDone: 'Components are ready. Restart now to use them.',
+    studioRestart: 'Components are already ready. Restart the Studio server to finish the app update.',
+    autostartUnavailable: 'The Windows startup setting could not be read. It has not been changed.',
     noOperation: 'No operation running.',
     eyebrow: 'YOUR DESKTOP APPLICATION',
     title: 'Your workspace, ready when you are.',
@@ -412,24 +419,25 @@ function renderComponents(result) {
   $('components-status').textContent =
     result.activation === 'failed'
       ? `${t.componentsActivationFailed} ${componentError(result.activationError)}`
-      : result.activation === 'deferred'
-        ? t.repairDone
-        : result.ready
-          ? t.componentsReady
-          : Object.entries(result.components || {})
-              .filter(([, info]) => info.error && info.error !== 'missing')
-              .map(
-                ([key, info]) =>
-                  `${componentNames[key] || key} : ${componentError(info.explicit ? 'explicit_invalid' : info.error)}`,
-              )
-              .join(' ');
+      : result.ready && result.serverUpdatePending
+        ? t.studioRestart
+        : result.ready &&
+            result.server?.running !== false &&
+            (result.needsRestart || result.activation === 'deferred')
+          ? t.repairDone
+          : result.ready
+            ? t.componentsReady
+            : Object.entries(result.components || {})
+                .filter(([, info]) => info.error && info.error !== 'missing')
+                .map(
+                  ([key, info]) =>
+                    `${componentNames[key] || key} : ${componentError(info.explicit ? 'explicit_invalid' : info.error)}`,
+                )
+                .join(' ');
   $('components-install').hidden = result.ready;
   // Single restart rule: no second activation button. Repair (prepare) then the
   // one server Restart now below. Hide apply to avoid double activation.
   $('components-actions').hidden = result.ready;
-  if (result.ready && (result.needsRestart || ['failed', 'deferred'].includes(result.activation))) {
-    $('components-status').textContent = t.repairDone;
-  }
   $('start').textContent = updatePending || !result.ready ? t.componentsLater : t.start;
   if (result.activation === 'failed') $('logs').hidden = false;
 }
@@ -783,43 +791,44 @@ async function requestQuitFlow() {
       showQuitDialog();
       return;
     }
-    const detail = activeRuns
-      ? t.serverBusy
-      : `${op?.kind || ''}, ${op?.stage || ''}`;
+    const detail = activeRuns ? t.serverBusy : `${op?.kind || ''}, ${op?.stage || ''}`;
     showQuitDialog({ detail });
   } finally {
     quitting = false;
   }
 }
-if ($('quit-cancel')) $('quit-cancel').onclick = () => {
-  const d = $('quit-confirm');
-  if (d && d.open) d.close('cancel');
-  if (d) d.removeAttribute('open');
-};
-if ($('quit-proceed')) $('quit-proceed').onclick = async () => {
-  $('quit-proceed').disabled = true;
-  try {
-    const snapshot = await invoke('desktop_update_status').catch(() => null);
-    const op = currentOperation;
-    const force = Boolean(snapshot && snapshot.activeRuns);
-    // Confirmation before cancel: quit with cancelCurrent only after explicit proceed.
-    const cancelCurrent = Boolean(op && op.cancellable);
-    const res = await invoke('desktop_quit', { force, cancelCurrent });
-    if (res && (res.stopped === true || res.reason === 'already-stopped')) return;
-    $('quit-confirm-note').textContent = t.restartFailed;
-  } catch (error) {
-    $('quit-confirm-note').textContent =
-      String(error) === 'update_busy' ? t.componentsBusy : t.restartFailed;
-  } finally {
-    $('quit-proceed').disabled = false;
-  }
-};
+if ($('quit-cancel'))
+  $('quit-cancel').onclick = () => {
+    const d = $('quit-confirm');
+    if (d && d.open) d.close('cancel');
+    if (d) d.removeAttribute('open');
+  };
+if ($('quit-proceed'))
+  $('quit-proceed').onclick = async () => {
+    $('quit-proceed').disabled = true;
+    try {
+      const snapshot = await invoke('desktop_update_status').catch(() => null);
+      const op = currentOperation;
+      const force = Boolean(snapshot && snapshot.activeRuns);
+      // Confirmation before cancel: quit with cancelCurrent only after explicit proceed.
+      const cancelCurrent = Boolean(op && op.cancellable);
+      const res = await invoke('desktop_quit', { force, cancelCurrent });
+      if (res && (res.stopped === true || res.reason === 'already-stopped')) return;
+      $('quit-confirm-note').textContent = t.restartFailed;
+    } catch (error) {
+      $('quit-confirm-note').textContent =
+        String(error) === 'update_busy' ? t.componentsBusy : t.restartFailed;
+    } finally {
+      $('quit-proceed').disabled = false;
+    }
+  };
 window.addEventListener('studio:quit-request', () => requestQuitFlow());
-if ($('back-studio')) $('back-studio').onclick = async () => {
-  try {
-    await start({ allowUnconfigured: true, background: false });
-  } catch {}
-};
+if ($('back-studio'))
+  $('back-studio').onclick = async () => {
+    try {
+      await start({ allowUnconfigured: true, background: false });
+    } catch {}
+  };
 function confirmRestart() {
   const dialog = $('restart-confirm');
   const accepted = new Promise((done) => {
@@ -872,6 +881,14 @@ $('server-restart').onclick = async () => {
         await refreshServer();
         $('server-agents').textContent = t.restarted;
         restartedOk = true;
+        if (updatePending) {
+          updatePending = false;
+          await componentsAction('status');
+          $('title').textContent = t.restarted;
+          $('description').textContent = t.start;
+          $('progress').hidden = true;
+          $('start').textContent = t.start;
+        }
       } else await refreshServer();
     } catch (error) {
       // Never fail silently: explicit busy vs failure.
@@ -915,11 +932,14 @@ async function start(options = {}) {
       updatePending = true;
       showLauncher();
       $('title').textContent = t.updateGuideTitle;
-      const components = await componentsAction('diagnose');
-      $('description').textContent = t.updateGuideNote.replace(
-        '{version}',
-        components?.requiredEngine || '0.9.8',
-      );
+      await componentsAction('diagnose');
+      $('description').textContent = t.updateGuideNote;
+      // The recovery guide must expose the restart action it asks the user to take.
+      $('updates').hidden = false;
+      await refreshServer().catch(() => {
+        $('server-state').textContent = t.restartFailed;
+        $('server-restart').disabled = true;
+      });
       $('progress').hidden = true;
       $('start').textContent = t.componentsLater;
       return;
@@ -1026,7 +1046,11 @@ $('import').onclick = async () => {
         });
       void pollOperationOnce().catch(() => null);
     }
-    $('autostart').checked = state.autostart;
+    const autostartKnown = typeof state.autostart === 'boolean';
+    $('autostart').checked = state.autostart === true;
+    $('autostart').indeterminate = !autostartKnown;
+    $('autostart').disabled = !autostartKnown;
+    if (!autostartKnown) $('startup-note').textContent = t.autostartUnavailable;
     $('start').disabled = false;
     if (state.imported) {
       $('import').hidden = true;

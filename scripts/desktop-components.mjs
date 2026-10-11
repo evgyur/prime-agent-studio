@@ -19,7 +19,12 @@ async function runtimeVersion(port, fetcher, timeout = 4000) {
   });
   if (!response.ok) throw new Error('server_validation_failed');
   const runtime = await response.json();
-  return { available: runtime.available === true, version: String(runtime.version || '').trim() };
+  if (
+    typeof runtime?.available !== 'boolean' ||
+    (runtime.available && (typeof runtime.version !== 'string' || !runtime.version.trim()))
+  )
+    throw new Error('server_validation_failed');
+  return { available: runtime.available, version: String(runtime.version || '').trim() };
 }
 
 async function describe(options, result, deps) {
@@ -43,13 +48,22 @@ async function describe(options, result, deps) {
   } catch (error) {
     result.server = { managed: false, error: safeCode(error, 'server_status_failed') };
   }
-  result.needsRestart = Boolean(
-    result.ready &&
-    (!result.server.running ||
-      result.server.engineVersion !== result.requiredEngine ||
-      !result.server.engineAvailable ||
-      (result.appVersion && result.server.version !== result.appVersion)),
+  const serverRunning = result.server.running === true;
+  const serverStopped = result.server.running === false;
+  // Probe-known = answered without error with boolean availability. Known
+  // unavailable stays pending; answered-but-incomplete never fakes success.
+  const runtimeKnown =
+    serverRunning && result.server.error == null && typeof result.server.engineAvailable === 'boolean';
+  const engineMismatch = Boolean(
+    runtimeKnown && (result.server.engineVersion !== result.requiredEngine || !result.server.engineAvailable),
   );
+  const appMismatch = Boolean(result.appVersion && result.server.version !== result.appVersion);
+  // Status probe failed (running unknown): fail closed, as before.
+  // Stopped is start-needed, never activation-pending.
+  result.needsRestart = Boolean(
+    result.ready && (serverRunning ? engineMismatch || appMismatch : !serverStopped),
+  );
+  result.needsStart = Boolean(result.ready && serverStopped);
   result.serverUpdatePending = Boolean(
     result.server.running && result.appVersion && result.server.version !== result.appVersion,
   );

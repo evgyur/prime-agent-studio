@@ -4,6 +4,14 @@
 
 Changes by version. See [GitHub releases](https://github.com/zerr0o/prime-agent-studio/releases) for installers and source archives.
 
+## 4.3.0-beta.6
+
+- **Per-pane slash commands**: the `/` menu opens above the active input in both classic and dockable layouts. Insertion, resizing and draft restoration stay bound to the owning pane.
+- **Skills inside messages**: insert several `/skill:name` tokens at different positions. Instructions expand in place, in order, without removing surrounding text. Paths, URLs, escapes and code blocks remain literal; native commands keep their existing behavior.
+- **Consistent input**: aligned base height and text growth, equally sized send/stop buttons, and readable model and permission controls in narrow panes. Drafts and skill chips remain independent after reload.
+- **Polish**: aligned footer hints, more readable model names, nonbreaking French punctuation and whole visible lines in filled inputs. The visual review covers isolated screenshots, not certification across all devices.
+- **Known limits**: detached native windows are not included. Initial rendering of very long histories and the pre-existing reconnect-navigation and Skills focus-return issues remain tracked separately.
+
 ## 4.3.0-beta.5
 
 - **Fewer unnecessary loads**: unopened conversations use the read/unread state already provided by the server, without downloading their full histories. The active conversation still receives new answers, including those added from another device.

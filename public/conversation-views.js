@@ -508,12 +508,19 @@ export function createConversationViews(deps) {
     write('drafts', drafts);
   }
 
-  function restoreFocusedDraft() {
-    const view = focused();
-    if (!view) return;
+  function restoreDraftFor(view) {
+    if (!view || (!view.units && view.id !== focusedId)) return;
     // Read-only shows an empty composer, never another view's stored text.
-    writeFocusedText(readonly() ? '' : readDraftKey(draftKeyFor(view)), { retainCommand: false });
-    afterTextRestore();
+    const text = readonly() ? '' : readDraftKey(draftKeyFor(view));
+    const current = view.units ? view.units.text.get() : readFocusedText();
+    if (current !== text) {
+      if (view.units) view.units.text.set(text, { retainCommand: false });
+      else writeFocusedText(text, { retainCommand: false });
+    }
+    afterTextRestore(view);
+  }
+  function restoreFocusedDraft() {
+    restoreDraftFor(focused());
   }
 
   function acceptFocusedDraft(key, text) {
@@ -1187,6 +1194,7 @@ export function createConversationViews(deps) {
     focusedDraftKey: () => draftKeyFor(focused()),
     focusedImageKey: () => imageKeyOf(focused()),
     saveFocusedDraft,
+    restoreDraftFor,
     restoreFocusedDraft,
     acceptFocusedDraft,
     acceptDraftFor,

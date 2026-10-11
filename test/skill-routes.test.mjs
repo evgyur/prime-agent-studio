@@ -184,3 +184,121 @@ test('live steering and followUp deliver two expanded blocks', async (t) => {
     assert.equal(sent[0].startsWith('/skill:'), false);
   }
 });
+
+test('POST /api/runs expands inline skills in place across a sentence', async (t) => {
+  const { api, cwd, runtime } = await fixture(t);
+  const res = await api('/api/runs', {
+    method: 'POST',
+    body: { cwd, message: "D'abord /skill:alpha ceci puis /skill:beta cela" },
+  });
+  assert.equal(res.status, 201);
+  const sent = runtime.controls.at(-1).input.message;
+  assert.ok(sent.startsWith("D'abord "));
+  assert.ok(sent.endsWith(' cela'));
+  assert.ok(sent.includes(' ceci puis '));
+  const alpha = sent.indexOf('<skill name="alpha"');
+  const beta = sent.indexOf('<skill name="beta"');
+  assert.ok(alpha > 0 && beta > alpha);
+  assert.ok(sent.includes('Alpha instructions.'));
+  assert.ok(sent.includes('Beta instructions.'));
+  assert.equal(sent.includes('/skill:'), false);
+});
+
+test('POST /api/runs rejects unknown inline skills and leaves code literals verbatim', async (t) => {
+  const { api, cwd, runtime } = await fixture(t);
+  const unknown = await api('/api/runs', {
+    method: 'POST',
+    body: { cwd, message: 'avant /skill:gone apres' },
+  });
+  assert.equal(unknown.status, 400);
+  const literal = await api('/api/runs', {
+    method: 'POST',
+    body: { cwd, message: 'lire `/skill:alpha` puis continuer' },
+  });
+  assert.equal(literal.status, 201);
+  assert.equal(runtime.controls.at(-1).input.message, 'lire `/skill:alpha` puis continuer');
+});
+
+test('live steering and followUp expand inline skills on a resumed running execution', async (t) => {
+  const { catalog, cwd } = await fixture(t);
+  const sessionId = 'resumed-inline-session';
+  for (const mode of ['steer', 'follow_up']) {
+    const sent = [];
+    const service = createLiveMessages({
+      getRuns: async () => [
+        { id: 'previous-completed-run', sessionId, cwd, status: 'completed' },
+        { id: 'current-running-run', sessionId, cwd, status: 'running' },
+      ],
+      getClient: async () => ({
+        send: async (sessionIdArg, cwdArg, input) => {
+          sent.push(input.message);
+          return { accepted: true };
+        },
+      }),
+      getCatalog: async () => catalog,
+    });
+    const result = await service.send(sessionId, {
+      cwd,
+      message: "D'abord /skill:alpha ceci puis /skill:beta cela",
+      mode,
+      requestId: `r-${mode.replace('_', '')}-inline-0123456789abcdef`,
+    });
+    assert.equal(result.accepted, true);
+    assert.ok(sent[0].startsWith("D'abord "));
+    assert.ok(sent[0].endsWith(' cela'));
+    assert.ok(sent[0].indexOf('<skill name="alpha"') < sent[0].indexOf('<skill name="beta"'));
+    assert.equal(sent[0].includes('/skill:'), false);
+  }
+});
+
+test('POST /api/runs expands a trailing inline skill after leading multi skills', async (t) => {
+  const { api, cwd, runtime } = await fixture(t);
+  const res = await api('/api/runs', {
+    method: 'POST',
+    body: { cwd, message: '/skill:alpha /skill:beta shared /skill:alpha again' },
+  });
+  assert.equal(res.status, 201);
+  const sent = runtime.controls.at(-1).input.message;
+  assert.equal(sent.startsWith('<skill name="alpha"'), true);
+  assert.equal((sent.match(/<skill name="alpha"/g) || []).length, 2);
+  assert.equal((sent.match(/<skill name="beta"/g) || []).length, 1);
+  const sharedAt = sent.indexOf('shared ');
+  assert.ok(sharedAt > sent.indexOf('<skill name="beta"'));
+  assert.ok(sent.indexOf('<skill name="alpha"', sharedAt) > sharedAt);
+  assert.ok(sent.endsWith(' again'));
+  assert.equal(sent.includes('/skill:'), false);
+});
+
+test('POST /api/runs keeps leading command guards ahead of inline skills', async (t) => {
+  const { api, cwd, runtime } = await fixture(t);
+  const before = runtime.controls.length;
+  assert.equal(
+    (await api('/api/runs', { method: 'POST', body: { cwd, message: '/share x /skill:alpha' } })).status,
+    400,
+  );
+  assert.equal(
+    (
+      await api('/api/runs', {
+        method: 'POST',
+        body: { cwd, message: '/skill:alpha /skill:beta shared /skill:gone' },
+      })
+    ).status,
+    400,
+  );
+  assert.equal(runtime.controls.length, before);
+});
+
+test('POST /api/runs rejects malformed leading skill even with a later valid token', async (t) => {
+  const { api, cwd, runtime } = await fixture(t);
+  const before = runtime.controls.length;
+  assert.equal(
+    (
+      await api('/api/runs', {
+        method: 'POST',
+        body: { cwd, message: '/skill:bad_suffix then /skill:alpha' },
+      })
+    ).status,
+    400,
+  );
+  assert.equal(runtime.controls.length, before);
+});

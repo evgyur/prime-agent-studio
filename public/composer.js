@@ -242,6 +242,8 @@ function createComposerScope(getTextarea) {
     };
     listen(textarea, 'pointerdown', onPointerDown);
     listen(textarea, 'input', onInput);
+    syncExtras();
+    render();
     return {
       update() {
         remove.disabled = textarea.disabled;

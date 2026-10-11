@@ -565,6 +565,40 @@
   }
 }
 
+/* Per-pane composer parity: same 44px send/stop base as #composer-form host,
+   same grid toolbar (conversation-views.css), same focus border (styles.css),
+   same footnote hint (styles.css #send-hint hides host only; panes use
+   data-cvw role). Class/role selectors only; classic/mobile untouched. */
+.dock-panel .cv-composer-form [data-cvw='send'],
+.dock-panel .cv-composer-form [data-cvw='stop'] {
+  height: 44px;
+  min-height: 44px;
+  padding: 0;
+}
+.dock-panel .composer-footnote #send-hint,
+.dock-panel .composer-footnote [data-cvw='send-hint'] {
+  display: inline;
+  font-size: 9px;
+}
+/* Nine complete text lines at the 200px cap (including 2px padding). */
+.dock-panel .composer-form textarea {
+  line-height: 22px;
+}
+/* Keep room for the model name before the controls need a second row. */
+@container dock-panel (min-width: 641px) {
+  .dock-panel #composer-form #model-picker-button,
+  .dock-panel .cv-composer-form button[data-cvw='model'] {
+    min-width: 100px;
+  }
+}
+@container dock-panel (max-width: 800px) {
+  .dock-panel .questions-toggle .toggle-full {
+    display: none;
+  }
+  .dock-panel .questions-toggle .toggle-short {
+    display: inline;
+  }
+}
 @container dock-panel (max-width: 640px) {
   .dock-panel .welcome,
   .dock-panel .project-overview {
@@ -590,30 +624,47 @@
   }
   .dock-panel .composer-toolbar {
     gap: 8px;
-    align-items: flex-end;
+    margin-top: 2px;
+    align-items: start;
+  }
+  .dock-panel #composer-form #send-button,
+  .dock-panel #composer-form #stop-button,
+  .dock-panel .cv-composer-form [data-cvw='send'],
+  .dock-panel .cv-composer-form [data-cvw='stop'] {
+    align-self: start;
   }
   .dock-panel .model-controls {
     flex: 1;
-    flex-wrap: wrap;
-    gap: 6px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) clamp(88px, 25vw, 112px);
+    gap: 4px;
+    width: 100%;
   }
   .dock-panel .model-icon,
   .dock-panel .control-separator {
     display: none;
   }
-  .dock-panel .model-picker-button {
-    flex: 1 1 115px;
+  .dock-panel .model-picker-button,
+  .dock-panel #composer-form #model-select:not([hidden]),
+  .dock-panel .cv-composer-form [data-cvw='model'],
+  .dock-panel .cv-composer-form [data-cvw='model-select']:not([hidden]) {
+    width: 100%;
     max-width: 100%;
+    grid-column: 1;
+    grid-row: 1;
+    min-height: 44px;
   }
-  .dock-panel .model-controls #thinking-select {
-    flex: 0 1 108px;
-    max-width: 108px;
+  .dock-panel .model-controls #thinking-select,
+  .dock-panel .cv-composer-form [data-cvw='thinking'] {
+    width: 100%;
+    max-width: 100%;
+    grid-column: 2;
+    grid-row: 1;
+    min-height: 44px;
   }
-  .dock-panel .questions-toggle .toggle-full {
-    display: none;
-  }
-  .dock-panel .questions-toggle .toggle-short {
-    display: inline;
+  .dock-panel .model-controls .questions-toggle {
+    grid-column: auto;
+    min-width: 0;
   }
   .dock-panel .questions-toggle {
     max-width: 100%;
@@ -622,7 +673,8 @@
   .dock-panel .composer-footnote {
     line-height: 1.5;
   }
-  .dock-panel #composer {
+  .dock-panel #composer,
+  .dock-panel .cv-composer-form textarea {
     font-size: 13px;
   }
 }

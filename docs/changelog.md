@@ -4,6 +4,14 @@
 
 Les changements par version. Retrouvez les installateurs et les archives du code source dans les [releases GitHub](https://github.com/zerr0o/prime-agent-studio/releases).
 
+## 4.3.0-beta.6
+
+- **Commandes slash par panneau** : le menu `/` apparaît au-dessus du champ actif, en mode classique comme dans l’espace modulable. Les insertions, le redimensionnement et la restauration des brouillons restent liés au bon panneau.
+- **Skills dans le texte** : insérez plusieurs `/skill:nom` à différents endroits du message. Les instructions sont développées à leur position, dans l’ordre, sans retirer le texte environnant. Les chemins, URL, échappements et blocs de code restent du texte ; les commandes natives conservent leur comportement.
+- **Saisie cohérente** : hauteur de base et croissance harmonisées, boutons envoyer/arrêter de même taille, contrôles de modèle et permissions lisibles dans les panneaux étroits. Les brouillons et les chips de skills restent indépendants après rechargement.
+- **Finitions** : pied de champ aligné, noms de modèle mieux visibles, ponctuation française insécable et lignes complètes dans le champ rempli. La revue visuelle porte sur des captures isolées, pas sur une certification de tous les appareils.
+- **Limites connues** : les fenêtres natives détachées ne sont pas incluses. Le rendu initial des très longs historiques et les problèmes préexistants de navigation après reconnexion et de retour du focus depuis Skills restent suivis séparément.
+
 ## 4.3.0-beta.5
 
 - **Moins de chargements inutiles** : les conversations non ouvertes utilisent les états lu/non lu déjà fournis par le serveur, sans télécharger leur historique complet. La conversation active continue de recevoir les nouvelles réponses, y compris celles ajoutées depuis un autre appareil.

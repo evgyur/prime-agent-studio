@@ -61,6 +61,8 @@ const app = createApp({
     return { opened: true };
   },
 });
+// Register the fixture project explicitly; initialCwd alone is not a saved project.
+await app.store.project({ cwd });
 await new Promise((done) => app.server.listen(0, '127.0.0.1', done));
 const salt = 'e54d6dd09bb15f7c347b38b671472aa9';
 const gateway = createLanGateway({
@@ -84,11 +86,16 @@ try {
       isMobile: mobile,
       hasTouch: mobile,
     });
+    await context.addInitScript((cwd) => {
+      if (!localStorage.getItem('prime-studio.selection'))
+        localStorage.setItem('prime-studio.selection', JSON.stringify({ cwd, projectOverview: true }));
+    }, cwd);
     const page = await context.newPage();
     page.on('pageerror', (error) => errors.push(error.message));
     await page.goto(`http://127.0.0.1:${gateway.address().port}`);
     await page.locator('input[name="code"]').fill('12345678');
     await page.locator('button[type="submit"]').click();
+    await expect(page.locator('#connection-label')).toContainText('connecté');
     await page.locator('#project-new-session').click();
     await expect(page.locator('#composer')).toBeVisible();
     await page.locator('#composer').fill('/mod');

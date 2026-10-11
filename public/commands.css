@@ -73,7 +73,7 @@
   outline: 2px solid var(--chip-text);
   outline-offset: 2px;
 }
-#composer-form .has-command-chip {
+.composer-form .has-command-chip {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   column-gap: 10px;
@@ -97,7 +97,7 @@
   flex: 0 1 auto;
   min-width: 0;
 }
-#composer-form .has-command-chip textarea {
+.composer-form .has-command-chip textarea {
   width: 100%;
 }
 .command-loading {
@@ -306,11 +306,11 @@
   }
 }
 @media (max-width: 760px) {
-  #composer-form .has-command-chip {
+  .composer-form .has-command-chip {
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 2px 8px;
   }
-  #composer-form .has-command-chip .composer-commands {
+  .composer-form .has-command-chip .composer-commands {
     grid-column: 1;
     grid-row: 1;
     max-width: 100%;
@@ -318,7 +318,7 @@
     overflow-x: auto;
     overflow-y: hidden;
   }
-  #composer-form .has-command-chip .composer-command {
+  .composer-form .has-command-chip .composer-command {
     grid-column: 1;
     grid-row: 1;
     width: fit-content;
@@ -327,11 +327,11 @@
     height: 40px;
     margin: 1px 0;
   }
-  #composer-form .has-command-chip .attachment-controls {
+  .composer-form .has-command-chip .attachment-controls {
     grid-column: 2;
     grid-row: 1;
   }
-  #composer-form .has-command-chip textarea {
+  .composer-form .has-command-chip textarea {
     grid-column: 1 / -1;
     grid-row: 2;
     min-height: 32px;

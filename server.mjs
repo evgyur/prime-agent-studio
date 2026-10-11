@@ -31,10 +31,11 @@ import { createProviderService } from './lib/provider-service.mjs';
 import {
   createCommandService,
   parseCommand,
+  parseInlineSkills,
   parseMultiSkillCommand,
   validateCommand,
 } from './lib/commands.mjs';
-import { expandMultiSkillMessage } from './lib/skill-expansion.mjs';
+import { expandInlineSkillMessage, expandMultiSkillMessage } from './lib/skill-expansion.mjs';
 import { createLiveMessages, routeLiveMessages } from './lib/live-messages.mjs';
 import { createLiveSessionClient } from './lib/live-session-client.mjs';
 import { createConversationSettings } from './lib/conversation-settings.mjs';
@@ -559,7 +560,7 @@ export function createApp(options = {}) {
     fileStore,
     getCatalog: (context) => commands.list(context),
     validateMessage: async (message, context) => {
-      if (parseCommand(message))
+      if (parseCommand(message) || parseInlineSkills(message).length > 0)
         validateCommand(message, await commands.list(context), {
           live: true,
           attachments: context.attachments,
@@ -908,6 +909,14 @@ export function createApp(options = {}) {
         attachments: images.length + files.length > 0,
       });
       body.message = await expandMultiSkillMessage(body.message, catalog);
+      if (body.message.length > 200000)
+        throw new HttpError(400, tr('server.le_message_depasse_200_000_caracteres'));
+    } else if (parseInlineSkills(body.message).length > 0) {
+      const catalog = await commands.list({ cwd });
+      validateCommand(body.message, catalog, {
+        attachments: images.length + files.length > 0,
+      });
+      body.message = (await expandInlineSkillMessage(body.message, catalog)) || body.message;
       if (body.message.length > 200000)
         throw new HttpError(400, tr('server.le_message_depasse_200_000_caracteres'));
     } else if (parseCommand(body.message))

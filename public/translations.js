@@ -1436,7 +1436,7 @@ export const messages = {
     en: 'Prepare your next message…',
   },
   'ui.que_souhaitez_vous_construire': {
-    fr: 'Que souhaitez-vous construire ?',
+    fr: 'Que souhaitez-vous construire\u00a0?',
     en: 'What would you like to build?',
   },
   'ui.ajoutez_un_projet_pour_commencer': {

@@ -7,6 +7,7 @@ import {
   createCommandChip,
 } from './composer.js';
 import { COMMAND_ALIASES as aliases, immediateCommands } from './command-definitions.js';
+import { commandAtCaret } from './skill-tokens.js';
 const node = (tag, className = '', text = '') => {
   const element = document.createElement(tag);
   element.className = className;
@@ -254,15 +255,28 @@ export function createCommands({
     return pending;
   }
   function insert(command) {
-    if (!command.supported) return;
-    const text = getText();
-    const suffix = getCommand() ? input.value : text.startsWith('/') ? text.replace(/^\/\S*\s*/, '') : text;
-    selectCommand(command, suffix);
+    if (!command.supported || input.disabled || getContext().readOnly || getContext().loading) return;
+    const range = commandAtCaret(input.value, input.selectionStart, input.selectionEnd);
+    const inline = range && (range.start > 0 || getCommand());
+    if (inline && command.source !== 'skill') return;
     hide();
     dialog.close();
-    dismissed = true;
     input.focus({ preventScroll: true });
-    input.setSelectionRange(input.value.length, input.value.length);
+    if (inline) {
+      // Keep ordinary text and earlier skills exactly where the user put them.
+      const after = input.value.slice(range.end);
+      const space = !after || !/^[\s),.;!?\]}]/.test(after) ? ' ' : '';
+      input.setRangeText(`/${command.name}${space}`, range.start, range.end, 'end');
+      if (/^[ \t]/.test(after)) input.setSelectionRange(input.selectionEnd + 1, input.selectionEnd + 1);
+    } else {
+      // The launcher keeps its existing removable prefix chips. Typing a
+      // slash inside the message inserts an ordinary editable skill token.
+      const suffix = range?.start === 0 ? input.value.slice(range.end).replace(/^[ \t]/, '') : input.value;
+      selectCommand(command, suffix);
+      const caret = range ? 0 : input.value.length;
+      input.setSelectionRange(caret, caret);
+    }
+    dismissed = true;
     input.dispatchEvent(new Event('input', { bubbles: true }));
     onChange();
   }
@@ -415,36 +429,41 @@ export function createCommands({
   }
   function position() {
     if (popup.hidden) return;
-    const rect = document.getElementById('composer-form').getBoundingClientRect();
+    const rect = (input.closest('form') || input).getBoundingClientRect();
+    if (!rect.width || !rect.height) return hide();
     const top = window.visualViewport?.offsetTop || 0;
-    popup.style.left = `${Math.max(8, rect.left)}px`;
-    popup.style.width = `${Math.min(rect.width, innerWidth - 16)}px`;
+    const width = Math.min(rect.width, innerWidth - 16);
+    popup.style.left = `${Math.min(Math.max(8, rect.left), innerWidth - width - 8)}px`;
+    popup.style.width = `${width}px`;
     popup.style.maxHeight = `${Math.max(70, Math.min(310, rect.top - top - 12))}px`;
     popup.style.bottom = `${innerHeight - rect.top + 6}px`;
   }
-  async function suggest() {
-    if (
-      dismissed ||
-      document.activeElement !== input ||
-      getCommand() ||
-      !/^\/[^\s]*$/.test(input.value) ||
-      getContext().readOnly
-    ) {
+  function queryRange() {
+    const context = getContext();
+    if (input.disabled || context.readOnly || context.loading || !context.cwd) return null;
+    if (getCommand() && getCommand().source !== 'skill') return null;
+    return commandAtCaret(input.value, input.selectionStart, input.selectionEnd);
+  }
+  function suggest() {
+    const range = queryRange();
+    if (dismissed || document.activeElement !== input || !range) {
       hide();
       return;
     }
-    suggestionQuery = input.value;
+    suggestionQuery = range.query;
     void load().catch(() => {});
     renderSuggestions();
   }
   function renderSuggestions() {
-    if (suggestionQuery !== input.value || getCommand() || dismissed || document.activeElement !== input) {
+    const range = queryRange();
+    if (!range || suggestionQuery !== range.query || dismissed || document.activeElement !== input) {
       hide();
       return;
     }
     const selected = matches[index]?.name;
+    const inline = range.start > 0 || getCommand();
     matches = filtered(
-      available().filter((c) => c.supported),
+      available().filter((c) => c.supported && (!inline || c.source === 'skill')),
       suggestionQuery,
     ).slice(0, 12);
     index = Math.max(
@@ -522,9 +541,14 @@ export function createCommands({
       }
     }
   };
-  const onInput = () => {
+  const onInput = (event) => {
+    if (event?.isComposing) return hide();
     dismissed = false;
-    void suggest();
+    suggest();
+  };
+  const onCaret = (event) => {
+    if (event.type === 'keyup' && !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    onInput(event);
   };
   const onFocus = () => {
     dismissed = false;
@@ -534,6 +558,11 @@ export function createCommands({
   input.addEventListener('input', onInput);
   input.addEventListener('focus', onFocus);
   input.addEventListener('blur', hide);
+  input.addEventListener('click', onCaret);
+  input.addEventListener('keyup', onCaret);
+  input.addEventListener('compositionend', onInput);
+  const positionObserver = new ResizeObserver(position);
+  positionObserver.observe(input.closest('form') || input);
   window.addEventListener('resize', position);
   window.visualViewport?.addEventListener('resize', position);
   window.visualViewport?.addEventListener('scroll', position);
@@ -543,6 +572,10 @@ export function createCommands({
   // so a rebuilt unit on the same nodes never double-handles. Dialog close
   // first: an open modal must not survive its controller.
   function destroy() {
+    generation++;
+    controller?.abort();
+    clearTimeout(prefetchTimer);
+    positionObserver.disconnect();
     try {
       if (dialog.open) dialog.close();
     } catch {}
@@ -550,6 +583,9 @@ export function createCommands({
     input.removeEventListener('input', onInput);
     input.removeEventListener('focus', onFocus);
     input.removeEventListener('blur', hide);
+    input.removeEventListener('click', onCaret);
+    input.removeEventListener('keyup', onCaret);
+    input.removeEventListener('compositionend', onInput);
     window.removeEventListener('resize', position);
     try {
       window.visualViewport?.removeEventListener('resize', position);
@@ -578,6 +614,7 @@ export function createCommands({
     update,
     destroy,
     restoreDraft() {
+      if (getCommand()) return;
       const text = getText(),
         requestedKey = key();
       const tokens = text.match(/^(\/skill:[A-Za-z0-9-]+(?:\s+\/skill:[A-Za-z0-9-]+)*)\s+([\s\S]*)$/);

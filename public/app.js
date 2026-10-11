@@ -19,7 +19,13 @@ import { createImageComposer, renderImages } from './images.js';
 import { createMcpSettings } from './mcp.js';
 import { createProviderSettings } from './providers.js';
 import { createCommands } from './commands.js';
-import { composerText, setComposerText, composerCommand, createComposer } from './composer.js';
+import {
+  composerText,
+  setComposerText,
+  composerCommand,
+  selectComposerCommand,
+  createComposer,
+} from './composer.js';
 import { createInspector } from './inspector.js';
 import { fileLinkRenderer, bindFileLinks } from './file-links.js';
 import { createSessionActivity } from './session-activity.js';
@@ -1096,9 +1102,9 @@ function saveSelection() {
     projectOverview: state.projectOverview,
   });
 }
-function resizeComposer(textarea = null) {
-  const a = textarea || $('composer');
-  if (!a) return;
+function resizeComposer(textarea = null, view = null) {
+  const a = textarea || (dockingUI?.active && focusedUnits()?.nodes.textarea) || $('composer');
+  if (!a || !a.getClientRects().length) return;
   const style = getComputedStyle(a);
   const minHeight = parseFloat(style.minHeight) || 40;
   const maxHeight = parseFloat(style.maxHeight) || 200;
@@ -1110,7 +1116,7 @@ function resizeComposer(textarea = null) {
     a.style.height = '0px';
     a.style.height = `${Math.min(maxHeight, Math.max(minHeight, a.scrollHeight))}px`;
   }
-  updateComposer();
+  updateComposer(view);
 }
 // Per-view composer refresh. Defaults to the focused view; explicit views
 // update background panes. Units missing (primary pre-enable, classic) falls
@@ -2159,7 +2165,10 @@ convViews = createConversationViews({
   getSessionTitle: (id) => session(id)?.title || '',
   getHostText: () => composerText(),
   setHostText: (text, opts) => setComposerText(text, opts),
-  afterTextRestore: () => commandsUI?.restoreDraft(),
+  afterTextRestore: (view) => {
+    (view?.units?.commands || commandsUI)?.restoreDraft();
+    resizeComposer(view?.units?.nodes.textarea, view);
+  },
   getControls: () => ({
     model: $('model-select').value,
     thinking: $('thinking-select').value,
@@ -2268,8 +2277,13 @@ function conversationVisible() {
   return !dockingUI?.active || dockingUI.visiblePanels().includes('conversation');
 }
 function resizeDockedConversation() {
+  if (dockingUI?.active) {
+    for (const id of dockingUI.visiblePanels()) {
+      const view = convViews?.byId(id);
+      if (view?.units) resizeComposer(view.units.nodes.textarea, view);
+    }
+  } else resizeComposer($('composer'));
   if (!conversationVisible()) return;
-  resizeComposer();
   if (!followConversation) return;
   cancelAnimationFrame(bottomScrollFrame);
   bottomScrollFrame = requestAnimationFrame(() => {
@@ -2598,8 +2612,8 @@ function makeCommands(view, text, chipFactory, attachControls, input, images) {
     getContext: () => commandsContextFor(view),
     action: commandsAction,
     onChange: () => {
-      saveDraft();
-      resizeComposer();
+      if (convViews?.isFocused(view.id)) saveDraft();
+      resizeComposer(input || $('composer'), view);
     },
     onError: onComposerError,
     hasAttachments: () => images?.hasImages() || false,
@@ -2616,8 +2630,8 @@ function makeLiveMessages(view, images, text, roots) {
     getContext: () => liveContextFor(view),
     onAccepted: ({ key, text: sent }) => convViews.acceptDraftFor(view, key, sent),
     onSent: () => {
-      saveDraft();
-      resizeComposer();
+      if (convViews?.isFocused(view.id)) saveDraft();
+      resizeComposer(roots?.composer || $('composer'), view);
     },
     onError: onComposerError,
     ...(roots ? { roots } : {}),
@@ -2683,6 +2697,8 @@ function ensureViewUnits(view) {
   });
   nodes.modelBtn.addEventListener('click', () => openModelDialogFor(view));
   view.units = { scope, text, images, live, commands, questions, nodes };
+  if (state.initialized) convViews.restoreDraftFor(view);
+  resizeComposer(nodes.textarea, view);
   return view.units;
 }
 // Model picker target for a pane: the singleton dialog serves whichever view
@@ -4091,6 +4107,11 @@ async function bootstrap() {
         renderMessages();
       }
     }
+    if (convViews) {
+      for (const view of convViews.views.values()) {
+        if (view.units && !convViews.isFocused(view.id)) convViews.restoreDraftFor(view);
+      }
+    }
     adoptVisibleRuns();
     // Permissions are known only now: re-gate a saved-visible prefs tab that
     // may still show pre-bootstrap full-control content.
@@ -4866,7 +4887,7 @@ dockingUI = createDocking({
       hydrateVisibleSessionViews();
       if (visiblePanels.includes(PRIMARY_VIEW_ID)) renderHostPrimary();
     }
-    if (!active || conversationVisible()) resizeDockedConversation();
+    resizeDockedConversation();
   },
   onResize: resizeDockedConversation,
 });

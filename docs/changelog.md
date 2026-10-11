@@ -4,6 +4,13 @@
 
 Les changements par version. Retrouvez les installateurs et les archives du code source dans les [releases GitHub](https://github.com/zerr0o/prime-agent-studio/releases).
 
+## 4.3.0-beta.5
+
+- **Moins de chargements inutiles** : les conversations non ouvertes utilisent les états lu/non lu déjà fournis par le serveur, sans télécharger leur historique complet. La conversation active continue de recevoir les nouvelles réponses, y compris celles ajoutées depuis un autre appareil.
+- **Historiques compressés** : les réponses volumineuses de l’API d’historique utilisent gzip lorsque le navigateur l’accepte. Tous les messages et résultats d’outils sont conservés ; les droits d’accès et l’absence de cache restent inchangés.
+- **Fermeture des onglets** : le menu contextuel affiche simplement « Fermer ». Un clic molette ferme aussi l’onglet, sans supprimer la conversation ni son brouillon et sans activer le défilement automatique. Le bouton × conserve son libellé accessible descriptif.
+- **Mesures et limites** : sur un scénario isolé de 13 conversations, les chargements d’historique passent de 14 à 1 ; un historique synthétique varié passe de 198 598 à 33 493 octets avec gzip. Ces mesures ne représentent pas un gain global garanti sur téléphone réel. Le rendu initial des très longs historiques et les problèmes préexistants de navigation après reconnexion et de retour du focus depuis Skills restent suivis séparément.
+
 ## 4.3.0-beta.4
 
 - **Rendu des conversations ciblé** : le streaming ne recalcule plus les historiques des panneaux non concernés. Les mises à jour concurrentes restent regroupées, sans tronquer les messages ni perdre les brouillons.

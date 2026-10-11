@@ -141,11 +141,16 @@ export function createSessionActivity({
     return true;
   }
 
-  async function sync(sessions, runs) {
+  async function sync(sessions, runs, { activeSessionId = null } = {}) {
     for (const session of sessions) observeShared(session);
     const running = new Set(runs.filter(active).map((run) => run.sessionId));
     const queue = sessions.filter(
-      (session) => !running.has(session.id) && entry(session.id)?.stamp !== stamp(session),
+      (session) =>
+        !running.has(session.id) &&
+        // Shared receipts already describe unopened sessions. Only the active
+        // history needs a refresh; old servers without receipts keep the fallback.
+        (!session.readState || session.id === activeSessionId) &&
+        entry(session.id)?.stamp !== stamp(session),
     );
     const histories = [];
     // Keep startup/navigation responsive even with a large session archive.

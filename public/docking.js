@@ -496,7 +496,7 @@ export function createDocking({
     menu.append(
       addMenuButton,
       menuItem(
-        () => tr('docking.close', { panel: label(id) }),
+        () => tr('ui.fermer'),
         finish(() => removePanel(id)),
         !id,
       ),
@@ -802,6 +802,14 @@ export function createDocking({
         host.classList.add('is-dragging');
       };
       tab.ondragend = clearDrag;
+      tab.onmousedown = (event) => {
+        if (event.button === 1) event.preventDefault();
+      };
+      tab.onauxclick = (event) => {
+        if (event.button !== 1) return;
+        event.preventDefault();
+        removePanel(id);
+      };
       tab.onkeydown = (event) => {
         if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
         event.preventDefault();

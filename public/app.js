@@ -2244,7 +2244,9 @@ function markHostSessionRead() {
 }
 async function syncSessionActivity() {
   const token = state.requestId;
-  const histories = await sessionActivity.sync(allSessions(), [...state.runs.values()]);
+  const histories = await sessionActivity.sync(allSessions(), [...state.runs.values()], {
+    activeSessionId: state.sessionId,
+  });
   const current = histories.find((history) => history.id === state.sessionId);
   if (current && token === state.requestId && !state.loading && !state.viewRunId && !isRunning(activeRun())) {
     state.history = current.messages || [];

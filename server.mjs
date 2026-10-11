@@ -61,6 +61,7 @@ import { createProjectGitSuggest, SUGGEST_TIMEOUT_MS } from './lib/project-git-s
 import { discoverCli } from './lib/agent.mjs';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { gzip } from 'node:zlib';
 import { forgetGitHead } from './lib/git-head.mjs';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
@@ -139,6 +140,51 @@ async function readBody(req) {
 function json(res, status, value) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
   res.end(JSON.stringify(value));
+}
+// /api/history only: async gzip of large JSON payloads when the client accepts
+// it. Small payloads, errors, auth/host rejections and every other route keep
+// the plain json() path byte-identical: no ETag, no cache, no content change.
+const HISTORY_GZIP_MIN_BYTES = 2048;
+const gzipAsync = promisify(gzip);
+function acceptsHistoryGzip(value) {
+  if (typeof value !== 'string' || !value) return false;
+  let star = 0;
+  for (const part of value.split(',')) {
+    const [name, ...params] = part.split(';').map((item) => item.trim().toLowerCase());
+    let quality = 1;
+    for (const param of params)
+      if (param.startsWith('q=')) {
+        const parsed = Number(param.slice(2));
+        quality = Number.isFinite(parsed) ? parsed : 0;
+      }
+    if (name === 'gzip') return quality > 0;
+    if (name === '*') star = quality;
+  }
+  return star > 0;
+}
+async function historyJson(req, res, status, value) {
+  const raw = JSON.stringify(value);
+  const headers = {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store',
+    Vary: 'Accept-Encoding',
+  };
+  // Compress BEFORE writeHead: a gzip failure still reaches the server catch
+  // with clean headers instead of a committed partial response.
+  if (
+    status === 200 &&
+    Buffer.byteLength(raw) >= HISTORY_GZIP_MIN_BYTES &&
+    acceptsHistoryGzip(req.headers['accept-encoding'])
+  ) {
+    const body = await gzipAsync(raw);
+    if (res.destroyed) return;
+    res.writeHead(status, { ...headers, 'Content-Encoding': 'gzip' });
+    res.end(body);
+    return;
+  }
+  if (res.destroyed) return;
+  res.writeHead(status, headers);
+  res.end(raw);
 }
 
 export function createApp(options = {}) {
@@ -1642,7 +1688,7 @@ export function createApp(options = {}) {
         );
       if (method === 'GET' && path === '/api/history') {
         const { file, ...history } = await store.history(url.searchParams.get('id'));
-        return json(res, 200, history);
+        return await historyJson(req, res, 200, history);
       }
       if (method === 'POST' && (path === '/api/sessions/read' || path === '/api/sessions/unread')) {
         const body = await readBody(req);

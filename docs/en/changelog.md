@@ -4,6 +4,13 @@
 
 Changes by version. See [GitHub releases](https://github.com/zerr0o/prime-agent-studio/releases) for installers and source archives.
 
+## 4.3.0-beta.5
+
+- **Fewer unnecessary loads**: unopened conversations use the read/unread state already provided by the server, without downloading their full histories. The active conversation still receives new answers, including those added from another device.
+- **Compressed histories**: large history API responses use gzip when the browser accepts it. All messages and tool results are preserved; access controls and no-store behavior are unchanged.
+- **Tab closing**: the context menu now says only “Close”. Middle-click also closes a tab without deleting its conversation or draft or triggering autoscroll. The × button keeps its descriptive accessible label.
+- **Measurements and limits**: in an isolated 13-conversation scenario, history loads drop from 14 to 1; a varied synthetic history shrinks from 198,598 to 33,493 bytes with gzip. These are not guaranteed end-to-end speed gains on a physical phone. Initial rendering of very long histories and the pre-existing reconnect-navigation and Skills focus-return issues remain tracked separately.
+
 ## 4.3.0-beta.4
 
 - **Owner-targeted conversation rendering**: streaming no longer repaints transcripts in unrelated panes. Concurrent updates remain coalesced, without truncating messages or losing drafts.

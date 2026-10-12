@@ -116,6 +116,12 @@ npm ci
 npm run desktop:build
 ```
 
+### Profil facultatif avec moteur protégé
+
+Pour une compilation Windows séparée avec un moteur Prime Agent personnalisé et compatible, définissez `PRIME_STUDIO_HARDENED_ENGINE` sur la racine de son paquet avant la compilation desktop. Le paquet doit contenir `dist/bundle/cli.js` et `cli-node.js` complets, le module compilé `dist/utils/auth-protection.js` et une valeur `primeStudioHardening` de 64 caractères hexadécimaux minuscules dans `package.json`. La préparation copie le moteur dans `.hardened/engine` et crée `security-profile.json` avec la même valeur sous `engineBuildId`. Ce marqueur désigne la compilation prévue ; il s'agit d'une métadonnée de provenance, **pas** d'une vérification à l'exécution de l'empreinte ou de la signature de tous les fichiers du moteur.
+
+Lorsque ce profil existe, Studio fixe `PRIME_AGENT_CLI` sur le moteur embarqué, utilise un dossier `agent-secure` et des sessions séparés sous son dossier de données, et définit `PRIME_AGENT_AUTH_PROTECTION=dpapi`. Le moteur personnalisé doit implémenter cette option ; ce réglage Studio ne chiffre pas à lui seul le stockage du paquet Prime Agent standard. Windows DPAPI protège les identifiants stockés pour l'utilisateur Windows actuel ; un code exécuté par ce même utilisateur peut toujours y accéder. Sans ce profil, les compilations ordinaires gardent la sélection du moteur et le comportement des identifiants existants.
+
 L’installateur se trouve dans `src-tauri/target/release/bundle/nsis`. `npm run desktop:dev` prépare les ressources et lance la version de développement. `npm run desktop:icons` régénère les icônes depuis le SVG ; l’image 256 px doit rester en tête du fichier ICO utilisé par Tauri.
 
 La construction vérifie les références des modules, workers et assistants natifs avant de créer l’installateur. `npm run test:desktop-runtime` teste les ressources préparées dans `.desktop-build` avec les vrais workers Prime Agent, un projet et des comptes isolés : skills Python, prompts et fournisseurs.

@@ -67,6 +67,20 @@ execFileSync(process.execPath, [npmCli, 'ci', '--omit=dev', '--ignore-scripts', 
   windowsHide: true,
   stdio: 'inherit',
 });
+if (process.env.PRIME_STUDIO_HARDENED_ENGINE) {
+  const engine = resolve(process.env.PRIME_STUDIO_HARDENED_ENGINE);
+  const pkg = JSON.parse(await readFile(join(engine, 'package.json'), 'utf8'));
+  if (pkg.name !== 'prime-agent' || !/^[a-f0-9]{64}$/.test(pkg.primeStudioHardening || ''))
+    throw new Error('Invalid hardened engine build');
+  await cp(engine, join(studio, '.hardened', 'engine'), { recursive: true });
+  await writeFile(
+    join(studio, 'security-profile.json'),
+    JSON.stringify({
+      schema: 1,
+      engineBuildId: pkg.primeStudioHardening,
+    }),
+  );
+}
 await cp(process.execPath, join(output, 'node.exe'));
 const nodeLicense = await fetch(`https://raw.githubusercontent.com/nodejs/node/${process.version}/LICENSE`);
 if (!nodeLicense.ok) throw new Error('Cannot fetch the license for the bundled Node version');

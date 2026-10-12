@@ -116,6 +116,12 @@ npm ci
 npm run desktop:build
 ```
 
+### Optional protected engine profile
+
+For a separate Windows build using a compatible custom Prime Agent engine, set `PRIME_STUDIO_HARDENED_ENGINE` to that engine's package root before running the desktop build. The package must contain the complete `dist/bundle/cli.js` and `cli-node.js`, the built `dist/utils/auth-protection.js`, and a lowercase 64-character `primeStudioHardening` value in `package.json`. The resource build copies the engine into `.hardened/engine` and writes `security-profile.json` with the same value as `engineBuildId`. This marker identifies the intended build; it is provenance metadata, **not** a runtime hash or signature check of all engine files.
+
+When that profile is present, Studio fixes `PRIME_AGENT_CLI` to the bundled engine, uses a separate `agent-secure` home and sessions under its data folder, and sets `PRIME_AGENT_AUTH_PROTECTION=dpapi`. The custom engine must implement that option; the standard Prime Agent package does not gain encrypted storage merely from this Studio setting. Windows DPAPI protects stored credentials for the current Windows user, so code running as that same user can still access them. The profile is absent from ordinary builds, which keep the existing engine selection and credential behavior.
+
 The installer is in `src-tauri/target/release/bundle/nsis`. `npm run desktop:dev` prepares resources and starts the development build. `npm run desktop:icons` regenerates icons from the SVG; the 256 px frame must stay first in the ICO used by Tauri.
 
 The build validates module, worker and native helper references before creating the installer. `npm run test:desktop-runtime` exercises the resources prepared in `.desktop-build` using real Prime Agent workers and an isolated project and account storage: Python skills, prompts and providers.

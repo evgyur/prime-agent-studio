@@ -691,62 +691,71 @@ async function openLayoutDialogViaEllipsis(page, groupId = 'conversation-group')
     .click();
   await expect(page.locator(DOCK.dialog)).toBeVisible({ timeout: 10000 });
 }
-// Real Move/Add pathways (the manual-move form #docking-panel/target/zone/move
-// and the red-section data-dock-open buttons are removed; creation and moves
-// live in the tab context menu). Selectors use quoted attributes: conv:/tool:
-// ids carry colons and never use #id selectors.
-async function menuMoveToGroup(page, tabId, targetGroupId) {
-  // Center move: the tab joins the target group as its active tab.
-  await page.locator(`button[data-dock-tab="${tabId}"]`).click({ button: 'right' });
-  await expect(page.locator(DOCK.contextMenu)).toBeVisible({ timeout: 10000 });
-  await page.locator(`${DOCK.contextMenu} .dock-menu-submenu`).nth(1).hover();
-  await expect(page.locator(DOCK.moveMenu)).toBeVisible({ timeout: 10000 });
-  // Keyboard criterion: the menu opens with the Add entry focused; arrows
-  // reach the Move entry and ArrowRight enters the submenu with keyboard
-  // focus on a real [data-dock-move] item (full product keyboard path).
-  let onMoveButton = false;
-  for (let n = 0; n < 10 && !onMoveButton; n++) {
-    const controls = await page.evaluate(
-      () => document.activeElement?.getAttribute?.('aria-controls') ?? null,
-    );
-    if (controls === 'docking-move-menu') onMoveButton = true;
-    else await page.keyboard.press('ArrowDown');
-  }
-  assert.ok(onMoveButton, 'Arrow keys must reach the Move submenu button');
-  await page.keyboard.press('ArrowRight');
-  const moveFocused = await page.evaluate(() => document.activeElement?.dataset?.dockMove ?? null);
-  assert.ok(moveFocused, 'ArrowRight must enter the Move submenu with keyboard focus');
-  await page.locator(`${DOCK.moveMenu} button[data-dock-move="center:${targetGroupId}"]`).click();
+// Real drag/Add pathways (the manual-move form #docking-panel/target/zone/move,
+// the red-section data-dock-open buttons, AND the tab context-menu Move
+// submenu are removed as user-authorized; creation lives in the Add submenu,
+// moves live in real pointer drags via manualDrag). Selectors use quoted
+// attributes: conv:/tool: ids carry colons and never use #id selectors.
+async function assertMoveAbsent(page, label) {
+  // The Move submenu must stay absent wherever a move used to be offered.
+  assert.equal(
+    await page.locator(DOCK.moveMenu).count(),
+    0,
+    `#docking-move-menu must be absent (${label})`,
+  );
+  assert.equal(await page.locator('[data-dock-move]').count(), 0, `No [data-dock-move] items may exist (${label})`);
 }
-async function menuSplitZone(page, tabId, zone) {
-  // Edge split: the Move submenu offers <zone>:<originGroup> for the tab's
-  // own group. The caller guarantees a multi-tab origin group (a lone tab
-  // legitimately disables edge splits).
+async function dragMoveToGroup(page, tabId, targetGroupId) {
+  // Center move via real pointer drag: the tab joins the target group as
+  // its active tab (drop preview visible mid-drag).
+  await assertMoveAbsent(page, `pre-dragMove:${tabId}`);
+  await page.locator(`button[data-dock-tab="${tabId}"]`).scrollIntoViewIfNeeded();
+  const from = await page.locator(`button[data-dock-tab="${tabId}"]`).boundingBox();
+  const bar = await page.locator(`[data-dock-group="${targetGroupId}"] .dock-tabs`).boundingBox();
+  const preview = await manualDrag(
+    page,
+    { x: from.x, y: from.y, width: from.width, height: from.height },
+    { x: bar.x + bar.width / 2, y: bar.y + bar.height / 2, width: 4, height: 4 },
+    true,
+  );
+  assert.equal(preview, true, `.dock-drop-preview must show during the drag move of ${tabId}`);
+  await expect
+    .poll(
+      () => layoutSignature(page).then((sig) => sig.groups.find((group) => group.id === targetGroupId)?.tabs.includes(tabId)),
+      { timeout: 15000 },
+    )
+    .toBe(true);
+  await assertMoveAbsent(page, `post-dragMove:${tabId}`);
+}
+async function dragSplitZone(page, tabId, zone) {
+  // Edge split via real pointer drag of the tab to the <zone> edge of its
+  // own group. The caller guarantees a multi-tab origin group.
   const origin = (await layoutSignature(page)).groups.find((group) => group.tabs.includes(tabId));
   assert.ok(origin, `A live group holding ${tabId} must exist for the ${zone} split`);
-  await page.locator(`button[data-dock-tab="${tabId}"]`).click({ button: 'right' });
-  await expect(page.locator(DOCK.contextMenu)).toBeVisible({ timeout: 10000 });
-  await page.locator(`${DOCK.contextMenu} .dock-menu-submenu`).nth(1).hover();
-  await expect(page.locator(DOCK.moveMenu)).toBeVisible({ timeout: 10000 });
-  let onMoveButton = false;
-  for (let n = 0; n < 10 && !onMoveButton; n++) {
-    const controls = await page.evaluate(
-      () => document.activeElement?.getAttribute?.('aria-controls') ?? null,
-    );
-    if (controls === 'docking-move-menu') onMoveButton = true;
-    else await page.keyboard.press('ArrowDown');
-  }
-  assert.ok(onMoveButton, 'Arrow keys must reach the Move submenu button');
-  await page.keyboard.press('ArrowRight');
-  const moveFocused = await page.evaluate(() => document.activeElement?.dataset?.dockMove ?? null);
-  assert.ok(moveFocused, 'ArrowRight must enter the Move submenu with keyboard focus');
-  const item = page.locator(`${DOCK.moveMenu} button[data-dock-move="${zone}:${origin.id}"]`);
-  assert.equal(
-    await item.isDisabled().catch(() => true),
-    false,
-    `${zone} split of ${origin.id} must be enabled`,
+  await assertMoveAbsent(page, `pre-dragSplit:${tabId}`);
+  await page.locator(`button[data-dock-tab="${tabId}"]`).scrollIntoViewIfNeeded();
+  const from = await page.locator(`button[data-dock-tab="${tabId}"]`).boundingBox();
+  const box = await page.locator(`[data-dock-group="${origin.id}"]`).boundingBox();
+  const edge =
+    zone === 'right'
+      ? { x: box.x + box.width - 8, y: box.y + box.height / 2 }
+      : zone === 'left'
+        ? { x: box.x + 8, y: box.y + box.height / 2 }
+        : zone === 'bottom'
+          ? { x: box.x + box.width / 2, y: box.y + box.height - 8 }
+          : { x: box.x + box.width / 2, y: box.y + 8 };
+  const groupsBefore = (await layoutSignature(page)).groups.length;
+  const preview = await manualDrag(
+    page,
+    { x: from.x, y: from.y, width: from.width, height: from.height },
+    { x: edge.x, y: edge.y, width: 4, height: 4 },
+    true,
   );
-  await item.click();
+  assert.equal(preview, true, `.dock-drop-preview must show during the ${zone} split drag of ${tabId}`);
+  await expect
+    .poll(() => layoutSignature(page).then((sig) => sig.groups.length), { timeout: 15000 })
+    .toBeGreaterThanOrEqual(groupsBefore);
+  await assertMoveAbsent(page, `post-dragSplit:${tabId}`);
 }
 async function menuAdd(page, groupId, addValue) {
   // Real Add pathway: group ellipsis opens the context menu, the Add submenu
@@ -1200,7 +1209,7 @@ try {
     const m2fGA = m2fSig.groups.find((group) => group.tabs.includes('conversation'));
     const m2fGB = m2fSig.groups.find((group) => group.tabs.includes(m2fDyn));
     if (m2fGA && m2fGB && m2fGA.id === m2fGB.id) {
-      await menuSplitZone(page, m2fDyn, 'right');
+      await dragSplitZone(page, m2fDyn, 'right');
     }
     await page.locator(`button[data-dock-tab="${m2fDyn}"]`).click();
     await page.locator('button[data-dock-tab="conversation"]').click();
@@ -1745,12 +1754,12 @@ try {
   const startsBeforeLoad = starts.length;
   const liveGroups = (await layoutSignature(page)).groups;
   const moveTarget = liveGroups.find((group) => !group.tabs.includes('session')) || liveGroups[0];
-  // The menu Move pathway needs the modal dialog closed (it intercepts tab
+  // The drag Move pathway needs the modal dialog closed (it intercepts tab
   // pointer events); reopen it afterwards for the preset load. Same moves,
   // same assertions, only the sequencing changes.
   await page.locator(DOCK.closeSettings).click();
   await expect(page.locator(DOCK.dialog)).not.toBeVisible({ timeout: 10000 });
-  await menuMoveToGroup(page, 'session', moveTarget.id);
+  await dragMoveToGroup(page, 'session', moveTarget.id);
   await openLayoutDialog(page);
   await page.locator(DOCK.presetChoice).selectOption('R2-Essai');
   await page.locator(DOCK.presetLoad).click();
@@ -2378,7 +2387,7 @@ try {
   assert.ok(convPark && convPark.startsWith('conv:'), 'pickedTab must exist for the parked tab');
   const convHost = (await layoutSignature(page)).groups.find((group) => group.tabs.includes(convPark));
   assert.ok(convHost, 'A live group holding the parked candidate must exist');
-  await menuMoveToGroup(page, convKeep, convHost.id);
+  await dragMoveToGroup(page, convKeep, convHost.id);
   async function t3bSend(page, viewId) {
     // Era-robust send: per-pane button when wired, else the host button that
     // mirrors the focused view. Caller must have the view focused.
@@ -2499,7 +2508,7 @@ try {
   if (!signature.groups.some((group) => group.tabs.length >= 2)) {
     const [firstGroup, secondGroup] = signature.groups;
     assert.ok(firstGroup && secondGroup, 'Two groups must exist to merge for the blank-bar path');
-    await menuMoveToGroup(page, secondGroup.tabs[0], firstGroup.id);
+    await dragMoveToGroup(page, secondGroup.tabs[0], firstGroup.id);
     signature = await layoutSignature(page);
   }
   const blankGroup = signature.groups.find((group) => group.tabs.length >= 2);
@@ -2528,7 +2537,7 @@ try {
   if (!singleGroup) {
     const donor = signature.groups.find((group) => group.tabs.length >= 2);
     assert.ok(donor, 'A donor group must exist to carve a single-tab group');
-    await menuSplitZone(page, donor.tabs[0], 'right');
+    await dragSplitZone(page, donor.tabs[0], 'right');
     signature = await layoutSignature(page);
     singleGroup = signature.groups.find((group) => group.tabs.length === 1);
   }
@@ -2671,7 +2680,7 @@ try {
   if ((await layoutSignature(page)).groups.length < 2) {
     const soloGroup = (await layoutSignature(page)).groups[0];
     const donor = soloGroup.tabs.find((tab) => tab !== pickedTab) || soloGroup.tabs[0];
-    await menuSplitZone(page, donor, 'right');
+    await dragSplitZone(page, donor, 'right');
   }
   const betaOtherGroup = (await layoutSignature(page)).groups.find((group) => group.id !== betaOrigGroup).id;
   assert.ok(betaOtherGroup, 'A second group must exist for cross-group dedupe');
@@ -2949,7 +2958,7 @@ try {
       let gB = sig.groups.find((group) => group.tabs.includes(tabB));
       assert.ok(gA && gB, 'Both views must be mounted for side-by-side');
       if (gA.id === gB.id) {
-        await menuSplitZone(page, tabB, 'right');
+        await dragSplitZone(page, tabB, 'right');
       }
     }
     // Deterministic bindings through real UI (no sends): primary -> ws-alpha,
@@ -3360,7 +3369,7 @@ try {
       const gX = sig8.groups.find((group) => group.tabs.includes(viewX));
       assert.ok(gX, 'A live group holding viewX must exist');
       if (gX.tabs.includes(viewY)) {
-        await menuSplitZone(page, viewY, 'right');
+        await dragSplitZone(page, viewY, 'right');
       }
     }
     await focusConvTab(page, viewX);
@@ -3577,17 +3586,17 @@ try {
     await focusConvTab(page, concB);
     await page.locator('#session-list .session-select').filter({ hasText: 'migration du volant' }).click();
     await expect(page.locator('#detail-session-id')).toContainText('ws-gamma', { timeout: 10000 });
-    // Split A left / B right through the real dialog selects for the side-by-side capture.
+    // Split A left / B right through real drags for the side-by-side capture.
     const groupsForSplit = (await layoutSignature(page)).groups;
     const leftGroup = groupsForSplit.find((group) => group.tabs.includes(concA)) || groupsForSplit[0];
     // Same end state as the old target+zone move: concB alone in a group
-    // right of concA's group, through the real Move submenu.
+    // right of concA's group, through a real edge-split drag.
     const concBGroup = (await layoutSignature(page)).groups.find((group) =>
       group.tabs.includes(concB),
     );
     if (concBGroup && concBGroup.id !== leftGroup.id)
-      await menuMoveToGroup(page, concB, leftGroup.id);
-    await menuSplitZone(page, concB, 'right');
+      await dragMoveToGroup(page, concB, leftGroup.id);
+    await dragSplitZone(page, concB, 'right');
     signature = await layoutSignature(page);
     assert.ok(signature.groups.length >= 2, 'Side-by-side split needs two live groups');
     // Submit MA in A (held), edit B, submit MB in B (held): two live runs.
@@ -3990,7 +3999,7 @@ try {
   // Force same-group: move preferences into viewP's group, then switch to viewP's tab.
   const pGroup = (await layoutSignature(page)).groups.find((group) => group.tabs.includes(viewP));
   assert.ok(pGroup, 'A live group holding viewP must exist');
-  await menuMoveToGroup(page, 'preferences', pGroup.id);
+  await dragMoveToGroup(page, 'preferences', pGroup.id);
   await page.locator(`button[data-dock-tab="${viewP}"]`).click();
   await expect
     .poll(

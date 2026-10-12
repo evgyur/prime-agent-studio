@@ -11,8 +11,9 @@
 // Captures are genuine screenshots only: never force hidden/classes/DOM state
 // for visuals. page.evaluate is read-only (ids, storage, text, network
 // tallies) and is NOT UI forcing. All tab creation goes through the real
-// AddTab menu; all moves through the real Move context-menu submenu; all
-// sends through the real composer buttons.
+// AddTab menu; all moves through real pointer drag-and-drop (the Move
+// context-menu submenu was removed as user-authorized); all sends through
+// the real composer buttons.
 //
 // STATUS: "pass" when every check holds; "blocked" when the parent surface
 // (app.js integration, still in flight) is missing pieces — gaps are listed
@@ -435,20 +436,85 @@ async function addToolClone(page, kind) {
   }
   await creationFailure(page, kind, clickedAt, 'dynamic clone');
 }
-// Real Move path: right-click tab -> Move submenu -> zone/group item.
-async function moveTab(page, id, zonePrefix = null) {
+// Real drag path (Move submenu removed as user-authorized): drag the tab
+// onto another group's bar (center join) or to a zone edge (split).
+// zonePrefix 'right'/'bottom'/'left'/'top' requests an edge split of the
+// tab's own group; null requests a center join into another live group.
+async function dragOnce(page, fromBox, toX, toY, observePreview) {
+  await page.mouse.move(fromBox.x + fromBox.width / 2, fromBox.y + fromBox.height / 2);
+  await page.mouse.down();
+  let previewSeen = false;
+  for (let i = 1; i <= 10; i++) {
+    await page.mouse.move(
+      fromBox.x + ((toX - fromBox.x) * i) / 10,
+      fromBox.y + ((toY - fromBox.y) * i) / 10,
+      { steps: 2 },
+    );
+    if (observePreview && i === 6) {
+      previewSeen = await page
+        .locator('.dock-drop-preview')
+        .isVisible()
+        .catch(() => false);
+    }
+  }
+  await page.mouse.move(toX, toY);
+  await page.mouse.move(toX, toY);
+  if (observePreview && !previewSeen)
+    previewSeen = await page
+      .locator('.dock-drop-preview')
+      .isVisible()
+      .catch(() => false);
+  await page.mouse.up();
+  return previewSeen;
+}
+async function assertMoveAbsent(page, id) {
+  // The Move submenu is gone: right-click shows the tab menu with Add Tab
+  // only, no Move entry, no move popup, no [data-dock-move] items.
   await page.locator(TAB(id)).click({ button: 'right' });
   await expect(page.locator('#docking-context-menu')).toBeVisible({ timeout: 10000 });
-  await page.locator('#docking-context-menu [aria-controls="docking-move-menu"]').click();
-  await expect(page.locator('#docking-move-menu')).toBeVisible({ timeout: 10000 });
-  const opened = (await page.locator('#docking-move-menu:not([hidden]) [data-dock-move]').count()) > 0;
-  assert.ok(opened, `Move submenu opens for ${id}`);
-  const items = zonePrefix
-    ? page.locator(`#docking-move-menu [data-dock-move^="${zonePrefix}"]`)
-    : page.locator('#docking-move-menu [data-dock-move]');
-  const enabled = items.filter({ hasNot: page.locator('[disabled]') });
-  assert.ok((await enabled.count()) > 0, `Move offers a live target for ${id}`);
-  await enabled.first().click();
+  assert.equal(
+    await page.locator('#docking-context-menu [aria-controls="docking-move-menu"]').count(),
+    0,
+    `No Move submenu entry may exist for ${id}`,
+  );
+  assert.equal(await page.locator('#docking-move-menu').count(), 0, '#docking-move-menu must be absent');
+  assert.equal(await page.locator('[data-dock-move]').count(), 0, 'No [data-dock-move] items may exist');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#docking-context-menu')).not.toBeVisible({ timeout: 10000 });
+}
+async function moveTab(page, id, zonePrefix = null) {
+  await assertMoveAbsent(page, id);
+  await page.locator(TAB(id)).scrollIntoViewIfNeeded();
+  const from = await page.locator(TAB(id)).boundingBox();
+  if (zonePrefix) {
+    const originBox = await page.locator(TAB(id)).evaluate((tab) => {
+      const box = tab.closest('[data-dock-group]')?.getBoundingClientRect();
+      return box ? { x: box.x, y: box.y, width: box.width, height: box.height } : null;
+    });
+    assert.ok(originBox, `A live group holding ${id} must exist for the ${zonePrefix} split`);
+    const edge =
+      zonePrefix === 'right'
+        ? { x: originBox.x + originBox.width - 8, y: originBox.y + originBox.height / 2 }
+        : zonePrefix === 'left'
+          ? { x: originBox.x + 8, y: originBox.y + originBox.height / 2 }
+          : zonePrefix === 'bottom'
+            ? { x: originBox.x + originBox.width / 2, y: originBox.y + originBox.height - 8 }
+            : { x: originBox.x + originBox.width / 2, y: originBox.y + 8 };
+    const preview = await dragOnce(page, from, edge.x, edge.y, true);
+    assert.equal(preview, true, `.dock-drop-preview must show during the ${zonePrefix} split drag of ${id}`);
+  } else {
+    const groups = await page.evaluate(() =>
+      [...document.querySelectorAll('[data-dock-group]')].map((g) => g.dataset.dockGroup),
+    );
+    const own = await page
+      .locator(TAB(id))
+      .evaluate((tab) => tab.closest('[data-dock-group]')?.dataset.dockGroup || null);
+    const target = groups.find((g) => g !== own);
+    assert.ok(target, `A second live group must exist as the drag target for ${id}`);
+    const bar = await page.locator(`[data-dock-group="${target}"] .dock-tabs`).boundingBox();
+    const preview = await dragOnce(page, from, bar.x + bar.width / 2, bar.y + bar.height / 2, true);
+    assert.equal(preview, true, `.dock-drop-preview must show during the relocation drag of ${id}`);
+  }
   await page.waitForTimeout(800);
 }
 async function lockState(page, id) {
@@ -681,9 +747,16 @@ try {
     ['dock-workspace', '#dock-workspace'],
     ['add-menu', '#docking-add-menu'],
     ['context-menu', '#docking-context-menu'],
-    ['move-menu', '#docking-move-menu'],
     ...KINDS.map((kind) => [`add-tool-${kind}`, `#docking-add-menu [data-dock-add="${kind}"]`].slice(0, 2)),
   ]);
+  // Move submenu must be ABSENT (user-authorized removal): its node and any
+  // [data-dock-move] item fail the contract if present.
+  assert.equal(
+    await page.locator('#docking-move-menu').count(),
+    0,
+    '#docking-move-menu must be absent (Move submenu removed)',
+  );
+  assert.equal(await page.locator('[data-dock-move]').count(), 0, 'No [data-dock-move] items may exist');
   // Add-menu items only exist while the menu is built; open it once to probe.
   let addProbe = gaps.filter((g) => g.startsWith('add-tool-'));
   if (addProbe.length) {
@@ -719,7 +792,7 @@ try {
     await rm(temp, { recursive: true, force: true }).catch(() => {});
     process.exit(2);
   }
-  step('Parent contract present: dock workspace, context/add/move menus, 5 tool AddTab items.');
+  step('Parent contract present: dock workspace, context/add menus (no Move), 5 tool AddTab items.');
 
   // Dock defaults ON at desktop width with no saved choice (fresh profile).
   const dockVisible = await page.locator('#dock-workspace').isVisible().catch(() => false);
@@ -746,7 +819,7 @@ try {
   assert.deepEqual(rmDom.panels, [rm1, rm2, rm3]);
   assert.deepEqual(rmDom.dupes, []);
   step('Roadmap instances own independent DOM (data-instance-id per tab, zero duplicate ids).');
-  // Simultaneous-updates case: one roadmap per group via real Move. rm1..rm3
+  // Simultaneous-updates case: one roadmap per group via real drag. rm1..rm3
   // are IN ADDITION to the default primary Roadmap: moving rm2/rm3 out can
   // leave rm1 inactive behind the conversation, so activate each instance
   // through the real UI, prove three distinct groups, then poll visible.
@@ -793,7 +866,7 @@ try {
       assert.fail(`${id} frame never visible: ${JSON.stringify(diag).slice(0, 700)}`);
     }
   }
-  step('Three roadmaps sit in three groups via real Move (simultaneous updates).');
+  step('Three roadmaps sit in three groups via real drag (simultaneous updates).');
   // Lock rm1 while sess-a is focused (owner A), then focus B: rm1 keeps plan-PA.
   await focusSession(page, 'sess-a');
   await page.locator(LOCK(rm1)).click();
@@ -858,7 +931,7 @@ try {
     await expectLocked(page, tabs[kind][0], `${kind}-0-first-lock`);
   }
   await moveTab(page, tabs.files[0], 'right');
-  step('First of each kind locked to A; a Move-menu relocation works on tool tabs.');
+  step('First of each kind locked to A; a drag relocation works on tool tabs.');
   await focusSession(page, 'sess-b');
   // Locked tabs keep A: session unit shows sess-a marker, files GETs stay A-owned.
   const sessText = await readToolFrame(page, tabs.session[0], { any: ['ID sess-a', 'Alpha Atelier'] }, 'session-locked');

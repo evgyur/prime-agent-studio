@@ -477,19 +477,13 @@ export function createDocking({
   addMenu.id = 'docking-add-menu';
   addMenu.setAttribute('role', 'menu');
   bindAttribute(addMenu, 'aria-label', () => tr('docking.add_tab'));
-  const moveMenu = el('div', 'dock-menu');
-  moveMenu.id = 'docking-move-menu';
-  moveMenu.setAttribute('role', 'menu');
-  bindAttribute(moveMenu, 'aria-label', () => tr('docking.move_to'));
-  menu.hidden = addMenu.hidden = moveMenu.hidden = true;
-  document.body.append(menu, addMenu, moveMenu);
+  menu.hidden = addMenu.hidden = true;
+  document.body.append(menu, addMenu);
   let menuOrigin = null;
   let addMenuButton = null;
-  let moveMenuButton = null;
   const closeMenu = (restoreFocus = false) => {
-    menu.hidden = addMenu.hidden = moveMenu.hidden = true;
+    menu.hidden = addMenu.hidden = true;
     addMenuButton?.setAttribute('aria-expanded', 'false');
-    moveMenuButton?.setAttribute('aria-expanded', 'false');
     if (restoreFocus && menuOrigin?.isConnected) menuOrigin.focus({ preventScroll: true });
   };
   function menuItem(text, action, disabled = false) {
@@ -507,7 +501,6 @@ export function createDocking({
     menuOrigin = origin;
     menu.replaceChildren();
     addMenu.replaceChildren();
-    moveMenu.replaceChildren();
     const finish = (action) => () => {
       closeMenu();
       action();
@@ -565,35 +558,6 @@ export function createDocking({
       placeSubmenu(addMenu, addMenuButton);
       if (focus) addMenu.querySelector('button:not(:disabled)')?.focus({ preventScroll: true });
     };
-    const groupLabel = (group) => group.panels.map(label).join(' · ') || tr('docking.empty');
-    const openMove = (focus = true) => {
-      // Keyboard path for panel moves: every live group as a tab target
-      // plus edge splits of the current group. Real buttons, no dialog.
-      moveMenu.replaceChildren();
-      const live = groupsOf(layout);
-      const current = live.find((group) => group.id === groupId);
-      for (const target of live) {
-        const item = menuItem(
-          () => `${tr('docking.center')} · ${groupLabel(target)}`,
-          finish(() => commit(movePanel(layout, { panel: id, targetGroupId: target.id }), id)),
-          !id,
-        );
-        item.dataset.dockMove = `center:${target.id}`;
-        moveMenu.append(item);
-      }
-      const lone = current && current.panels.length < 2 && current.panels.includes(id);
-      for (const zone of edgeZones) {
-        const item = menuItem(
-          () => `${tr(zoneTitles[zone])} · ${current ? groupLabel(current) : ''}`,
-          finish(() => commit(movePanel(layout, { panel: id, targetGroupId: groupId, zone }), id)),
-          !id || !current || lone,
-        );
-        item.dataset.dockMove = `${zone}:${groupId}`;
-        moveMenu.append(item);
-      }
-      placeSubmenu(moveMenu, moveMenuButton);
-      if (focus) moveMenu.querySelector('button:not(:disabled)')?.focus({ preventScroll: true });
-    };
     addMenuButton = menuItem(
       () => tr('docking.add_tab'),
       () => openAdd(),
@@ -610,25 +574,6 @@ export function createDocking({
         openAdd();
       }
     };
-    moveMenuButton = menuItem(
-      () => tr('docking.move_to'),
-      () => openMove(),
-      !id,
-    );
-    moveMenuButton.classList.add('dock-menu-submenu');
-    moveMenuButton.setAttribute('aria-haspopup', 'menu');
-    moveMenuButton.setAttribute('aria-expanded', 'false');
-    moveMenuButton.setAttribute('aria-controls', moveMenu.id);
-    moveMenuButton.onpointerenter = () => {
-      if (!moveMenuButton.disabled) openMove(false);
-    };
-    moveMenuButton.onkeydown = (key) => {
-      if (key.key === 'ArrowRight') {
-        key.preventDefault();
-        key.stopPropagation();
-        openMove();
-      }
-    };
     buildAddMenu();
     const group = groupsOf(layout).find((group) => group.id === groupId);
     const closeOthers = menuItem(
@@ -639,7 +584,6 @@ export function createDocking({
     closeOthers.dataset.dockCloseOthers = groupId;
     menu.append(
       addMenuButton,
-      moveMenuButton,
       menuItem(
         () => tr('ui.fermer'),
         finish(() => removePanel(id)),
@@ -668,15 +612,11 @@ export function createDocking({
     addMenuButton.focus({ preventScroll: true });
   }
   function popupKeys(event, popup) {
-    const submenuOf = new Map([
-      [addMenu, addMenuButton],
-      [moveMenu, moveMenuButton],
-    ]);
-    if (event.key === 'ArrowLeft' && submenuOf.has(popup)) {
+    if (event.key === 'ArrowLeft' && popup === addMenu) {
       event.preventDefault();
       popup.hidden = true;
-      submenuOf.get(popup)?.setAttribute('aria-expanded', 'false');
-      submenuOf.get(popup)?.focus();
+      addMenuButton?.setAttribute('aria-expanded', 'false');
+      addMenuButton?.focus();
       return;
     }
     if (event.key === 'Tab') {
@@ -696,9 +636,8 @@ export function createDocking({
     items[index]?.focus({ preventScroll: true });
   }
   for (const popup of [menu, addMenu]) popup.addEventListener('keydown', (event) => popupKeys(event, popup));
-  moveMenu.addEventListener('keydown', (event) => popupKeys(event, moveMenu));
   document.addEventListener('pointerdown', (event) => {
-    if (!menu.hidden && ![menu, addMenu, moveMenu].some((popup) => popup.contains(event.target)))
+    if (!menu.hidden && ![menu, addMenu].some((popup) => popup.contains(event.target)))
       closeMenu();
   });
   window.addEventListener('resize', () => closeMenu());
@@ -900,7 +839,7 @@ export function createDocking({
     group.style.minHeight = `${minimumSize(model, 'column')}px`;
     const bar = el('div', 'dock-bar');
     bar.oncontextmenu = (event) => {
-      const tab = event.target.closest('[data-dock-tab]');
+      const tab = event.target.closest('.dock-tab-item')?.querySelector('[data-dock-tab]');
       openContextMenu(
         event,
         model.id,
@@ -910,7 +849,7 @@ export function createDocking({
     };
     bar.onkeydown = (event) => {
       if (event.key !== 'ContextMenu' && !(event.key === 'F10' && event.shiftKey)) return;
-      const tab = event.target.closest('[data-dock-tab]');
+      const tab = event.target.closest('.dock-tab-item')?.querySelector('[data-dock-tab]');
       openContextMenu(event, model.id, tab || event.target, tab?.dataset.dockTab || model.active);
     };
     const tabs = el('div', 'dock-tabs');
@@ -918,6 +857,8 @@ export function createDocking({
     bindAttribute(tabs, 'aria-label', () => tr('docking.panels'));
     const content = el('div', 'dock-content');
     for (const id of model.panels) {
+      const item = el('div', 'dock-tab-item');
+      item.setAttribute('role', 'presentation');
       const tab = button(undefined, () => commit(activatePanel(layout, id), id), 'dock-tab');
       const glyph = tabIcon(id);
       if (isConversationPanel(id)) glyph.style.color = projectColorOf?.(id) || '';
@@ -981,10 +922,10 @@ export function createDocking({
         lockState = null;
       }
       tab.classList.toggle('is-locked', !!lockState?.locked);
-      tabs.append(tab);
-      // The lock is a SIBLING of the tab button, never nested inside it:
-      // dock owns this chrome and its CSS, the parent owns lock state.
+      item.append(tab);
+      // Visually inside the tab, but a sibling button for valid focus semantics.
       if (lockState) {
+        item.classList.add('has-lock');
         const lock = button('', () => {
           try {
             onToggleToolLock?.(id);
@@ -995,8 +936,9 @@ export function createDocking({
         lock.dataset.dockLock = id;
         lock.append(lockIcon(!!lockState.locked));
         paintLock(lock, id, lockState);
-        tabs.append(lock);
+        item.append(lock);
       }
+      tabs.append(item);
     }
     bar.append(tabs);
     const options = button(

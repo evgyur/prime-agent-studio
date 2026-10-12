@@ -9,6 +9,7 @@
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import assert from 'node:assert/strict';
 import { expect } from '@playwright/test';
 import { launchStudioBrowser } from './fixtures/browser.mjs';
 import { createApp } from '../server.mjs';
@@ -119,12 +120,40 @@ try {
   await expect(paneB.locator('a.document-link', { hasText: 'Guide B' })).toBeVisible({ timeout: 15000 });
   rec('session-b-bound', true, secondId);
 
-  // Split via the real tab menu so BOTH panes stay visible.
+  // Move submenu must be absent (removed as user-authorized): the tab menu
+  // shows Add Tab only, no Move entry, no move popup, no [data-dock-move].
   await page.locator(`button[data-dock-tab="${secondId}"]`).click({ button: 'right' });
   await expect(page.locator('#docking-context-menu')).toBeVisible({ timeout: 10000 });
-  await page.locator('#docking-context-menu [aria-controls="docking-move-menu"]').click();
-  await expect(page.locator('#docking-move-menu')).toBeVisible({ timeout: 10000 });
-  await page.locator('#docking-move-menu [data-dock-move^="right:"]').first().click();
+  assert.ok(
+    (await page.locator('#docking-context-menu [aria-controls="docking-move-menu"]').count()) === 0,
+    'No Move submenu entry may exist in the tab context menu',
+  );
+  assert.ok((await page.locator('#docking-move-menu').count()) === 0, '#docking-move-menu must be absent');
+  assert.ok((await page.locator('[data-dock-move]').count()) === 0, 'No [data-dock-move] items may exist');
+  rec('move-absent', true);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#docking-context-menu')).not.toBeVisible({ timeout: 10000 });
+  // Split via real pointer drag (tab -> right edge of its group) so BOTH
+  // panes stay visible.
+  await page.locator(`button[data-dock-tab="${secondId}"]`).scrollIntoViewIfNeeded();
+  {
+    const splitFrom = await page.locator(`button[data-dock-tab="${secondId}"]`).boundingBox();
+    const splitBox = await page.locator(`button[data-dock-tab="${secondId}"]`).evaluate((tab) => {
+      const box = tab.closest('[data-dock-group]')?.getBoundingClientRect();
+      return box ? { x: box.x, y: box.y, width: box.width, height: box.height } : null;
+    });
+    await page.mouse.move(splitFrom.x + splitFrom.width / 2, splitFrom.y + splitFrom.height / 2);
+    await page.mouse.down();
+    for (let i = 1; i <= 10; i++) {
+      await page.mouse.move(
+        splitFrom.x + ((splitBox.x + splitBox.width - 8 - splitFrom.x) * i) / 10,
+        splitFrom.y + ((splitBox.y + splitBox.height / 2 - splitFrom.y) * i) / 10,
+        { steps: 2 },
+      );
+    }
+    await page.mouse.move(splitBox.x + splitBox.width - 8, splitBox.y + splitBox.height / 2);
+    await page.mouse.up();
+  }
   await page.waitForTimeout(1200);
   const visA = await page.locator('[id="dock-view-conversation"]').isVisible().catch(() => false);
   const visB = await paneB.isVisible().catch(() => false);

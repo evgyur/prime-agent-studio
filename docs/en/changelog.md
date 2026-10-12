@@ -4,6 +4,12 @@
 
 Changes by version. See [GitHub releases](https://github.com/zerr0o/prime-agent-studio/releases) for installers and source archives.
 
+## 4.3.0-beta.10
+
+- **Clean labels**: tool tabs and the Add tab menu show only Roadmap, Session, Agents, Files or Preferences. The project and conversation remain visible in the panel content.
+- **Integrated lock**: the lock sits inside the tab surface with its own accessible button. Lock behavior is unchanged.
+- **Simpler menu**: the Move to submenu is removed. Drag-and-drop movement remains available.
+
 ## 4.3.0-beta.9
 
 - **Independent tool tabs**: open multiple Roadmap, Session, Agents, Files and Preferences panels, with up to sixteen tool panels alongside eight conversations. Each panel keeps its own selection, forms and dialogs.

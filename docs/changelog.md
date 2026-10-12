@@ -4,6 +4,12 @@
 
 Les changements par version. Retrouvez les installateurs et les archives du code source dans les [releases GitHub](https://github.com/zerr0o/prime-agent-studio/releases).
 
+## 4.3.0-beta.10
+
+- **Libellés sobres** : les onglets outils et le menu Ajouter un onglet affichent uniquement Roadmap, Session, Agents, Fichiers ou Préférences. Le projet et la conversation restent indiqués dans le contenu.
+- **Cadenas intégré** : le verrou se trouve dans la surface de l’onglet, avec son propre bouton accessible. Son fonctionnement ne change pas.
+- **Menu allégé** : le sous-menu Déplacer vers est supprimé. Le déplacement par glisser-déposer est conservé.
+
 ## 4.3.0-beta.9
 
 - **Onglets outils indépendants** : ouvrez plusieurs panneaux Roadmap, Session, Agents, Fichiers et Préférences, jusqu’à seize panneaux outils aux côtés de huit conversations. Chaque panneau garde sa sélection, ses formulaires et ses dialogues.

@@ -5001,7 +5001,7 @@ function toolTargetLabel(context) {
 function toolTitle(id) {
   const entry = toolViews?.entries.get(id);
   if (!entry) return undefined;
-  return `${tr(`docking.${entry.kind}`)} · ${toolTargetLabel(toolContext(id))}`;
+  return tr(`docking.${entry.kind}`);
 }
 function toolLockState(id) {
   const entry = toolViews?.entries.get(id);

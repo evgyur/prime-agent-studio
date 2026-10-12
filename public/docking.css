@@ -95,6 +95,16 @@
   overflow-x: auto;
   scrollbar-width: thin;
 }
+.dock-tab-item {
+  position: relative;
+  display: flex;
+  flex: 0 0 auto;
+  min-width: 0;
+  max-width: min(240px, 100%);
+}
+.dock-tab-item.has-lock .dock-tab {
+  padding-right: 38px;
+}
 .dock-tab {
   display: flex;
   align-items: center;
@@ -158,15 +168,16 @@
   background: var(--surface-hover);
   color: var(--text);
 }
-/* Per-tab context lock: a sibling of the tab button, never nested in it.
-   Dock owns this chrome; lock state and labels come from the parent. */
+/* The lock shares its tab's surface without nesting interactive buttons. */
 .dock-lock {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
   display: grid;
-  flex: none;
   place-items: center;
-  align-self: center;
-  width: 26px;
-  height: 26px;
+  width: 24px;
+  height: 24px;
   border-radius: 4px;
   color: var(--muted);
   opacity: 0.55;

@@ -4,7 +4,7 @@
 // STATUS: geometry V4 + tool instances + Agencement simplification contract
 //   (see DOCK selectors below). The modular workspace defaults ON when no
 //   choice was saved; panel opening and keyboard moves live in the tab
-//   context menu (Add Tab / Move submenus), not in the settings dialog.
+//   context menu (Add Tab only, no Move submenu), not in the settings dialog.
 //   Integration (app-owned roots) is NOT ready: run
 //   `node --check scripts/test-docking-ui.mjs` only until the parent
 //   integrates the UI, then run this file for real.
@@ -548,8 +548,8 @@ try {
         gaps.join(', ') +
         '. Needed: #open-docking (opens native #docking-settings dialog), #docking-toggle checkbox ' +
         '(workspace on/off, default ON with no saved choice), #docking-close-settings, #docking-reset, ' +
-        'tab context menu #docking-context-menu with #docking-add-menu (buttons[data-dock-add]) and ' +
-        '#docking-move-menu (buttons[data-dock-move]) for keyboard-accessible Add Tab / Move, ' +
+        'tab context menu #docking-context-menu with #docking-add-menu (buttons[data-dock-add]) for ' +
+        'keyboard-accessible Add Tab (no Move submenu: relocation is drag-only), ' +
         '#dock-workspace (active only >1080px) with .dock-group[data-dock-group] + ' +
         'buttons[data-dock-tab] (role=tab, draggable) + [data-dock-close] per group, ' +
         '.dock-splitter[data-dock-split] (role=separator, tabindex=0), .dock-drop-preview during ' +
@@ -791,14 +791,15 @@ try {
   await expectScrollDetached(page, 'keyboard-nudge');
   step('Keyboard separator nudge resizes adjacent groups; DOM refs and draft survive.');
 
-  // ------------------------------------------------ Phase 4: context-menu movement.
-  // The settings dialog holds no move controls anymore; keyboard moves go
-  // through the real tab context menu (⋯ button, right-click, or Shift+F10).
+  // ------------------------------------------------ Phase 4: context menu (no Move) + drag relocation.
+  // The settings dialog holds no move controls; the tab context menu offers
+  // Add Tab only (the Move submenu was removed as user-authorized). All
+  // relocation goes through real pointer drags (manualDrag, Phase 2).
   signature = await layoutSignature(page);
-  // The edge split dissolved the default tools-group, so the menu move
+  // The edge split dissolved the default tools-group, so the drag move
   // targets a group that actually exists: the one not holding session.
   const menuTarget = signature.groups.find((group) => !group.tabs.includes('session'));
-  assert.ok(menuTarget, 'A second live group must exist as the menu-move target');
+  assert.ok(menuTarget, 'A second live group must exist as the drag-move target');
   // Keyboard-only path first: focus the tab, open with Shift+F10, Escape
   // restores focus to the tab.
   await page.locator('button[data-dock-tab="session"]').focus();
@@ -812,51 +813,47 @@ try {
     'Escape must return focus to the invoking tab',
   );
   step('Keyboard-only tab menu opens with Shift+F10 and closes with Escape.');
-  // Pointer path: right-click the tab, open the Move submenu, assert every
-  // live group is offered as a tab target plus all four edge splits, then
-  // drive the true keyboard path (focus + ArrowRight opens with focus inside,
-  // ArrowDown navigates) before moving with a real click.
+  // Move submenu must be absent: right-click shows the tab menu with Add Tab
+  // only, no Move entry, no move popup, no [data-dock-move] items anywhere.
   await page.locator('button[data-dock-tab="session"]').click({ button: 'right' });
   await expect(page.locator(DOCK.menu)).toBeVisible();
-  const moveSubmenuButton = page.locator(`${DOCK.menu} .dock-menu-submenu`).nth(1);
-  await moveSubmenuButton.hover();
-  await expect(page.locator(DOCK.moveMenu)).toBeVisible();
-  const centerMoves = await page
-    .locator(`${DOCK.moveMenu} button[data-dock-move^="center:"]`)
-    .evaluateAll((items) => items.map((item) => item.dataset.dockMove));
-  for (const group of signature.groups)
-    assert.ok(
-      centerMoves.includes(`center:${group.id}`),
-      `Move submenu must offer current group ${group.id} as a tab target`,
-    );
-  for (const zone of ['left', 'right', 'top', 'bottom'])
-    assert.ok(
-      (await page.locator(`${DOCK.moveMenu} button[data-dock-move^="${zone}:"]`).count()) >= 1,
-      `Move submenu must offer the ${zone} edge split`,
-    );
-  await moveSubmenuButton.focus();
-  await page.keyboard.press('ArrowRight');
-  const moveFirst = await page.evaluate(() => document.activeElement?.dataset?.dockMove ?? null);
-  assert.ok(moveFirst, 'ArrowRight must open the Move submenu with focus inside');
-  await page.keyboard.press('ArrowDown');
-  const moveFocused = await page.evaluate(() => document.activeElement?.dataset?.dockMove ?? null);
-  assert.ok(moveFocused && moveFocused !== moveFirst, 'Arrow keys must navigate the Move submenu');
-  await page.keyboard.press('ArrowLeft');
-  await expect(page.locator(DOCK.moveMenu)).not.toBeVisible();
-  await expect(moveSubmenuButton).toBeFocused();
-  // The pointer never left the button, so a re-hover would be a no-op;
-  // reopen through the keyboard path proven above.
-  await moveSubmenuButton.focus();
-  await page.keyboard.press('ArrowRight');
-  await expect(page.locator(DOCK.moveMenu)).toBeVisible();
-  await page.locator(`${DOCK.moveMenu} button[data-dock-move="center:${menuTarget.id}"]`).click();
+  assert.equal(
+    await page.locator(`${DOCK.menu} [aria-controls="docking-move-menu"]`).count(),
+    0,
+    'No Move submenu entry may exist in the tab context menu',
+  );
+  assert.equal(await page.locator(DOCK.moveMenu).count(), 0, '#docking-move-menu must be absent from the DOM');
+  assert.equal(await page.locator('[data-dock-move]').count(), 0, 'No [data-dock-move] items may exist');
+  await page.keyboard.press('Escape');
+  await expect(page.locator(DOCK.menu)).not.toBeVisible();
+  step('Move submenu absent: tab menu offers Add Tab only, no move controls.');
+  // Real drag relocation: session tab -> center of the target group.
+  await page.locator('button[data-dock-tab="session"]').scrollIntoViewIfNeeded();
+  const dragFrom = await page.locator('button[data-dock-tab="session"]').boundingBox();
+  const dragTargetBar = await page.locator(`[data-dock-group="${menuTarget.id}"] .dock-tabs`).boundingBox();
+  const dragPreview = await manualDrag(
+    { x: dragFrom.x, y: dragFrom.y, width: dragFrom.width, height: dragFrom.height },
+    {
+      x: dragTargetBar.x + dragTargetBar.width / 2,
+      y: dragTargetBar.y + dragTargetBar.height / 2,
+      width: 4,
+      height: 4,
+    },
+    true,
+  );
+  assert.equal(dragPreview, true, '.dock-drop-preview must show during the relocation drag');
+  await expect
+    .poll(() => layoutSignature(page).then((sig) => findGroup(sig, menuTarget.id).tabs.includes('session')), {
+      timeout: 10000,
+    })
+    .toBe(true);
   signature = await layoutSignature(page);
   assert.ok(
     findGroup(signature, menuTarget.id).tabs.includes('session'),
-    `Menu-only move relocates session into ${menuTarget.id}`,
+    `Drag move relocates session into ${menuTarget.id}`,
   );
   await expectRefsStable(page, refState, 'menu-move');
-  step('Context-menu movement (Move submenu + keyboard nav) relocates panels without any pointer drag.');
+  step('Drag relocation moves the session tab into the target group with a visible drop preview.');
 
   // ------------------------------------------------ Phase 5: splitter pointer resize + Escape.
   const splitRow = page.locator('.dock-splitter[data-dock-split][aria-orientation="vertical"]');
@@ -1113,13 +1110,22 @@ try {
   step('Malformed storage falls back to the default layout with no crash and no page error.');
 
   // ------------------------------------------------ Phase 9: reset.
-  // Any edge split rearranges (edge items key off the right-clicked group);
+  // Any edge split rearranges (drag the roadmap tab to the left edge);
   // Reset must then restore the default layout.
-  await page.locator('button[data-dock-tab="roadmap"]').click({ button: 'right' });
-  await expect(page.locator(DOCK.menu)).toBeVisible();
-  await page.locator(`${DOCK.menu} .dock-menu-submenu`).nth(1).hover();
-  await expect(page.locator(DOCK.moveMenu)).toBeVisible();
-  await page.locator(`${DOCK.moveMenu} button[data-dock-move^="left:"]`).first().click();
+  await page.locator('button[data-dock-tab="roadmap"]').scrollIntoViewIfNeeded();
+  {
+    const rmBox = await page.locator('button[data-dock-tab="roadmap"]').boundingBox();
+    const rmGroupBox = await page.locator('button[data-dock-tab="roadmap"]').evaluate((tab) => {
+      const box = tab.closest('[data-dock-group]')?.getBoundingClientRect();
+      return box ? { x: box.x, y: box.y, width: box.width, height: box.height } : null;
+    });
+    await manualDrag(
+      { x: rmBox.x, y: rmBox.y, width: rmBox.width, height: rmBox.height },
+      { x: rmGroupBox.x + 6, y: rmGroupBox.y + rmGroupBox.height / 2, width: 4, height: 4 },
+      true,
+    );
+    await page.waitForTimeout(800);
+  }
   await page.locator('#open-docking').click();
   await page.locator(DOCK.reset).click();
   await page.locator(DOCK.closeSettings).click();
@@ -1279,11 +1285,17 @@ try {
   await manuallyDetachScroller(page);
   const toolsId = (await layoutSignature(page)).groups.find((group) => group.tabs.includes('roadmap'))?.id;
   assert.ok(toolsId, 'A live group holding the roadmap must exist');
-  await page.locator('button[data-dock-tab="session"]').click({ button: 'right' });
-  await expect(page.locator(DOCK.menu)).toBeVisible();
-  await page.locator(`${DOCK.menu} .dock-menu-submenu`).nth(1).hover();
-  await expect(page.locator(DOCK.moveMenu)).toBeVisible();
-  await page.locator(`${DOCK.moveMenu} button[data-dock-move="bottom:${toolsId}"]`).click();
+  await page.locator('button[data-dock-tab="session"]').scrollIntoViewIfNeeded();
+  {
+    const sessBox = await page.locator('button[data-dock-tab="session"]').boundingBox();
+    const toolsBox = await page.locator(`[data-dock-group="${toolsId}"]`).boundingBox();
+    await manualDrag(
+      { x: sessBox.x, y: sessBox.y, width: sessBox.width, height: sessBox.height },
+      { x: toolsBox.x + toolsBox.width / 2, y: toolsBox.y + toolsBox.height - 6, width: 4, height: 4 },
+      true,
+    );
+    await page.waitForTimeout(800);
+  }
   const stackedBoxes = await page.evaluate(() => {
     const rect = (selector) => {
       const el = document.querySelector(selector);
@@ -1407,20 +1419,41 @@ try {
     assert.equal(roEnvelope?.parsed?.enabled, true, 'Read-only opt-in persists client-side');
     const roSigBefore = await layoutSignature(roPage);
     const roTarget = roSigBefore.groups.find((group) => !group.tabs.includes('session'));
-    assert.ok(roTarget, 'A live group must exist as the read-only menu-move target');
+    assert.ok(roTarget, 'A live group must exist as the read-only drag-move target');
     await roPage.locator('button[data-dock-tab="session"]').click({ button: 'right' });
     await expect(roPage.locator(DOCK.menu)).toBeVisible();
-    await roPage.locator(`${DOCK.menu} .dock-menu-submenu`).nth(1).hover();
-    await expect(roPage.locator(DOCK.moveMenu)).toBeVisible();
-    await roPage.locator(`${DOCK.moveMenu} button[data-dock-move="center:${roTarget.id}"]`).click();
+    assert.equal(
+      await roPage.locator(`${DOCK.menu} [aria-controls="docking-move-menu"]`).count(),
+      0,
+      'No Move submenu entry may exist (read-only)',
+    );
+    assert.equal(await roPage.locator(DOCK.moveMenu).count(), 0, '#docking-move-menu must be absent (read-only)');
+    await roPage.keyboard.press('Escape');
+    await roPage.locator('button[data-dock-tab="session"]').scrollIntoViewIfNeeded();
+    {
+      const roFrom = await roPage.locator('button[data-dock-tab="session"]').boundingBox();
+      const roBar = await roPage.locator(`[data-dock-group="${roTarget.id}"] .dock-tabs`).boundingBox();
+      await roPage.mouse.move(roFrom.x + roFrom.width / 2, roFrom.y + roFrom.height / 2);
+      await roPage.mouse.down();
+      for (let i = 1; i <= 10; i++) {
+        await roPage.mouse.move(
+          roFrom.x + ((roBar.x + roBar.width / 2 - roFrom.x) * i) / 10,
+          roFrom.y + ((roBar.y + roBar.height / 2 - roFrom.y) * i) / 10,
+          { steps: 2 },
+        );
+      }
+      await roPage.mouse.move(roBar.x + roBar.width / 2, roBar.y + roBar.height / 2);
+      await roPage.mouse.up();
+      await roPage.waitForTimeout(800);
+    }
     const roSigAfter = await layoutSignature(roPage);
     assert.ok(
       findGroup(roSigAfter, roTarget.id).tabs.includes('session'),
-      `Read-only menu move relocates session into ${roTarget.id}`,
+      `Read-only drag move relocates session into ${roTarget.id}`,
     );
     await expectRefsStable(roPage, roRefs, 'readonly-move');
     await expect(roPage.locator('#composer')).toBeDisabled();
-    step('Read-only dock opt-in and menu-only move keep the identical DOM nodes; composer stays disabled.');
+    step('Read-only dock opt-in and drag move keep the identical DOM nodes; composer stays disabled.');
     await roContext.close();
   } finally {
     roGateway.closeAllConnections();

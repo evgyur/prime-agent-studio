@@ -4016,8 +4016,76 @@ try {
   );
   assert.equal(starts.length, workStarts, 'Popup entrypoint starts zero model runs');
   step('Main Preferences button opens a modal popup (same live form, dock tab preserved).');
+  // A registered but inactive tab must not hide its modal popup. Use a real
+  // sibling-tab click; keep the same form and layout through both close paths.
+  const inactivePrefsGroup = (await layoutSignature(page)).groups.find((group) =>
+    group.tabs.includes('preferences'),
+  );
+  const inactiveSibling = inactivePrefsGroup?.tabs.find((tab) => tab !== 'preferences');
+  assert.ok(inactiveSibling, 'This fixture must have a sibling tab beside Preferences');
+  await page.locator(`button[data-dock-tab="${inactiveSibling}"]`).click();
+  await expect
+    .poll(() => prefsState(page).then((state) => !state.open && state.frameHidden === true))
+    .toBe(true);
+  const inactiveLayoutBefore = await layoutSignature(page);
+  for (const closeWith of ['Escape', 'X']) {
+    await page.locator('#open-settings').click();
+    await expect(page.locator('#settings-dialog')).toBeVisible();
+    const popupInactive = await page.evaluate(() => {
+      const dialog = document.getElementById('settings-dialog');
+      return {
+        open: dialog.open,
+        modal: dialog.matches(':modal'),
+        rects: dialog.getClientRects().length,
+        sameNode: dialog === window.__prefsNode,
+        dialogs: document.querySelectorAll('#settings-dialog').length,
+      };
+    });
+    measurements.popupInactiveTab = { ...popupInactive, sibling: inactiveSibling };
+    assert.equal(popupInactive.open, true, 'Inactive-tab popup opens');
+    assert.equal(popupInactive.modal, true, 'Inactive-tab popup is modal');
+    assert.ok(popupInactive.rects > 0, 'Inactive-tab popup has a box, not the invisible modal freeze');
+    assert.equal(popupInactive.sameNode, true, 'The live form is not rebuilt');
+    assert.equal(popupInactive.dialogs, 1, 'Exactly one settings form exists');
+    await expect(page.locator('#settings-dialog #settings-title')).toBeVisible();
+    await expect(page.locator('#settings-dialog .modal-heading button[data-close-dialog]')).toBeVisible();
+    await page.locator('#settings-dialog [data-settings-tab="models"]').click();
+    await expect(page.locator('#settings-panel-models')).toBeVisible();
+    assert.equal(await dirtyLocator.isChecked(), dirtyOriginal, 'Popup preserves the form value');
+    assert.deepEqual(
+      await layoutSignature(page),
+      inactiveLayoutBefore,
+      'Popup open must not change groups, tabs or the active tab',
+    );
+    await page.locator('#settings-dialog [data-settings-tab="appearance"]').click();
+    if (closeWith === 'Escape') await page.keyboard.press('Escape');
+    else await page.locator('#settings-dialog .modal-heading button[data-close-dialog]').click();
+    // hidden is restored by the async close listener, not just dialog.close().
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const dialog = document.getElementById('settings-dialog');
+          return !dialog.open && dialog.hidden;
+        }),
+      )
+      .toBe(true);
+    assert.equal(await page.locator('button[data-dock-tab="preferences"]').count(), 1, 'Tab kept');
+    assert.equal(
+      await page.evaluate(() => document.getElementById('settings-dialog') === window.__prefsNode),
+      true,
+      'Closing the popup keeps the same live form',
+    );
+    assert.deepEqual(await layoutSignature(page), inactiveLayoutBefore, `${closeWith} preserves layout`);
+  }
+  assert.equal(starts.length, workStarts, 'Inactive-tab popup starts zero model runs');
+  step(
+    'Inactive Preferences tab + main button opens a visible modal popup (same node, layout/tabs kept, Esc + X).',
+  );
   // Popup with NO dock tab: same modal behavior, and opening/closing it must
   // not mutate layout or tabs (AddTab stays the only creation path).
+  // The close affordance belongs to the active tab.
+  await page.locator('button[data-dock-tab="preferences"]').click();
+  await expect(page.locator('#settings-dialog')).toBeVisible();
   await page.locator('[data-dock-close="preferences"]').first().click();
   await expect
     .poll(() => convTabIds(page).then((tabs) => tabs.includes('preferences')), { timeout: 10000 })

@@ -1,6 +1,6 @@
 {
   "name": "prime-agent-studio",
-  "version": "4.3.0-beta.6",
+  "version": "4.3.0-beta.7",
   "private": true,
   "author": "zerr0o",
   "license": "MIT",
@@ -63,6 +63,7 @@
     "test:interactions": "node scripts/test-interactions-ui.mjs",
     "test:interactions:scroll": "node scripts/test-interactions-scroll.mjs",
     "test:scroll": "node scripts/test-conversation-scroll.mjs && node scripts/test-scroll-bottom-composer.mjs",
+    "test:history": "node --test test/history-*.test.mjs test/conversation-window.test.mjs && node scripts/test-conversation-window.mjs && node scripts/test-history-paging-ui.mjs && node scripts/test-history-stream-ui.mjs",
     "test:interactions:native": "node scripts/test-interactions-native.mjs",
     "check": "node --check server.mjs && node --check public/app.js && node scripts/check-translations.mjs && node scripts/check-docs.mjs",
     "format": "prettier --write --ignore-unknown server.mjs lib public scripts test index.html README.md package.json",

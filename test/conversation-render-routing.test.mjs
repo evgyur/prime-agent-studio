@@ -118,6 +118,7 @@ function build() {
       },
     },
     messageNodes: new Map(),
+    historyRenderOptions: () => ({}),
     conversationRenderer: {
       render(root, messages) {
         if (root === els.messages) counts.primary++;

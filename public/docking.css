@@ -1,4 +1,16 @@
 /* Desktop docking is opt-in. No rule changes classic or mobile panel geometry. */
+/* Split weights belong to their grid, not to thousands of transcript descendants.
+   Inheriting these live values makes every pointer move restyle the full history. */
+@property --dock-first {
+  syntax: '*';
+  inherits: false;
+  initial-value: 50fr;
+}
+@property --dock-second {
+  syntax: '*';
+  inherits: false;
+  initial-value: 50fr;
+}
 /* Layout follows the pointer directly, including with reduced motion. The
    global short-duration rule must not turn implicit transition-property: all
    into grid-track animations. */

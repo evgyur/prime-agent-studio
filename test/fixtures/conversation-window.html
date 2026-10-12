@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>conversation-window isolated fixture</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        margin: 16px;
+      }
+      .conversation-scroll {
+        height: 500px;
+        overflow-y: auto;
+        width: 620px;
+        border: 1px solid #999;
+        margin-bottom: 16px;
+      }
+      .messages {
+        padding: 8px;
+      }
+      /* Real-app-like inter-row gaps: renderer spacers must include margins. */
+      .message {
+        border: 1px solid #ccc;
+        border-radius: 8px;
+        padding: 8px 10px;
+        margin: 0 0 30px;
+        background: #fff;
+        position: relative;
+      }
+      .assistant-turn {
+        border: 2px solid #888;
+        border-radius: 10px;
+        padding: 8px;
+        margin: 0 0 30px;
+        background: #fafafa;
+      }
+      .assistant-text {
+        padding: 6px 0;
+      }
+      .activity-stack {
+        border: 1px solid #666;
+        border-radius: 8px;
+        margin: 8px 0;
+        background: #fff;
+      }
+      .activity-content {
+        padding: 4px 8px 8px;
+      }
+      .activity-step {
+        border-top: 1px solid #ddd;
+        padding-top: 8px;
+        margin-top: 8px;
+      }
+      .tool-block {
+        border: 1px dashed #888;
+        margin: 6px 0;
+      }
+      .conv-window-topbar {
+        padding: 6px;
+        text-align: center;
+      }
+      .conv-window-top-spacer,
+      .conv-window-bottom-spacer {
+        width: 100%;
+      }
+      .markdown {
+        white-space: pre-wrap;
+        word-break: break-word;
+        line-height: 1.45;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>conversation-window fixture</h1>
+    <div id="scroll1" class="conversation-scroll">
+      <div id="messages1" class="messages" aria-live="polite"></div>
+    </div>
+    <div id="scroll2" class="conversation-scroll">
+      <div id="messages2" class="messages" aria-live="polite"></div>
+    </div>
+    <div id="scroll-legacy" class="conversation-scroll">
+      <div id="messages-legacy" class="messages"></div>
+    </div>
+    <script type="module">
+      import {
+        createConversationRenderer,
+        isTechnicalMessage,
+        isEmptyCompletedAssistant,
+      } from '../../public/conversation.js';
+
+      const openDetails = new Map();
+      function el(tag, className, text) {
+        const n = document.createElement(tag);
+        if (className) n.className = className;
+        if (typeof text === 'function') n.textContent = String(text());
+        else if (text != null) n.textContent = String(text);
+        return n;
+      }
+      function icon(name, cls) {
+        const s = document.createElement('span');
+        s.textContent = `[${name}]`;
+        if (cls) s.className = cls;
+        return s;
+      }
+      function markdown(text) {
+        const d = document.createElement('div');
+        d.className = 'markdown';
+        d.textContent = String(text ?? '');
+        return d;
+      }
+      function makeDetails(className, key, defaultOpen = false) {
+        const d = document.createElement('details');
+        d.className = className;
+        d.open = openDetails.get(key) ?? defaultOpen;
+        d.addEventListener('toggle', () => {
+          if (d.isConnected) openDetails.set(key, d.open);
+        });
+        return d;
+      }
+      function dateLabel(ts) {
+        return String(ts ?? '');
+      }
+      async function copyText() {}
+      const reasoningMode = () => 'preview';
+      const messageNodes = new Map();
+      function renderMessage(m, index) {
+        const id = m.id || `history-${index}`;
+        const signature = JSON.stringify(m);
+        const old = messageNodes.get(id);
+        if (old && old.signature === signature) return old.node;
+        const card = el('article', `message user-${m.role}`);
+        card.dataset.messageId = id;
+        const body = el('div', 'markdown');
+        body.textContent = `${id}: ${m.text || ''}`;
+        // Variable height: longer text wraps to more lines at fixed width.
+        card.append(body);
+        messageNodes.set(id, { node: card, signature });
+        return card;
+      }
+      function renderTool(t, messageId) {
+        const d = makeDetails('tool-block', `tool:${t.id || messageId}`, false);
+        const summary = document.createElement('summary');
+        summary.textContent = `${t.name || 'tool'} ${t.status || ''}`;
+        d.append(summary);
+        const content = document.createElement('div');
+        content.textContent = JSON.stringify({ args: t.args, result: t.result }).slice(0, 500);
+        d.append(content);
+        return d;
+      }
+
+      function genUniformSingles(n, prefix = 's') {
+        const out = [];
+        for (let i = 0; i < n; i += 1) {
+          const body =
+            `Uniform single for anchor precision. Index ${String(i).padStart(4, '0')}. ` +
+            'Lorem ipsum dolor sit amet. '.repeat(4);
+          out.push({ id: `${prefix}${i}`, role: 'user', text: body });
+        }
+        return out;
+      }
+      function genUniform(n, prefix = 'u') {
+        const out = [];
+        for (let i = 0; i < n; i += 1) {
+          const body =
+            `Uniform message body for anchor precision. Index ${String(i).padStart(4, '0')}. ` +
+            'Lorem ipsum dolor sit amet. '.repeat(4);
+          if (i % 2 === 0) out.push({ id: `${prefix}${i}`, role: 'user', text: body });
+          else out.push({ id: `${prefix}${i}`, role: 'assistant', text: body, stopReason: 'stop' });
+        }
+        return out;
+      }
+      function genAlternating(n, prefix = 'm') {
+        const out = [];
+        for (let i = 0; i < n; i += 1) {
+          if (i % 2 === 0)
+            out.push({
+              id: `${prefix}${i}`,
+              role: 'user',
+              text: `User ${i} ` + 'lorem '.repeat(5 + (i % 7) * 4),
+            });
+          else
+            out.push({
+              id: `${prefix}${i}`,
+              role: 'assistant',
+              text: `Assistant ${i} ` + 'ipsum '.repeat(8 + (i % 5) * 6),
+              stopReason: 'stop',
+            });
+        }
+        return out;
+      }
+      function genGiantTurn(n, prefix = 'g') {
+        const out = [];
+        for (let i = 0; i < n; i += 1)
+          out.push({
+            id: `${prefix}${i}`,
+            role: 'system',
+            customType: 'agent_message',
+            text: `event ${i} ` + 'detail '.repeat(10),
+          });
+        return out;
+      }
+
+      window.__cwTest = {
+        createRenderer(windowed) {
+          messageNodes.clear();
+          return createConversationRenderer({
+            el,
+            icon,
+            markdown,
+            renderTool,
+            makeDetails,
+            dateLabel,
+            copyText,
+            reasoningMode,
+            renderMessage,
+            renderInteractions: () => [],
+            windowed: Boolean(windowed),
+            window: { overscanPx: 1500, maxMounted: 60, topThreshold: 400, estimateHeight: 140 },
+          });
+        },
+        createLegacyRenderer() {
+          messageNodes.clear();
+          return createConversationRenderer({
+            el,
+            icon,
+            markdown,
+            renderTool,
+            makeDetails,
+            dateLabel,
+            copyText,
+            reasoningMode,
+            renderMessage,
+            renderInteractions: () => [],
+          });
+        },
+        genUniformSingles,
+        genUniform,
+        genAlternating,
+        genGiantTurn,
+        isTechnicalMessage,
+        isEmptyCompletedAssistant,
+        clearCaches() {
+          messageNodes.clear();
+          openDetails.clear();
+        },
+      };
+    </script>
+  </body>
+</html>

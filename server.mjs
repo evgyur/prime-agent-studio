@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { isDirectInvocation } from './scripts/launcher-common.mjs';
 import { randomUUID } from 'node:crypto';
 import { createStore, HttpError, validateDirectory, cwdKey, validId } from './lib/store.mjs';
+import { parseHistoryLimit, pageHistoryMessages } from './lib/history-page.mjs';
 import { createWorktrees } from './lib/worktrees.mjs';
 import { createWorktreeRoutes } from './lib/worktree-routes.mjs';
 import { createAgentRuntime } from './lib/agent.mjs';
@@ -1697,7 +1698,16 @@ export function createApp(options = {}) {
         );
       if (method === 'GET' && path === '/api/history') {
         const { file, ...history } = await store.history(url.searchParams.get('id'));
-        return await historyJson(req, res, 200, history);
+        const limitRaw = url.searchParams.get('limit');
+        const beforeRaw = url.searchParams.get('before');
+        // Additive opt-in pagination: absent params keep the FULL response
+        // byte-shape compatible (no historyPage key). Only messages paginate;
+        // every other session field stays FULL authoritative. Gzip path kept.
+        if (limitRaw === null && beforeRaw === null) return await historyJson(req, res, 200, history);
+        const limit = parseHistoryLimit(limitRaw);
+        if (limit === null) throw new HttpError(400, 'Invalid cursor. Send limit with before.');
+        const { messages, historyPage } = pageHistoryMessages(history, { limit, before: beforeRaw });
+        return await historyJson(req, res, 200, { ...history, messages, historyPage });
       }
       if (method === 'POST' && (path === '/api/sessions/read' || path === '/api/sessions/unread')) {
         const body = await readBody(req);

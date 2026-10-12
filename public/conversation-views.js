@@ -160,6 +160,7 @@ export function createConversationViews(deps) {
     afterTextRestore,
     getControls,
     hostRender,
+    historyRenderOptions,
     renderNavigation,
     saveSelection,
     peekImages,
@@ -358,7 +359,8 @@ export function createConversationViews(deps) {
       } catch {}
     }
     const messages = viewMessages(view);
-    view.renderer.render(view.shell.messages, messages);
+    const windowInfo = view.renderer.render(view.shell.messages, messages, historyRenderOptions?.(view));
+    if (windowInfo?.anchorPreserved) view.scrollTop = windowInfo.scrollTop;
     const run = view.viewRunId ? getRun(view.viewRunId) : null;
     const described = run ? describeRun(run) : null;
     view.shell.questions.replaceChildren();
@@ -371,7 +373,8 @@ export function createConversationViews(deps) {
       view.shell.questions.append(note);
     }
     if (!messages.length && !view.loading) view.shell.scroller.scrollTop = 0;
-    else if (view.follow) view.shell.scroller.scrollTop = view.shell.scroller.scrollHeight;
+    else if (view.follow && !windowInfo?.anchorPreserved)
+      view.shell.scroller.scrollTop = view.shell.scroller.scrollHeight;
     else view.shell.scroller.scrollTop = view.scrollTop;
     view.shell.pill.hidden = view.follow || !messages.length;
     refreshShellText(view);

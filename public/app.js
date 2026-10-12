@@ -10,6 +10,7 @@ import {
 import { marked } from '/vendor/marked.js';
 import DOMPurify from '/vendor/purify.js';
 import { createConversationRenderer } from './conversation.js';
+import { historyPageUrl, fetchRecentHistory, prependHistoryPage } from './history-pages.js';
 import { reasoningMode } from './reasoning.js';
 import { createSubagentSettings } from './subagent-settings.js';
 import { createRemoteAccessSettings } from './remote-access.js';
@@ -80,6 +81,7 @@ let inspectorUI;
 let roadmapUI;
 let dockingUI;
 let convViews = null;
+const viewHistoryPages = new WeakMap();
 let settingsDockApi = null;
 let lastPrefsProject = null;
 let conversationPicker = null;
@@ -297,7 +299,7 @@ const selection = readStorage('selection', {});
 const sessionActivity = createSessionActivity({
   read: readStorage,
   write: writeStorage,
-  loadHistory: (id) => api(`/api/history?id=${encodeURIComponent(id)}`),
+  loadHistory: (id) => loadRecentViewHistory(id),
   saveRead: (id, answer) => api('/api/sessions/read', { method: 'POST', body: { id, answer } }),
   saveUnread: (id) => api('/api/sessions/unread', { method: 'POST', body: { id } }),
   onChange: () => {
@@ -1435,13 +1437,13 @@ async function checkConversationSync(id, token) {
         }
       }
       try {
-        const h = await api(`/api/history?id=${encodeURIComponent(id)}`);
+        const h = await loadRecentViewHistory(id);
         if (token !== state.requestId || state.sessionId !== id) return;
-        state.history = h.messages || [];
+        acceptViewHistory(state, h);
         if (convViews) {
           const view = convViews.bySession(id);
           if (view) {
-            view.history = state.history;
+            acceptViewHistory(view, h);
             if (h?.cwd) view.execCwd = h.cwd;
           }
         }
@@ -2126,6 +2128,7 @@ function renderMessage(m, index, nodes = messageNodes, cwd) {
   return n;
 }
 const conversationRenderer = createConversationRenderer({
+  windowed: true,
   renderInteractions: (message) => questionsUI?.partsFor(message) || [],
   el,
   icon,
@@ -2147,6 +2150,7 @@ convViews = createConversationViews({
   write: writeStorage,
   getDocking,
   renderer: {
+    windowed: true,
     el,
     icon,
     markdown,
@@ -2175,6 +2179,7 @@ convViews = createConversationViews({
     allowQuestions: $('allow-questions').checked,
   }),
   hostRender: (force) => renderMessages(force),
+  historyRenderOptions: (view) => historyRenderOptions(view),
   renderNavigation: () => renderNavigation(),
   saveSelection: () => saveSelection(),
   peekImages: (key) => imageComposer?.peek(key) || { count: 0, pending: 0, loading: false },
@@ -2237,7 +2242,9 @@ function markVisibleSessionRead(view = null) {
   const run = runForView(target);
   if (isRunning(run)) return;
   const msgs = run && run.initialized ? [...(run.base || []), ...(run.messages || [])] : target.history || [];
-  if (sessionActivity.markRead(target.sessionId, msgs)) {
+  // An optimistic/live run has a newer answer than the pre-run page receipt.
+  const fetchedPage = run?.initialized ? null : historyPageFor(target);
+  if (sessionActivity.markRead(target.sessionId, msgs, fetchedPage?.meta ? fetchedPage.receipt : null)) {
     renderProjects();
     renderSessions();
     renderProjectOverview();
@@ -2253,15 +2260,25 @@ function markHostSessionRead() {
 }
 async function syncSessionActivity() {
   const token = state.requestId;
+  const owner = historyOwner(),
+    ownerId = owner?.sessionId,
+    ownerToken = owner?.token;
   const histories = await sessionActivity.sync(allSessions(), [...state.runs.values()], {
     activeSessionId: state.sessionId,
   });
   const current = histories.find((history) => history.id === state.sessionId);
-  if (current && token === state.requestId && !state.loading && !state.viewRunId && !isRunning(activeRun())) {
-    state.history = current.messages || [];
+  if (
+    current &&
+    token === state.requestId &&
+    (!owner || historyBindingCurrent(owner, ownerId, ownerToken)) &&
+    !state.loading &&
+    !state.viewRunId &&
+    !isRunning(activeRun())
+  ) {
+    acceptViewHistory(state, current);
     if (convViews) {
       const view = convViews.focused();
-      if (view && view.sessionId === state.sessionId) view.history = state.history;
+      if (view && view.sessionId === state.sessionId) acceptViewHistory(view, current);
     }
     renderMessages();
   }
@@ -2382,13 +2399,14 @@ function renderMessages(forceScroll = false, onlyRuns = null) {
   const root = $('messages'),
     keep = new Set();
   questionsUI?.update();
-  conversationRenderer.render(root, messages);
+  const windowInfo = conversationRenderer.render(root, messages, historyRenderOptions());
+  if (windowInfo?.anchorPreserved) lastConversationTop = windowInfo.scrollTop;
   messages.forEach((m, i) => keep.add(m.id || `history-${i}`));
   for (const key of messageNodes.keys()) if (!keep.has(key)) messageNodes.delete(key);
   if (!messages.length && !state.loading) {
     $('conversation-scroll').scrollTop = 0;
     $('scroll-bottom').hidden = true;
-  } else if (stick)
+  } else if (stick && !windowInfo?.anchorPreserved)
     // Re-check followConversation when the frame fires: the user may have scrolled up
     // between render and paint, and scrollBottom() itself would otherwise reattach.
     bottomScrollFrame = requestAnimationFrame(() => {
@@ -2419,13 +2437,17 @@ function renderHostPrimary(forceScroll = false, primary = null, onlyRuns = null)
   const root = $('messages'),
     keep = new Set();
   questionsUI?.update();
-  conversationRenderer.render(root, messages);
+  const windowInfo = conversationRenderer.render(root, messages, historyRenderOptions(view));
+  if (windowInfo?.anchorPreserved) {
+    lastConversationTop = windowInfo.scrollTop;
+    view.scrollTop = windowInfo.scrollTop;
+  }
   messages.forEach((m, i) => keep.add(m.id || `history-${i}`));
   for (const key of messageNodes.keys()) if (!keep.has(key)) messageNodes.delete(key);
   if (!messages.length && !view.loading) {
     $('conversation-scroll').scrollTop = 0;
     $('scroll-bottom').hidden = true;
-  } else if (stick)
+  } else if (stick && !windowInfo?.anchorPreserved)
     bottomScrollFrame = requestAnimationFrame(() => {
       bottomScrollFrame = 0;
       if (followConversation) scrollBottom();
@@ -2921,6 +2943,152 @@ function restoreGenerationForView(view) {
   renderConfigurationWarning();
 }
 
+// Paging is per view/binding, never a global cursor that another pane can advance.
+// Only UI data is paged; exports and the native engine still use complete history.
+function historyOwner(id = state.sessionId) {
+  return convViews?.bySession(id) || (id === state.sessionId ? state : null);
+}
+function historyPageFor(view) {
+  const page = view && viewHistoryPages.get(view);
+  return page?.sessionId === view?.sessionId ? page : null;
+}
+function historySnapshot(view) {
+  const page = historyPageFor(view);
+  return {
+    id: view?.sessionId,
+    messages: view?.history || [],
+    historyPage: page?.meta || null,
+    readState: { answer: page?.receipt || '' },
+  };
+}
+function acceptViewHistory(view, history) {
+  if (!view) return;
+  view.history = history.messages || [];
+  viewHistoryPages.set(view, {
+    sessionId: view.sessionId,
+    meta: history.historyPage || null,
+    receipt: history.readState?.answer || '',
+    loading: false,
+    error: null,
+  });
+}
+function historyViewFollowing(view) {
+  return !convViews?.composerLive?.() || view?.id === PRIMARY_VIEW_ID || view === state
+    ? followConversation
+    : view?.follow !== false;
+}
+function historyBindingCurrent(view, id, token) {
+  if (!view || view.sessionId !== id || view.token !== token) return false;
+  return view === state || convViews?.byId(view.id) === view;
+}
+async function loadRecentViewHistory(id, view = historyOwner(id)) {
+  const token = view?.token;
+  return fetchRecentHistory(api, id, historySnapshot(view), {
+    preserveReading: !!view && !historyViewFollowing(view),
+    isCurrent: () => !view || historyBindingCurrent(view, id, token),
+  });
+}
+function paintHistoryView(view) {
+  if (convViews?.composerLive?.() && dockingUI?.active) {
+    if (view.id === PRIMARY_VIEW_ID) renderHostPrimary(false, view);
+    else convViews.renderViewNow(view.id);
+  } else if (view === state || convViews?.isFocused(view.id)) renderMessages();
+}
+function loadOlderViewHistory(view) {
+  const page = historyPageFor(view);
+  if (page?.loading) return page.task;
+  if (!page?.meta?.hasBefore || !page.meta.beforeCursor) return;
+  const id = view.sessionId,
+    token = view.token;
+  const current = () => historyBindingCurrent(view, id, token) && historyPageFor(view) === page;
+  page.loading = true;
+  page.error = null;
+  paintHistoryView(view);
+  page.task = (async () => {
+    try {
+      let next;
+      try {
+        const older = await api(historyPageUrl(id, page.meta.beforeCursor));
+        if (!current()) return;
+        next = prependHistoryPage(historySnapshot(view), older);
+      } catch (error) {
+        if (error?.status !== 409 || !current()) throw error;
+        // A source replacement invalidates the old cursor. Restart cleanly; never
+        // mix old-generation messages into the new source or lose saved history.
+        next = await fetchRecentHistory(api, id);
+        if (!current()) return;
+        toast(() => tr('conversation_window.history_changed'));
+      }
+      if (!current()) return;
+      acceptViewHistory(view, next);
+      const run = runForView(view);
+      if (run?.initialized) run.base = historyBeforeRun(view.history, run);
+      if (view === state || convViews?.isFocused(view.id)) state.history = view.history;
+      paintHistoryView(view);
+    } catch {
+      if (current()) {
+        page.error = tr('conversation_window.load_failed');
+        page.loading = false;
+        paintHistoryView(view);
+      }
+    } finally {
+      if (current()) page.loading = false;
+    }
+  })();
+  return page.task;
+}
+let historyMessageNavigation = 0;
+async function revealHistoryMessage(messageId) {
+  const navigation = ++historyMessageNavigation;
+  const view = convViews?.focused() || state;
+  const id = view.sessionId;
+  const loading = view.loading && view !== state ? loadSessionIntoView(view) : null;
+  const token = view.token;
+  if (loading) await loading;
+  const current = () =>
+    navigation === historyMessageNavigation &&
+    historyBindingCurrent(view, id, token) &&
+    (view === state || convViews.isFocused(view.id));
+  while (current() && !view.history.some((m) => m.id === messageId)) {
+    const page = historyPageFor(view);
+    if (!page?.meta?.hasBefore) break;
+    await loadOlderViewHistory(view);
+    if (historyPageFor(view) === page) break; // failure/exhaustion; never spin on a stale cursor
+  }
+  if (!current()) return;
+  if (!view.history.some((m) => m.id === messageId)) {
+    toast(() => tr('conversation_window.message_unavailable'), true);
+    return;
+  }
+  const ownShell = convViews?.composerLive?.() && dockingUI?.active && view.id !== PRIMARY_VIEW_ID;
+  view.follow = false;
+  if (!ownShell) detachConversation();
+  paintHistoryView(view);
+  const root = ownShell ? view.shell.messages : $('messages');
+  const renderer = ownShell ? view.renderer : conversationRenderer;
+  const node = renderer.reveal(root, messageId);
+  if (!node) {
+    toast(() => tr('conversation_window.message_unavailable'), true);
+    return;
+  }
+  view.scrollTop = (ownShell ? view.shell.scroller : $('conversation-scroll')).scrollTop;
+  if (!ownShell) lastConversationTop = view.scrollTop;
+}
+function historyRenderOptions(view = convViews?.focused() || state) {
+  const page = historyPageFor(view);
+  const following = historyViewFollowing(view);
+  const host = !convViews?.composerLive?.() || view?.id === PRIMARY_VIEW_ID || view === state;
+  return {
+    key: `${view?.id || 'host'}:${view?.sessionId || view?.nonce || 'new'}`,
+    hasOlder: page?.meta?.hasBefore === true,
+    loadOlder: () => loadOlderViewHistory(view),
+    loadingOlder: page?.loading === true,
+    olderError: page?.error || null,
+    follow: following,
+    scrollTop: view?.scrollTop ?? (host ? $('conversation-scroll').scrollTop : 0),
+  };
+}
+
 // Focused navigation restores controls and reloads stale session data. Visible
 // background panes hydrate separately without changing the global selection.
 // deferLoad lets the caller own the single history/sync fetch.
@@ -3037,14 +3205,14 @@ async function loadSessionIntoView(view) {
   try {
     let h;
     try {
-      h = await api(`/api/history?id=${encodeURIComponent(sessionId)}`);
+      h = await loadRecentViewHistory(sessionId, view);
     } catch (e) {
       if (e.status === 404 && running) h = { messages: [] };
       else throw e;
     }
     const current = convViews.byId(originId);
     if (!current || current.token !== myToken || current.sessionId !== sessionId) return;
-    current.history = h.messages || [];
+    acceptViewHistory(current, h);
     current.historyMeta = h && typeof h === 'object' ? { model: h.model, thinking: h.thinking } : null;
     if (h?.cwd) current.execCwd = h.cwd;
     else if (session(sessionId)?.cwd) current.execCwd = session(sessionId).cwd;
@@ -3143,13 +3311,13 @@ async function selectSession(id, cwd) {
   try {
     let h;
     try {
-      h = await api(`/api/history?id=${encodeURIComponent(id)}`);
+      h = await loadRecentViewHistory(id, state);
     } catch (e) {
       if (e.status === 404 && running) h = { messages: [] };
       else throw e;
     }
     if (token !== state.requestId) return;
-    state.history = h.messages || [];
+    acceptViewHistory(state, h);
     if (h?.cwd) state.execCwd = h.cwd;
     else if (session(id)?.cwd) state.execCwd = session(id).cwd;
     // A newly notified session may not be in the cached list yet. History
@@ -3467,42 +3635,36 @@ async function finishRun(run, e) {
     saveSelection();
     scheduleMessages();
   }
-  if (!convViews || !finishOrigin || convViews.isFocused(finishOrigin.id)) {
-    if (state.viewRunId === run.id) {
-      if (run.sessionId) {
-        try {
-          const h = await api(`/api/history?id=${encodeURIComponent(run.sessionId)}`);
-          sessionActivity.observe(h);
-          const stillThere = convViews ? convViews.byId(finishOrigin.id) : true;
-          const tokenOk = convViews ? finishOrigin.token === finishViewToken : true;
-          if (stillThere && tokenOk && state.viewRunId === run.id && h.messages?.length) {
-            state.history = h.messages;
-            if (finishOrigin) finishOrigin.history = h.messages;
-            if (translateKnown(e.error))
-              state.history.push({
-                id: `${run.id}-error`,
-                role: 'system',
-                text: e.error,
-                tools: [],
-                timestamp: run.endedAt,
-              });
-            state.viewRunId = null;
-            if (finishOrigin) finishOrigin.viewRunId = null;
-            scheduleMessages();
-          }
-        } catch {}
-      }
-    }
-  } else if (run.sessionId) {
+  if (run.sessionId && (finishOrigin || state.viewRunId === run.id)) {
     try {
-      const h = await api(`/api/history?id=${encodeURIComponent(run.sessionId)}`);
+      const h = await loadRecentViewHistory(run.sessionId, finishOrigin || historyOwner(run.sessionId));
       sessionActivity.observe(h);
-      const stillThere = convViews.byId(finishOrigin.id);
-      if (stillThere && finishOrigin.token === finishViewToken && h.messages?.length) {
-        finishOrigin.history = h.messages;
-        finishOrigin.viewRunId = null;
-        convViews.refreshView(finishOrigin.id);
-        convViews.refreshTitles();
+      const current = finishOrigin
+        ? convViews.byId(finishOrigin.id) === finishOrigin &&
+          finishOrigin.token === finishViewToken &&
+          finishOrigin.viewRunId === run.id
+        : state.viewRunId === run.id;
+      if (current && h.messages?.length) {
+        const owner = finishOrigin || state;
+        acceptViewHistory(owner, h);
+        if (translateKnown(e.error))
+          owner.history.push({
+            id: `${run.id}-error`,
+            role: 'system',
+            text: e.error,
+            tools: [],
+            timestamp: run.endedAt,
+          });
+        owner.viewRunId = null;
+        // Focus can change during the page walk. Mirror the CURRENT owner,
+        // never the focus captured before awaiting, and don't clear a newer run.
+        if (owner === state || convViews.isFocused(owner.id)) {
+          state.history = owner.history;
+          state.viewRunId = null;
+        }
+        if (finishOrigin) paintHistoryView(finishOrigin);
+        else scheduleMessages();
+        convViews?.refreshTitles();
       }
     } catch {}
   }
@@ -4673,25 +4835,7 @@ const knowledgeUI = createKnowledgeBrowser({
       $('composer').focus();
       return;
     }
-    if (!messageId) return;
-    const message = [...$('messages').querySelectorAll('[data-message-id]')].findLast(
-      (node) => node.dataset.messageId === messageId,
-    );
-    if (message) {
-      // Jump-to-message navigation detaches auto-follow so streaming keeps the reading position.
-      detachConversation();
-      for (
-        let ancestor = message.parentElement;
-        ancestor && ancestor !== $('messages');
-        ancestor = ancestor.parentElement
-      )
-        if (ancestor.tagName === 'DETAILS') ancestor.open = true;
-      message.scrollIntoView({ block: 'start', behavior: 'instant' });
-      message.setAttribute('tabindex', '-1');
-      message.focus({ preventScroll: true });
-      lastConversationTop = $('conversation-scroll').scrollTop;
-      $('scroll-bottom').hidden = state.projectOverview || atConversationBottom();
-    }
+    if (messageId && (!sessionId || state.sessionId === sessionId)) await revealHistoryMessage(messageId);
   },
 });
 for (const id of ['project-knowledge', 'detail-project-knowledge'])
@@ -5186,6 +5330,14 @@ $('conversation-scroll').onscroll = () => {
     // Drop any queued auto-follow so streaming cannot yank the view back.
     cancelAnimationFrame(bottomScrollFrame);
     bottomScrollFrame = 0;
+  }
+  // The fixed primary scroller can move while another pane has focus. Keep its
+  // saved position current so refocusing it cannot restore a pre-pagination top.
+  const owner =
+    convViews?.composerLive?.() && dockingUI?.active ? convViews.byId(PRIMARY_VIEW_ID) : convViews?.focused();
+  if (owner) {
+    owner.scrollTop = top;
+    owner.follow = followConversation;
   }
   $('scroll-bottom').hidden = state.projectOverview || atBottom;
   markHostSessionRead();

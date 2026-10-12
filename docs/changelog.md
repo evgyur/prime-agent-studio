@@ -4,6 +4,14 @@
 
 Les changements par version. Retrouvez les installateurs et les archives du code source dans les [releases GitHub](https://github.com/zerr0o/prime-agent-studio/releases).
 
+## 4.3.0-beta.7
+
+- **Redimensionnement plus fluide** : les poids des séparateurs ne propagent plus leurs changements de style à toute la conversation. Les hauteurs des espaces virtuels ne sont jamais animées.
+- **Historique dynamique** : les 80 derniers messages sont chargés d’abord, puis les pages antérieures en remontant ou via le bouton de chargement. Seuls les blocs proches sont montés ; les activités repliées diffèrent la création de leur contenu lourd.
+- **Panneaux indépendants** : pagination, streaming, reprise après reconnexion et fin de réponse avec identifiants sauvegardés préservent la lecture, les brouillons et le focus du panneau concerné. Les liens d’historique peuvent révéler les anciens messages non montés.
+- **Données complètes** : historiques sauvegardés, contexte moteur, reçus de lecture et exports complets ne sont pas tronqués. Les appels API existants sans pagination conservent la réponse intégrale.
+- **Limites connues** : la recherche du navigateur couvre le texte monté uniquement. Un message ou une activité développée très volumineuse peut rester coûteux. Les fenêtres natives détachées et les problèmes préexistants de navigation après reconnexion et de retour du focus depuis Skills restent hors de ce changement.
+
 ## 4.3.0-beta.6
 
 - **Commandes slash par panneau** : le menu `/` apparaît au-dessus du champ actif, en mode classique comme dans l’espace modulable. Les insertions, le redimensionnement et la restauration des brouillons restent liés au bon panneau.

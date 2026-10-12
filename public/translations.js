@@ -42,6 +42,24 @@ export const messages = {
   'conversation_view.attachments_badge': { en: '{count} file(s)', fr: '{count} fichier(s)' },
   'conversation_view.agent_working': { en: 'Agent working…', fr: 'L’agent travaille…' },
   'conversation_view.loading_session': { en: 'Loading session…', fr: 'Chargement de la session…' },
+  'conversation_window.load_older': { en: 'Load older messages', fr: 'Charger les messages précédents' },
+  'conversation_window.loading_older': {
+    en: 'Loading older messages…',
+    fr: 'Chargement des messages précédents…',
+  },
+  'conversation_window.retry_older': { en: 'Retry', fr: 'Réessayer' },
+  'conversation_window.load_failed': {
+    en: 'Could not load older messages. Try again.',
+    fr: 'Impossible de charger les messages précédents. Réessayez.',
+  },
+  'conversation_window.message_unavailable': {
+    en: 'This message could not be opened. Retry loading older messages.',
+    fr: 'Ce message n’a pas pu être ouvert. Réessayez de charger les messages précédents.',
+  },
+  'conversation_window.history_changed': {
+    en: 'The history changed. The latest messages have been reloaded.',
+    fr: 'L’historique a changé. Les derniers messages ont été rechargés.',
+  },
   'conversation_view.unavailable': {
     en: 'Session unavailable — focus to retry.',
     fr: 'Session indisponible — cliquez pour réessayer.',

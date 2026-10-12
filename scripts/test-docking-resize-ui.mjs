@@ -120,6 +120,13 @@ try {
     await page.mouse.move(point.x, point.y);
     await page.mouse.down();
     assert.ok(await page.locator('#dock-workspace.is-resizing').count(), 'native pointer starts resize');
+    // Only the split owns its live weights. Inheriting them through the transcript
+    // invalidates every offscreen message's style on every pointer movement.
+    const inheritedWeights = await page.locator(`#dock-node-${id} > .dock-splitter`).evaluate((grip) => {
+      const style = getComputedStyle(grip);
+      return [style.getPropertyValue('--dock-first').trim(), style.getPropertyValue('--dock-second').trim()];
+    });
+    assert.deepEqual(inheritedWeights, ['50fr', '50fr'], 'split weights must not cascade into child panels');
     return { node, grip };
   }
   async function move({ node, grip }, dir, ratio) {

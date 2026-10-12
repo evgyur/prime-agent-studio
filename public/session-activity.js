@@ -87,9 +87,12 @@ export function createSessionActivity({
     });
   }
 
-  function markRead(id, messages) {
+  function markRead(id, messages, observedAnswer = null) {
     const previous = entry(id);
-    if (!previous?.unread || previous.answer !== lastAnswer(messages)?.id) return false;
+    // A paged tail may contain only recent tool steps. Its fetched snapshot has
+    // the authoritative final-answer receipt; a newer overview alone must not ack it.
+    const answer = observedAnswer || lastAnswer(messages)?.id;
+    if (!previous?.unread || previous.answer !== answer) return false;
     if (saveRead && previous.revision) {
       if (reading.has(id)) return false;
       const guard = { answer: previous.answer, pending: null };

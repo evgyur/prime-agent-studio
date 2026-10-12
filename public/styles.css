@@ -1542,6 +1542,39 @@ a.sidebar-settings {
 .messages:empty {
   display: none;
 }
+/* Virtual offsets are geometry, never animated UI. Global/reduced-motion
+   transitions must not interpolate these heights and invalidate anchors. */
+.conv-window-top-spacer,
+.conv-window-bottom-spacer {
+  transition: none !important;
+  animation: none !important;
+}
+.conv-window-topbar:not([hidden]) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  margin-bottom: 18px;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+.conv-window-load-older,
+.conv-window-retry {
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+.conv-window-load-older:hover,
+.conv-window-retry:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+.conv-window-older-error {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+}
 .message {
   margin-bottom: 30px;
   position: relative;

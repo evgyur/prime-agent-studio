@@ -4,6 +4,14 @@
 
 Changes by version. See [GitHub releases](https://github.com/zerr0o/prime-agent-studio/releases) for installers and source archives.
 
+## 4.3.0-beta.7
+
+- **Smoother resizing**: splitter weights no longer cause inherited style updates across the entire conversation. Virtual spacer heights never animate.
+- **Dynamic history**: open the latest 80 messages first, then load earlier pages by scrolling up or using the load button. Only nearby message blocks are mounted; closed activity groups defer their heavy tool bodies.
+- **Independent panes**: paging, streaming, reconnect replay and canonical response completion preserve the owning pane’s reading position, drafts and focus. History links can reveal older, unmounted messages.
+- **Data stays complete**: saved histories, engine context, read receipts and full-history exports are not truncated. Existing unpaged API callers keep the complete response.
+- **Known limits**: browser Find searches mounted text only. One very large expanded message or activity can still be expensive. Native floating windows and the pre-existing reconnect-navigation and Skills focus-return issues remain outside this change.
+
 ## 4.3.0-beta.6
 
 - **Per-pane slash commands**: the `/` menu opens above the active input in both classic and dockable layouts. Insertion, resizing and draft restoration stay bound to the owning pane.

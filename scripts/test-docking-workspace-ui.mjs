@@ -855,9 +855,125 @@ async function expectHistoricalTool(page, viewId, sessionId) {
       : page.locator(`.cvw-shell[data-view="${viewId}"] .cvw-messages`);
   const tool = messages.locator('.tool-block').filter({ hasText: `historical-tool-result:${sessionId}` });
   await expect(messages).toBeVisible();
-  await expect(tool).toHaveCount(1);
-  await expect(tool.locator('.tool-name')).toHaveText('ipython');
-  await expect(tool.locator('.tool-content')).toContainText(`historical-tool-result:${sessionId}`);
+  const scroller =
+    viewId === 'conversation'
+      ? page.locator('#conversation-scroll')
+      : page.locator(`.cvw-shell[data-view="${viewId}"] .cvw-scroller`);
+  // Bounded virtual history + per-pane focus: an unfocused dynamic pane keeps
+  // its own scroller/follow state, and opening its closed activity through the
+  // real UI is only reliable while its tab is focused. Focus the owner through
+  // the real dock tab when present, then restore the prior focus afterwards.
+  // Classic (no dock tabs) skips this; no content or tolerance change.
+  let priorFocus = null;
+  const dockTab = page.locator(`button[data-dock-tab="${viewId}"]`);
+  if ((await dockTab.count()) > 0) {
+    priorFocus = await page.evaluate(() =>
+      [...document.querySelectorAll('.dock-tab.is-conversation.is-focused')].map((el) => el.dataset.dockTab),
+    );
+    if (!priorFocus.includes(viewId)) {
+      await dockTab.click();
+      await expect(page.locator(`button[data-dock-tab="${viewId}"][aria-selected="true"]`)).toBeAttached({
+        timeout: 10000,
+      });
+    } else {
+      priorFocus = null;
+    }
+  }
+  try {
+    await scroller.hover();
+    await page.mouse.wheel(0, -100000);
+    await expect(messages.locator(`[data-message-id="${sessionId}-tool-call"]`)).toBeAttached();
+    // Closed activity bodies are lazy. Open through the real UI, then keep the
+    // same completeness/content assertions; do not require hidden eager markup.
+    // Re-query after each open: expanding one activity reflows the virtual
+    // window, so a pre-collected handle list can go stale or miss the target.
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const closed = await messages.locator('.activity-stack:not([open])').all();
+      if (closed.length === 0) break;
+      await closed[0].locator(':scope > summary').click();
+      await expect(messages.locator('.activity-stack[open]')).toBeAttached({ timeout: 5000 });
+    }
+    await expect(tool).toHaveCount(1);
+    await expect(tool.locator('.tool-name')).toHaveText('ipython');
+    await expect(tool.locator('.tool-content')).toContainText(`historical-tool-result:${sessionId}`);
+    await scroller.hover();
+    await page.mouse.wheel(0, 100000);
+    await expect
+      .poll(() => scroller.evaluate((n) => n.scrollHeight - n.clientHeight - n.scrollTop))
+      .toBeLessThan(3);
+  } finally {
+    if (priorFocus && priorFocus[0] && priorFocus[0] !== viewId) {
+      await page.locator(`button[data-dock-tab="${priorFocus[0]}"]`).click();
+      await expect(
+        page.locator(`button[data-dock-tab="${priorFocus[0]}"][aria-selected="true"]`),
+      ).toBeAttached({ timeout: 10000 });
+    }
+  }
+}
+
+function historyScroller(page, viewId) {
+  return viewId === 'conversation'
+    ? page.locator('#conversation-scroll')
+    : page.locator(`.cvw-shell[data-view="${viewId}"] .cvw-scroller`);
+}
+
+function historyMessages(page, viewId) {
+  return viewId === 'conversation'
+    ? page.locator('#messages')
+    : page.locator(`.cvw-shell[data-view="${viewId}"] .cvw-messages`);
+}
+
+async function expectHistoryHeadThenRestoreTail(page, viewId, headText, { timeout = 10000 } = {}) {
+  // Bounded virtual history mounts only the visible window: the first prompt
+  // lives offscreen while the tail is visible. Use normal wheel navigation to
+  // bring the head into view, keep the SAME expected content, then restore the
+  // tail/follow position for later tests. No content or tolerance change.
+  const scroller = historyScroller(page, viewId);
+  const messages = historyMessages(page, viewId);
+  await expect(messages).toBeVisible();
+  let lastError = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await scroller.hover();
+    await page.mouse.wheel(0, -100000);
+    try {
+      await expect(messages).toContainText(headText, { timeout: 5000 });
+      lastError = null;
+      break;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  if (lastError) throw lastError;
+  await scroller.hover();
+  await page.mouse.wheel(0, 100000);
+  await expect
+    .poll(() => scroller.evaluate((n) => n.scrollHeight - n.clientHeight - n.scrollTop), { timeout })
+    .toBeLessThan(3);
+}
+
+async function expectHistoryHeadPollThenRestoreTail(page, viewId, headText, { timeout = 10000 } = {}) {
+  // Same arrangement for mounted-text polls: viewMessagesText reads only the
+  // mounted window, so wheel the head into view with the SAME expected string,
+  // then restore the tail/follow position. No content or tolerance change.
+  const scroller = historyScroller(page, viewId);
+  let lastError = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await scroller.hover();
+    await page.mouse.wheel(0, -100000);
+    try {
+      await expect.poll(() => viewMessagesText(page, viewId), { timeout: 5000 }).toContain(headText);
+      lastError = null;
+      break;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  if (lastError) throw lastError;
+  await scroller.hover();
+  await page.mouse.wheel(0, 100000);
+  await expect
+    .poll(() => scroller.evaluate((n) => n.scrollHeight - n.clientHeight - n.scrollTop), { timeout })
+    .toBeLessThan(3);
 }
 
 async function focusConvTab(page, viewId) {
@@ -1220,7 +1336,10 @@ try {
   step('Historical native tool call/result renders in classic mode without hiding the transcript.');
   await page.locator('#project-list .project-row').filter({ hasText: 'Vtrott' }).click();
   await page.locator('#session-list .session-select').filter({ hasText: 'migration du volant' }).click();
-  await expect(page.locator('#messages')).toContainText('Planifier la migration');
+  // Bounded virtual history: the tail is mounted while the first prompt is
+  // offscreen. Wheel the head into view with normal scroller navigation, keep
+  // the SAME expected head text, then restore the tail for later tests.
+  await expectHistoryHeadThenRestoreTail(page, 'conversation', 'Planifier la migration');
   step('Classic baseline: second project Vtrott session ws-gamma loads (2 projects, 3 histories seeded).');
   await page.locator('#project-list .project-row').filter({ hasText: 'Atelier' }).click();
   await page.locator('#session-list .session-select').filter({ hasText: 'Calibrer la sortie' }).click();
@@ -4057,9 +4176,10 @@ try {
     );
     let roundTripView = await focusedViewId(page);
     await focusConvTab(page, roundTripView);
-    await expect
-      .poll(() => viewMessagesText(page, roundTripView), { timeout: 10000 })
-      .toContain('Planifier la migration');
+    // Bounded virtual history: mounted text covers the visible window only.
+    // Wheel the head into view with normal scroller navigation, keep the SAME
+    // expected head text, then restore the tail for the next round-trip step.
+    await expectHistoryHeadPollThenRestoreTail(page, roundTripView, 'Planifier la migration');
     await page.locator('#project-list .project-row').filter({ hasText: 'Atelier' }).click();
     await page.locator('#session-list .session-select').filter({ hasText: 'Calibrer la sortie' }).click();
     const roundTripA2 = await page.locator('#detail-session-id').textContent();
@@ -4123,7 +4243,10 @@ try {
       .locator('#session-list .session-select')
       .filter({ hasText: 'Préparer la distribution' })
       .click();
-    await expect(roPage.locator('#messages')).toContainText('Préparer la distribution', { timeout: 10000 });
+    // Bounded virtual history: the tail is mounted while the first prompt is
+    // offscreen. Wheel the head into view with normal scroller navigation, keep
+    // the SAME expected head text, then restore the tail for later read-only steps.
+    await expectHistoryHeadThenRestoreTail(roPage, 'conversation', 'Préparer la distribution');
     // Project switch without selecting the drop target session: clicking
     // ws-gamma here would bind it to primary, and the drop below must prove
     // creation (not dedupe) for an unowned session.

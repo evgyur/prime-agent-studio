@@ -1468,6 +1468,16 @@ function renderSessions() {
   renderProjects();
 }
 let projectListSignature = '';
+function welcomeProjectText(cwd) {
+  const p = state.projects.find((item) => samePath(item.cwd, cwd));
+  return p
+    ? p.exists === false
+      ? tr('ui.dossier_introuvable_2', { value1: p.name })
+      : p.name
+    : state.readOnly
+      ? tr('ui.vos_sessions_apparaitront_ici')
+      : tr('ui.ajoutez_un_projet_pour_commencer_2');
+}
 function renderProjectOverview() {
   const p = project();
   const visible = state.projectOverview && Boolean(p);
@@ -1712,13 +1722,7 @@ function renderDetails() {
   $('copy-project-path').hidden = !p;
   $('detail-project-knowledge').hidden = !p;
   bindText($('welcome-project').lastElementChild, () =>
-    p
-      ? p.exists === false
-        ? tr('ui.dossier_introuvable_2', { value1: p.name })
-        : p.name
-      : state.readOnly
-        ? tr('ui.vos_sessions_apparaitront_ici')
-        : tr('ui.ajoutez_un_projet_pour_commencer_2'),
+    welcomeProjectText(dockingUI?.active ? convViews?.byId(PRIMARY_VIEW_ID)?.projectCwd : state.projectCwd),
   );
   const status = isRunning(run)
     ? run.status === 'stopping'
@@ -1785,7 +1789,7 @@ function renderNavigation() {
   renderProjectOverview();
   renderDetails();
   try {
-    dockingUI?.refreshTitles?.();
+    convViews?.refreshTitles();
   } catch {}
   archivesUI?.update();
   worktreesUI?.update();
@@ -2186,6 +2190,7 @@ convViews = createConversationViews({
   clearHostNodes: () => messageNodes.clear(),
   paintViewChrome: (view) => paintViewChrome(view),
   markSessionRead: (view) => markVisibleSessionRead(view),
+  welcomeProjectText,
   // Pre-bootstrap the access mode is unknown: act readonly so dock captures
   // can neither erase a restored draft with an empty composer nor render
   // private stored drafts. Bootstrap restores normally once initialized.
@@ -2471,15 +2476,16 @@ function resetView() {
   state.requestId++;
   messageNodes.clear();
 }
-function newSession(execCwd) {
+function newSession(execCwd, projectCwd = state.projectCwd) {
   if (state.readOnly) return;
   // Direct onclick wiring passes a MouseEvent as the first argument. Only a
   // non-empty string is a valid execution cwd. Every caller routes through
   // here, so ignore anything else and fall back to the selected project.
-  const cwd = typeof execCwd === 'string' && execCwd.trim() ? execCwd : state.projectCwd;
+  const cwd = typeof execCwd === 'string' && execCwd.trim() ? execCwd : projectCwd;
   if (!convViews) {
     saveDraft();
     resetView();
+    state.projectCwd = projectCwd;
     state.execCwd = cwd;
     selectNewConversationModel();
     state.archived = false;
@@ -2494,23 +2500,27 @@ function newSession(execCwd) {
     return;
   }
   saveDraft();
-  // Rebind the focused pane in place — docked, classic, buttons, Ctrl+N,
-  // worktree and commands share this path. Never an extra tab, never a silent
-  // route to primary (Add-Tab/picker stays the only view-creating path).
-  // Other panes keep drafts/attachments under their own canonical keys: only
-  // the focused slot is saved above before rebinding.
-  const view = convViews.bindFocused(
-    {
-      kind: 'new',
-      sessionId: null,
-      viewRunId: null,
-      projectCwd: state.projectCwd,
-      execCwd: cwd || state.projectCwd,
-    },
-    { inheritLegacy: true, keepNonce: true },
-  );
+  const binding = {
+    kind: 'new',
+    sessionId: null,
+    viewRunId: null,
+    projectCwd,
+    execCwd: cwd || projectCwd,
+  };
+  // Modular creation is additive. Never rebind a tab that owns a conversation,
+  // draft or running agent; classic mode still uses its single editor.
+  const groupId = convViews.focused()?.shell?.root?.closest('[data-dock-group]')?.dataset.dockGroup;
+  const view = dockingUI?.active
+    ? convViews.createView(binding)
+    : convViews.bindFocused(binding, { inheritLegacy: true, keepNonce: true });
+  if (!view) return; // At the tab limit, leave the previous selection intact.
+  if (dockingUI?.active) {
+    dockingUI.openPanel(view.id, groupId);
+    convViews.focusView(view.id, { reveal: true });
+  }
   afterViewFocused();
   selectNewConversationModel();
+  projectNavigation?.reveal(state.projectCwd);
   state.archived = false;
   saveSelection();
   restoreDraft();
@@ -2518,9 +2528,6 @@ function newSession(execCwd) {
   renderMessages(true);
   closeSidebar();
   computerUseUI?.onSessionChange();
-  // A rebound pane may be parked (all conversation tabs closed): reveal it
-  // first so focus lands on a visible textarea, reusing the existing pane.
-  if (convViews && dockingUI?.active) convViews.focusView(view.id, { reveal: true });
   if (!state.projectCwd) openProjectDialog();
   else (view?.units?.nodes?.textarea || $('composer')).focus();
 }
@@ -2562,7 +2569,7 @@ function selectProject(cwd) {
   $('project-overview-title').focus({ preventScroll: true });
 }
 function runningForSession(id) {
-  return [...state.runs.values()].find((r) => r.sessionId === id && isRunning(r));
+  return id ? [...state.runs.values()].find((r) => r.sessionId === id && isRunning(r)) : null;
 }
 function runForView(view) {
   if (!view) return null;
@@ -4479,7 +4486,9 @@ async function addProject(e) {
     const p = await api('/api/projects', { method: 'POST', body });
     await refreshOverview();
     $('project-dialog').close();
-    selectProject(p.cwd || $('project-cwd').value.trim());
+    const cwd = p.cwd || $('project-cwd').value.trim();
+    if (dockingUI?.active) newSession(cwd, cwd);
+    else selectProject(cwd);
     toast(() => tr('ui.projet_ajoute_a_votre_espace_de_travail'));
   } catch (e) {
     bindText($('project-error'), () => translateKnown(e.message));
@@ -4567,8 +4576,7 @@ async function projectMenuAction(action) {
   if (state.readOnly) return;
   try {
     if (action === 'new-session') {
-      selectProject(p.cwd);
-      newSession();
+      newSession(p.cwd, p.cwd);
     } else if (action === 'open') {
       await api('/api/projects/open', { method: 'POST', body: { cwd: p.cwd } });
       toast(() => tr('ui.dossier_ouvert_sur_le_pc'));
@@ -5462,16 +5470,19 @@ document.querySelectorAll('dialog').forEach((d) =>
     }
   }),
 );
-document.querySelectorAll('[data-prompt]').forEach(
-  (b) =>
-    (b.onclick = () => {
-      setComposerText(b.dataset.prompt);
-      saveDraft();
-      resizeComposer();
-      $('composer').focus();
-      if (!state.projectCwd) openProjectDialog();
-    }),
-);
+// Delegation also covers welcome cards created later in docked conversation panes.
+// Shell activation focuses the owner first; never write into the parked host.
+document.addEventListener('click', (event) => {
+  const card = event.target.closest('.welcome [data-prompt]');
+  if (!card || state.readOnly) return;
+  const units = dockingUI?.active ? focusedUnits() : null;
+  if (units) units.text.set(card.dataset.prompt);
+  else setComposerText(card.dataset.prompt);
+  saveDraft();
+  resizeComposer();
+  (units?.nodes.textarea || $('composer')).focus();
+  if (!state.projectCwd) openProjectDialog();
+});
 document.addEventListener('click', (e) => {
   if (!e.target.closest('#project-menu') && !e.target.closest('.project-more')) closeProjectMenu();
   if (

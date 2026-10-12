@@ -4,6 +4,14 @@
 
 Les changements par version. Retrouvez les installateurs et les archives du code source dans les [releases GitHub](https://github.com/zerr0o/prime-agent-studio/releases).
 
+## 4.3.0-beta.8
+
+- **Conversations immédiatement utilisables** : la saisie et les quatre suggestions d’accueil apparaissent dès l’ouverture, y compris après l’ajout d’un projet. Les suggestions remplissent le bon panneau et suivent la langue choisie.
+- **Création sans remplacement** : le bouton Nouvelle session, Ctrl+N et le menu projet ajoutent un onglet distinct dans l’espace modulable. Conversations ouvertes, brouillons, pièces jointes et positions de lecture restent préservés ; la limite de huit onglets refuse une création supplémentaire sans écrasement.
+- **Restauration cohérente** : les onglets et leurs noms de projet reviennent après rechargement. Une conversation vide n’hérite plus de l’état d’un autre agent encore sans identifiant de session.
+- **Roadmap débloquée** : les écritures équivalentes d’un chemin Windows ne font plus rejeter une réponse valide. Les erreurs initiales quittent le chargement et proposent de réessayer. Les changements de conversation ou de projet pendant une requête conservent le document courant et les brouillons, sans afficher une ancienne réponse.
+- **Régressions vérifiées** : tests des créations et changements rapides d’onglet, réponses retardées, erreurs, traductions et restauration ajoutés aux commandes habituelles. Modes classique et mobile conservés.
+
 ## 4.3.0-beta.7
 
 - **Redimensionnement plus fluide** : les poids des séparateurs ne propagent plus leurs changements de style à toute la conversation. Les hauteurs des espaces virtuels ne sont jamais animées.

@@ -1096,7 +1096,7 @@ a.sidebar-settings {
   max-width: 340px;
   margin: 0 auto;
 }
-[data-project-overview='true'] .composer-area {
+[data-project-overview='true'] .conversation-column .composer-area {
   display: none;
 }
 .welcome {

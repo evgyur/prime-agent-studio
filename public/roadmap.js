@@ -15,6 +15,21 @@ const button = (label, fn, cls = '') => {
   return el;
 };
 const query = (cwd) => new URLSearchParams({ cwd });
+// Canonical project identity: normalize slashes/case ONLY for Windows-looking
+// values (drive `X:/`/`X:\` or UNC `//`/`\\`). POSIX paths keep case and
+// backslashes, and root `/` stays distinct from no project `''`.
+// Genuinely different normalized paths still reject (no stale cross-project accept).
+const isWindowsRoadmapPath = (value) => {
+  const raw = String(value || '');
+  return /^[A-Za-z]:[\\/]/.test(raw) || raw.startsWith('\\\\') || /^\/\/[^/]/.test(raw);
+};
+const roadmapPathKey = (value) => {
+  const raw = String(value || '');
+  if (!raw) return '';
+  if (isWindowsRoadmapPath(raw)) return raw.replaceAll('\\', '/').replace(/\/+$/, '').toLowerCase();
+  return raw.length > 1 ? raw.replace(/\/$/, '') : raw;
+};
+const sameRoadmapPath = (a, b) => roadmapPathKey(a) === roadmapPathKey(b);
 const ROADMAP_COLOR_NAMES = {
   transparent: 'roadmap.color_default',
   '#0d9488': 'roadmap.color_teal',
@@ -140,13 +155,14 @@ export function createRoadmap({
       ),
     );
   function accept(next, sequence) {
-    if (next.cwd !== cwd || (doc && next.revision < doc.revision)) return;
+    if (!sameRoadmapPath(next.cwd, cwd) || (doc && next.revision < doc.revision)) return;
     if (sequence < appliedSequence && next.revision === doc?.revision) return;
     if (next.instanceId === activityEpoch && next.activityRevision < activityRevision)
       next = { ...next, activity: doc?.activity || [] };
     activityEpoch = next.instanceId;
     activityRevision = next.activityRevision ?? 0;
     appliedSequence = sequence;
+    const hadDoc = !!doc;
     const changed = JSON.stringify(next) !== JSON.stringify(doc);
     doc = next;
     onSummary(doc);
@@ -156,10 +172,14 @@ export function createRoadmap({
       const hiddenDone = new Set(next.backlog.items.filter((item) => item.done).map((item) => item.number));
       for (const number of [...selected]) if (hiddenDone.has(number)) selected.delete(number);
     }
-    if (changed && !pending) render();
+    // Initial load must paint even during a stale POST; background updates stay quiet while editing.
+    if (changed && (!pending || !hadDoc)) render();
   }
   async function refresh() {
-    if (!cwd || getContext().online === false || pending || document.hidden) return;
+    if (!cwd || getContext().online === false || document.hidden) return;
+    // An initial load must proceed even during a stale edit POST; background
+    // refreshes stay quiet while editing to keep requests bounded.
+    if (pending && doc) return;
     if (refreshPending) {
       // A GET is in flight: queue one bounded retry instead of dropping the
       // refresh until the next poll. The in-flight request was (or will be)
@@ -199,6 +219,8 @@ export function createRoadmap({
         error = timedOut ? failureMessage(new Error('Load failed')) : failureMessage(e);
         onSummary(null);
         renderStatus();
+        // A failed initial load must repaint content (error/retry), not stick on Loading.
+        if (!doc) render();
       }
     } finally {
       clearTimeout(timeout);
@@ -240,7 +262,10 @@ export function createRoadmap({
       throw e;
     } finally {
       pending = false;
-      if (version === generation) render();
+      // Settle always repaints the CURRENT doc (stale-safe: never accepts the old
+      // response/context). This re-enables controls rendered disabled while pending;
+      // a later identical GET (changed=false) would otherwise never repaint them.
+      render();
     }
   }
   function act(action, params) {
@@ -1697,7 +1722,7 @@ export function createRoadmap({
         render();
         return;
       }
-      if (cwd !== getContext().cwd) {
+      if (!sameRoadmapPath(cwd, getContext().cwd)) {
         // Never switch/reset underneath a busy editor; its draft must survive.
         if (!editorState?.busy()) {
           editorState?.persist();
@@ -1717,7 +1742,7 @@ export function createRoadmap({
     if (!getContext().cwd) return;
     opener = trigger || document.activeElement;
     tab = nextTab;
-    if (cwd !== getContext().cwd) {
+    if (!sameRoadmapPath(cwd, getContext().cwd)) {
       resetContext(getContext().cwd, false);
     }
     opened = true;
@@ -1839,7 +1864,7 @@ export function createRoadmap({
   });
   function update() {
     const context = getContext();
-    if (context.cwd !== cwd) {
+    if (!sameRoadmapPath(context.cwd, cwd)) {
       if (isDocked()) {
         // Stay in the layout: refresh/clear in place, never onClose the dock tab.
         // Never switch underneath a busy editor; its draft must survive.

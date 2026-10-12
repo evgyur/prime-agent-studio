@@ -1208,18 +1208,14 @@ try {
     assert.equal(await m2fHostText(), 'M2F-draft-PRIMARY');
     assert.equal(await m2fText(m2fDyn), 'M2F-draft-DYN');
     await page.screenshot({ path: await freshShot('m2fast-side-by-side.png'), animations: 'disabled' });
-    // N1-fast: Nouvelle-conversation button + Ctrl+N target the focused tab.
-    // No extra tab/view/run; targeted composer cleared with native focus;
-    // primary session/draft intact. Rebinds restore the send matrix afterwards.
+    // N1-fast: modular New Conversation ADDS + focuses a separate tab, never
+    // rebinds the existing tab. Previous session/draft/composer survive
+    // unchanged; the new tab shows an empty composer + welcome immediately;
+    // zero model runs. Test-only tabs close through the real UI afterwards so
+    // the send matrix below sees the original tabs.
     const m2fTabs0 = await convTabIds(page);
     const m2fShells0 = await shellIds(page);
     const m2fStarts0 = starts.length;
-    async function m2fAssertNewChat(tabId, oldSessionId, label) {
-      assert.deepEqual([...(await convTabIds(page))].sort(), [...m2fTabs0].sort(), `${label}: no extra tab`);
-      assert.deepEqual([...(await shellIds(page))].sort(), [...m2fShells0].sort(), `${label}: no extra view`);
-      assert.deepEqual(await m2fMarker(), [tabId], `${label}: exact focused-view marker`);
-      assert.equal(starts.length, m2fStarts0, `${label}: no model run`);
-    }
     async function m2fNativeComposerFocus(tabId) {
       const composer =
         tabId === 'conversation'
@@ -1231,46 +1227,79 @@ try {
         `Native textarea focus in ${tabId}`,
       );
     }
+    async function m2fCloseTestTab(tabId) {
+      // Real UI close (attribute selector: colon ids never use #id selectors).
+      await page.locator(`[data-dock-close="${tabId}"]`).first().click();
+      await expect
+        .poll(() => convTabIds(page).then((tabs) => tabs.includes(tabId)), { timeout: 10000 })
+        .toBe(false);
+    }
+    async function m2fAssertAddedTab(newId, prevId, shellsBefore, label) {
+      assert.deepEqual(await m2fMarker(), [newId], `${label}: new tab takes focus`);
+      assert.equal((await convTabIds(page)).length, m2fTabs0.length + 1, `${label}: exactly one added tab`);
+      assert.ok((await convTabIds(page)).includes(prevId), `${label}: previous tab survives`);
+      assert.ok((await convTabIds(page)).includes(newId), `${label}: new tab mounted`);
+      // Shells park on close (residue expected), so each creation asserts +1
+      // against its own just-before count, never an absolute baseline.
+      const shellsNow = await shellIds(page);
+      assert.equal(shellsNow.length, shellsBefore.length + 1, `${label}: exactly one added view`);
+      assert.ok(
+        shellsNow.includes(prevId) && shellsNow.includes(newId),
+        `${label}: previous + new views present`,
+      );
+      assert.equal(starts.length, m2fStarts0, `${label}: no model run`);
+    }
+    // Path 1: button from the focused dynamic tab.
     await page.locator(`button[data-dock-tab="${m2fDyn}"]`).click();
+    const m2fShellsP1 = await shellIds(page);
     await page.locator('#new-session').click();
-    await expect.poll(() => m2fText(m2fDyn), { timeout: 10000 }).toBe('');
-    await m2fAssertNewChat(m2fDyn, 'ws-beta', 'button new-chat');
-    await m2fNativeComposerFocus(m2fDyn);
-    assert.ok(
-      !(
-        await page
-          .locator('#detail-session-id')
-          .textContent()
-          .catch(() => 'ws-beta')
-      ).includes('ws-beta'),
-      'button new-chat: inspector drops the old session',
-    );
+    await expect
+      .poll(() => convTabIds(page).then((tabs) => tabs.length), { timeout: 10000 })
+      .toBe(m2fTabs0.length + 1);
+    const m2fNew1 = (await convTabIds(page)).find((tab) => !m2fTabs0.includes(tab));
+    assert.ok(m2fNew1?.startsWith('conv:'), 'button new-chat mounts a conv: tab');
+    await expect(m2fCtl(m2fNew1, 'composer')).toBeVisible({ timeout: 10000 });
+    await expect.poll(() => m2fText(m2fNew1), { timeout: 10000 }).toBe('');
+    await expect(m2fPane(m2fNew1).locator('.welcome')).toBeVisible({ timeout: 10000 });
+    await m2fAssertAddedTab(m2fNew1, m2fDyn, m2fShellsP1, 'button new-chat');
+    await m2fNativeComposerFocus(m2fNew1);
+    assert.equal(await m2fText(m2fDyn), 'M2F-draft-DYN', 'button new-chat: previous dynamic draft unchanged');
     assert.equal(await m2fHostText(), 'M2F-draft-PRIMARY', 'button new-chat: primary draft preserved');
-    step('Fast N1: button rebinds the focused dynamic tab (no extra tab/run).');
-    // Restore ws-beta binding + draft for the send matrix below.
+    step('Fast N1: button ADDS and focuses a separate tab (previous tab unchanged, no run).');
+    await m2fCloseTestTab(m2fNew1);
+    await expect
+      .poll(() => convTabIds(page).then((tabs) => tabs.length), { timeout: 10000 })
+      .toBe(m2fTabs0.length);
     await page.locator(`button[data-dock-tab="${m2fDyn}"]`).click();
-    await page
-      .locator('#session-list .session-select')
-      .filter({ hasText: 'Préparer la distribution' })
-      .click();
     await expect(page.locator('#detail-session-id')).toContainText('ws-beta', { timeout: 10000 });
-    await m2fCtl(m2fDyn, 'composer').fill('M2F-draft-DYN');
+    assert.equal(await m2fText(m2fDyn), 'M2F-draft-DYN', 'button cleanup: previous binding + draft intact');
+    // Path 2: Ctrl+N from the focused dynamic tab (second dynamic draft kept too).
     await page.locator(`button[data-dock-tab="${m2fDyn2}"]`).click();
     await m2fCtl(m2fDyn2, 'composer').fill('M2F-draft-DYN2');
     await page.locator(`button[data-dock-tab="${m2fDyn}"]`).click();
+    const m2fShellsP2 = await shellIds(page);
     await page.keyboard.press('Control+n');
-    await expect.poll(() => m2fText(m2fDyn), { timeout: 10000 }).toBe('');
-    await m2fAssertNewChat(m2fDyn, 'ws-beta', 'Ctrl+N new-chat');
-    await m2fNativeComposerFocus(m2fDyn);
+    await expect
+      .poll(() => convTabIds(page).then((tabs) => tabs.length), { timeout: 10000 })
+      .toBe(m2fTabs0.length + 1);
+    const m2fNew2 = (await convTabIds(page)).find((tab) => !m2fTabs0.includes(tab));
+    assert.ok(m2fNew2?.startsWith('conv:'), 'Ctrl+N new-chat mounts a conv: tab');
+    await expect(m2fCtl(m2fNew2, 'composer')).toBeVisible({ timeout: 10000 });
+    await expect.poll(() => m2fText(m2fNew2), { timeout: 10000 }).toBe('');
+    await expect(m2fPane(m2fNew2).locator('.welcome')).toBeVisible({ timeout: 10000 });
+    await m2fAssertAddedTab(m2fNew2, m2fDyn, m2fShellsP2, 'Ctrl+N new-chat');
+    await m2fNativeComposerFocus(m2fNew2);
+    assert.equal(await m2fText(m2fDyn), 'M2F-draft-DYN', 'Ctrl+N new-chat: previous dynamic draft unchanged');
     assert.equal(await m2fHostText(), 'M2F-draft-PRIMARY', 'Ctrl+N new-chat: primary draft preserved');
-    step('Fast N1: Ctrl+N rebinds the focused dynamic tab (no extra tab/run).');
+    step('Fast N1: Ctrl+N ADDS and focuses a separate tab (previous tab unchanged, no run).');
+    await m2fCloseTestTab(m2fNew2);
+    await expect
+      .poll(() => convTabIds(page).then((tabs) => tabs.length), { timeout: 10000 })
+      .toBe(m2fTabs0.length);
     await page.locator(`button[data-dock-tab="${m2fDyn}"]`).click();
-    await page
-      .locator('#session-list .session-select')
-      .filter({ hasText: 'Préparer la distribution' })
-      .click();
     await expect(page.locator('#detail-session-id')).toContainText('ws-beta', { timeout: 10000 });
-    await m2fCtl(m2fDyn, 'composer').fill('M2F-draft-DYN');
+    assert.equal(await m2fText(m2fDyn), 'M2F-draft-DYN', 'Ctrl+N cleanup: previous binding + draft intact');
+    assert.equal(await m2fText(m2fDyn2), 'M2F-draft-DYN2', 'Ctrl+N cleanup: second dynamic draft intact');
     await page.locator('button[data-dock-tab="conversation"]').click();
     const m2fFiles = await m2fPane(m2fDyn).locator('input[type="file"]').count();
     if (m2fFiles > 0) {
@@ -3067,9 +3096,11 @@ try {
       deferred.push('m2-attachments');
     }
     assert.equal(cancellations, 0, 'M2A sends never cancel');
-    // N1: Nouvelle-conversation button + Ctrl+N target the FOCUSED tab.
-    // The focused dynamic tab itself becomes new-chat: no extra tab/view/run,
-    // its composer cleared, other panes untouched.
+    // N1: modular New Conversation ADDS + focuses a separate tab, never rebinds
+    // the focused tab. Previous session/draft/composer survive unchanged; the
+    // new tab shows an empty composer + welcome immediately; zero model runs.
+    // Each test-only tab closes through the real UI so later matrix/cap tests
+    // see the original tabs.
     const dynComposer = (id) => paneOf(id).locator('[data-cvw="composer"]');
     const dynText = async (id) => dynComposer(id).evaluate((node) => node.value ?? node.textContent ?? '');
     await focusConvTab(page, viewA);
@@ -3085,86 +3116,123 @@ try {
       'Precondition: dynamic tray attachment from M2A still present',
     );
     const n1TabsBefore = await convTabIds(page);
-    const n1ShellsBefore = await shellIds(page);
     const n1Starts = starts.length;
-    async function assertBecameNewChat(page, tabId, oldSessionId, label) {
-      assert.deepEqual(
-        [...(await convTabIds(page))].sort(),
-        [...n1TabsBefore].sort(),
-        `${label}: no extra tab`,
+    async function closeTestTab(page, tabId) {
+      // Real UI close (attribute selector: colon ids never use #id selectors).
+      await page.locator(`[data-dock-close="${tabId}"]`).first().click();
+      await expect
+        .poll(() => convTabIds(page).then((tabs) => tabs.includes(tabId)), { timeout: 10000 })
+        .toBe(false);
+    }
+    async function assertAddedNewChat(page, newId, prevId, shellsBefore, label) {
+      assert.deepEqual(await focusedMarker(page), [newId], `${label}: new tab takes focus`);
+      assert.equal(
+        (await convTabIds(page)).length,
+        n1TabsBefore.length + 1,
+        `${label}: exactly one added tab`,
       );
-      assert.deepEqual(
-        [...(await shellIds(page))].sort(),
-        [...n1ShellsBefore].sort(),
-        `${label}: no extra view`,
+      assert.ok((await convTabIds(page)).includes(prevId), `${label}: previous tab survives`);
+      assert.ok((await convTabIds(page)).includes(newId), `${label}: new tab mounted`);
+      // Shells park on close (residue expected), so each creation asserts +1
+      // against its own just-before count, never an absolute baseline.
+      const shellsNow = await shellIds(page);
+      assert.equal(shellsNow.length, shellsBefore.length + 1, `${label}: exactly one added view`);
+      assert.ok(
+        shellsNow.includes(prevId) && shellsNow.includes(newId),
+        `${label}: previous + new views present`,
       );
-      assert.deepEqual(await focusedMarker(page), [tabId], `${label}: focus stays on the targeted tab`);
       assert.equal(starts.length, n1Starts, `${label}: no model run`);
+    }
+    async function assertNewComposerWelcome(page, newId, label) {
+      await expect(paneOf(newId).locator('[data-cvw="composer"]')).toBeVisible({ timeout: 10000 });
+      await expect.poll(() => dynText(newId), { timeout: 10000 }).toBe('');
+      await expect(paneOf(newId).locator('.welcome')).toBeVisible({ timeout: 10000 });
+      assert.equal(
+        await page.evaluate(
+          (id) =>
+            document.activeElement ===
+            document.querySelector(`.cvw-shell[data-view="${id}"] [data-cvw="composer"]`),
+          newId,
+        ),
+        true,
+        `${label}: native composer focus in the new tab`,
+      );
     }
     // Path 1: button from the focused dynamic tab.
     await focusConvTab(page, viewB);
+    const n1ShellsP1 = await shellIds(page);
     await page.locator('#new-session').click();
-    await expect.poll(() => dynText(viewB), { timeout: 10000 }).toBe('');
-    await assertBecameNewChat(page, viewB, 'ws-beta', 'button new-chat');
-    assert.ok(
-      !(
-        await page
-          .locator('#detail-session-id')
-          .textContent()
-          .catch(() => 'ws-beta')
-      ).includes('ws-beta'),
-      'button new-chat: inspector no longer shows the old session',
-    );
-    step('Nouvelle-conversation button rebinds the focused dynamic tab (no extra tab/run).');
-    // Others unchanged: primary draft + binding intact.
+    await expect
+      .poll(() => convTabIds(page).then((tabs) => tabs.length), { timeout: 10000 })
+      .toBe(n1TabsBefore.length + 1);
+    const n1New1 = (await convTabIds(page)).find((tab) => !n1TabsBefore.includes(tab));
+    assert.ok(n1New1?.startsWith('conv:'), 'button new-chat mounts a conv: tab');
+    await assertNewComposerWelcome(page, n1New1, 'button new-chat');
+    await assertAddedNewChat(page, n1New1, viewB, n1ShellsP1, 'button new-chat');
+    assert.equal(await dynText(viewB), 'N1-draft-B', 'button new-chat: previous dynamic draft unchanged');
+    step('Nouvelle-conversation button ADDS and focuses a separate tab (previous tab unchanged, no run).');
+    await closeTestTab(page, n1New1);
+    await expect
+      .poll(() => convTabIds(page).then((tabs) => tabs.length), { timeout: 10000 })
+      .toBe(n1TabsBefore.length);
+    // Others unchanged: primary + dynamic drafts and bindings intact.
     await focusConvTab(page, viewA);
     assert.equal(await hostText(), 'N1-draft-A', 'Other pane draft unchanged by new-chat');
     await expect(page.locator('#detail-session-id')).toContainText('ws-alpha', { timeout: 10000 });
-    // Path 2: Ctrl+N from a rebound focused dynamic tab.
     await focusConvTab(page, viewB);
-    await page
-      .locator('#session-list .session-select')
-      .filter({ hasText: 'Préparer la distribution' })
-      .click();
     await expect(page.locator('#detail-session-id')).toContainText('ws-beta', { timeout: 10000 });
+    assert.equal(await dynText(viewB), 'N1-draft-B', 'button cleanup: previous binding + draft intact');
+    // Path 2: Ctrl+N from the focused dynamic tab.
     await dynComposer(viewB).fill('N1-draft-B2');
     await focusConvTab(page, viewB);
+    const n1ShellsP2 = await shellIds(page);
     await page.keyboard.press('Control+n');
-    await expect.poll(() => dynText(viewB), { timeout: 10000 }).toBe('');
-    await assertBecameNewChat(page, viewB, 'ws-beta', 'Ctrl+N new-chat');
-    step('Ctrl+N rebinds the focused dynamic tab (no extra tab/run).');
-    // Tool focus: last-focused conversation is the new-chat target.
+    await expect
+      .poll(() => convTabIds(page).then((tabs) => tabs.length), { timeout: 10000 })
+      .toBe(n1TabsBefore.length + 1);
+    const n1New2 = (await convTabIds(page)).find((tab) => !n1TabsBefore.includes(tab));
+    assert.ok(n1New2?.startsWith('conv:'), 'Ctrl+N new-chat mounts a conv: tab');
+    await assertNewComposerWelcome(page, n1New2, 'Ctrl+N new-chat');
+    await assertAddedNewChat(page, n1New2, viewB, n1ShellsP2, 'Ctrl+N new-chat');
+    assert.equal(await dynText(viewB), 'N1-draft-B2', 'Ctrl+N new-chat: previous dynamic draft unchanged');
+    step('Ctrl+N ADDS and focuses a separate tab (previous tab unchanged, no run).');
+    await closeTestTab(page, n1New2);
+    await expect
+      .poll(() => convTabIds(page).then((tabs) => tabs.length), { timeout: 10000 })
+      .toBe(n1TabsBefore.length);
+    await focusConvTab(page, viewB);
+    await expect(page.locator('#detail-session-id')).toContainText('ws-beta', { timeout: 10000 });
+    assert.equal(await dynText(viewB), 'N1-draft-B2', 'Ctrl+N cleanup: previous binding + draft intact');
+    // Tool focus: a separate tab is added + focused, never a rebind of the
+    // last-focused conversation.
     await focusConvTab(page, viewC);
     await page.locator('#session-list .session-select').filter({ hasText: 'migration du volant' }).click();
     await expect(page.locator('#detail-session-id')).toContainText('ws-gamma', { timeout: 10000 });
     assert.ok(viewC && viewC.startsWith('conv:'), 'A second dynamic view must exist for the tool-focus case');
-    const dynCText = async () =>
-      paneOf(viewC)
-        .locator('[data-cvw="composer"]')
-        .evaluate((node) => node.value ?? node.textContent ?? '');
     await paneOf(viewC).locator('[data-cvw="composer"]').fill('N1-draft-C');
     await page.locator('button[data-dock-tab="roadmap"]').click();
     await expect(page.locator('#dock-view-roadmap')).toBeVisible({ timeout: 10000 });
+    const n1ShellsP3 = await shellIds(page);
     await page.keyboard.press('Control+n');
     await expect
-      .poll(
-        () =>
-          paneOf(viewC)
-            .locator('[data-cvw="composer"]')
-            .evaluate((node) => node.value ?? node.textContent ?? ''),
-        { timeout: 10000 },
-      )
-      .toBe('');
+      .poll(() => convTabIds(page).then((tabs) => tabs.length), { timeout: 10000 })
+      .toBe(n1TabsBefore.length + 1);
+    const n1New3 = (await convTabIds(page)).find((tab) => !n1TabsBefore.includes(tab));
+    assert.ok(n1New3?.startsWith('conv:'), 'Tool-focus new-chat mounts a conv: tab');
+    await assertNewComposerWelcome(page, n1New3, 'Tool-focus new-chat');
+    await assertAddedNewChat(page, n1New3, viewC, n1ShellsP3, 'Tool-focus new-chat');
     const toolTarget = await focusedMarker(page);
     measurements.newchatToolTarget = toolTarget;
-    assert.deepEqual(toolTarget, [viewC], 'Tool-focus Ctrl+N targets the last-focused conversation');
-    assert.deepEqual(
-      [...(await convTabIds(page))].sort(),
-      [...n1TabsBefore].sort(),
-      'Tool-focus new-chat: no extra tab',
-    );
-    assert.equal(starts.length, n1Starts, 'Tool-focus new-chat: no model run');
-    step('Tool-focus Ctrl+N rebinds the last-focused conversation (no extra tab/run).');
+    assert.deepEqual(toolTarget, [n1New3], 'Tool-focus Ctrl+N adds + focuses a separate tab');
+    assert.equal(await dynText(viewC), 'N1-draft-C', 'Tool-focus new-chat: previous dynamic draft unchanged');
+    step('Tool-focus Ctrl+N ADDS and focuses a separate tab (previous tab unchanged, no run).');
+    await closeTestTab(page, n1New3);
+    await expect
+      .poll(() => convTabIds(page).then((tabs) => tabs.length), { timeout: 10000 })
+      .toBe(n1TabsBefore.length);
+    await focusConvTab(page, viewC);
+    await expect(page.locator('#detail-session-id')).toContainText('ws-gamma', { timeout: 10000 });
+    assert.equal(await dynText(viewC), 'N1-draft-C', 'Tool-focus cleanup: previous binding + draft intact');
   }
 
   // ------------------------------------------------ Phase 8: two new drafts, same project, distinct + attachment.

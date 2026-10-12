@@ -4,6 +4,14 @@
 
 Changes by version. See [GitHub releases](https://github.com/zerr0o/prime-agent-studio/releases) for installers and source archives.
 
+## 4.3.0-beta.8
+
+- **Conversations are ready immediately**: the input and four welcome suggestions appear as soon as the pane opens, including after adding a project. Suggestions fill the owning pane and follow the selected language.
+- **Create without replacing**: the New session button, Ctrl+N and project menu add a distinct tab in the dockable workspace. Existing conversations, drafts, attachments and reading positions stay intact; the eight-tab limit refuses an extra creation without overwriting a tab.
+- **Consistent restore**: tabs and their project names return after reload. An empty conversation no longer inherits the state of another agent still waiting for a session ID.
+- **Roadmap loading fixed**: equivalent Windows path spellings no longer cause valid responses to be discarded. Initial errors leave the loading state and offer Retry. Conversation or project switches during a request preserve the current document and drafts without showing a stale response.
+- **Regression coverage**: creation, rapid tab switches, delayed responses, errors, translations and restore checks are part of the usual test commands. Classic and mobile modes remain available.
+
 ## 4.3.0-beta.7
 
 - **Smoother resizing**: splitter weights no longer cause inherited style updates across the entire conversation. Virtual spacer heights never animate.

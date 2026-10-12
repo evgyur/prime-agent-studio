@@ -172,6 +172,7 @@ export function createConversationViews(deps) {
     restoreHostScrollState,
     paintViewChrome,
     markSessionRead,
+    welcomeProjectText,
   } = deps;
   const readonly = () => {
     try {
@@ -225,6 +226,13 @@ export function createConversationViews(deps) {
     const scroller = document.createElement('div');
     scroller.className = 'cvw-scroller conversation-scroll';
     scroller.tabIndex = -1;
+    const welcome = view.id === PRIMARY_VIEW_ID ? null : document.getElementById('welcome').cloneNode(true);
+    if (welcome) {
+      welcome.removeAttribute('id');
+      for (const node of welcome.querySelectorAll('[id]')) node.removeAttribute('id');
+      welcome.hidden = true;
+      scroller.append(welcome);
+    }
     const messages = document.createElement('div');
     messages.className = 'cvw-messages messages';
     messages.setAttribute('aria-live', 'polite');
@@ -261,7 +269,7 @@ export function createConversationViews(deps) {
     bg.append(scroller, runline, pill);
     root.append(slot, bg);
     park.append(root);
-    view.shell = { root, slot, bg, scroller, messages, questions, runline, pill };
+    view.shell = { root, slot, bg, scroller, welcome, messages, questions, runline, pill };
     view.renderer = createConversationRenderer({
       ...rendererDeps,
       markdown: (text, opts) =>
@@ -301,6 +309,8 @@ export function createConversationViews(deps) {
     const shell = view.shell;
     if (!shell) return;
     shell.root.setAttribute('aria-label', titleOf(view.id) || view.id);
+    const projectLabel = shell.welcome?.querySelector('.welcome-project')?.lastElementChild;
+    if (projectLabel) bindText(projectLabel, () => welcomeProjectText(view.projectCwd));
     const run = view.viewRunId ? getRun(view.viewRunId) : null;
     const live = run && (isRunActive(run) || run.status === 'stopping');
     if (view.loading) {
@@ -359,6 +369,8 @@ export function createConversationViews(deps) {
       } catch {}
     }
     const messages = viewMessages(view);
+    if (view.shell.welcome)
+      view.shell.welcome.hidden = !!(messages.length || view.loading || view.unavailable);
     const windowInfo = view.renderer.render(view.shell.messages, messages, historyRenderOptions?.(view));
     if (windowInfo?.anchorPreserved) view.scrollTop = windowInfo.scrollTop;
     const run = view.viewRunId ? getRun(view.viewRunId) : null;

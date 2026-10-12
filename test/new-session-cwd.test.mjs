@@ -41,7 +41,8 @@ test('newSession ignores non-string cwd (click events) in every creation mode', 
       const state = { projectCwd: 'C:/project', readOnly: false };
       let binding,
         bindingOpts,
-        created = 0;
+        created = 0,
+        rebound = 0;
       let paneTouched = false;
       let hostTouched = false;
       const paneBox = {
@@ -66,10 +67,14 @@ test('newSession ignores non-string cwd (click events) in every creation mode', 
         ...effects,
         state,
         convViews: {
-          bindFocused: bind,
-          createView: () => {
+          focused: () => ({ id: 'conversation' }),
+          bindFocused: (value, opts) => {
+            rebound += 1;
+            return bind(value, opts);
+          },
+          createView: (value, opts) => {
             created += 1;
-            return null;
+            return bind(value, opts);
           },
           ...(mode === 'docked'
             ? {
@@ -79,7 +84,8 @@ test('newSession ignores non-string cwd (click events) in every creation mode', 
               }
             : {}),
         },
-        dockingUI: { active: mode === 'docked' },
+        dockingUI: { active: mode === 'docked', openPanel: noop },
+        projectNavigation: null,
         computerUseUI: null,
         $: () => hostBox,
       });
@@ -87,26 +93,86 @@ test('newSession ignores non-string cwd (click events) in every creation mode', 
       assert.equal(
         binding.execCwd,
         expectedCwd(input, 'C:/project'),
-        `${mode} must guard the execution cwd before rebinding, got ${JSON.stringify(input)}`,
+        `${mode} must guard the execution cwd, got ${JSON.stringify(input)}`,
       );
-      assert.equal(binding.kind, 'new', `${mode} must rebind a fresh new chat`);
-      assert.equal(binding.sessionId, null, `${mode} must clear the session binding`);
-      assert.equal(bindingOpts.keepNonce, true, `${mode} must preserve the draft slot`);
-      assert.equal(created, 0, `${mode} must not create an extra tab`);
+      assert.equal(binding.kind, 'new', `${mode} must open a fresh new chat`);
+      assert.equal(binding.sessionId, null, `${mode} new chat has no session`);
+      assert.equal(created, mode === 'docked' ? 1 : 0, `${mode}: additive creation only when docked`);
+      assert.equal(rebound, mode === 'docked' ? 0 : 1, `${mode}: existing docked tab must not be rebound`);
       if (mode === 'docked') {
-        assert.equal(revealed?.id, 'conv:v2', 'docked must reveal the rebound pane before focusing');
+        assert.equal(bindingOpts, undefined, 'docked must not inherit the previous tab draft slot');
+        assert.equal(revealed?.id, 'conv:v2', 'docked must reveal the new pane before focusing');
         assert.equal(
           revealed?.opts?.reveal,
           true,
           'docked reveal must request panel mount, not a silent refocus',
         );
-        assert.ok(paneTouched, 'docked must focus the rebound pane own textarea');
+        assert.ok(paneTouched, 'docked must focus the new pane own textarea');
         assert.ok(!hostTouched, 'docked must not steal focus back to primary');
       } else {
+        assert.equal(bindingOpts.keepNonce, true, 'classic retains its single draft slot');
         assert.ok(hostTouched, 'classic must focus the host composer');
       }
     }
   }
+});
+
+test('docked tab-limit refusal cannot rebind or reset the existing conversation', () => {
+  const source = appSource.slice(
+    appSource.indexOf('function newSession('),
+    appSource.indexOf('function selectProject('),
+  );
+  const state = { projectCwd: 'C:/project', sessionId: 'existing', readOnly: false };
+  let saved = 0;
+  const create = runInNewContext(`(${source})`, {
+    state,
+    saveDraft: () => {
+      saved += 1;
+    },
+    convViews: {
+      focused: () => ({ id: 'conversation' }),
+      createView: () => null,
+      bindFocused: () => assert.fail('must not rebind at capacity'),
+    },
+    dockingUI: { active: true, openPanel: () => assert.fail('must not activate a missing pane') },
+    afterViewFocused: () => assert.fail('must not reset generation or selection after refusal'),
+  });
+  create('C:/other', 'C:/other');
+  assert.equal(saved, 1, 'old draft saved before attempting creation');
+  assert.equal(state.projectCwd, 'C:/project');
+  assert.equal(state.sessionId, 'existing');
+});
+
+test('new project and project-menu creation do not replace a tab with an overview first', () => {
+  const add = appSource.slice(
+    appSource.indexOf('async function addProject('),
+    appSource.indexOf('let sessionMenuAnchor'),
+  );
+  assert.ok(add.includes('if (dockingUI?.active) newSession(cwd, cwd);'));
+  const menu = appSource.slice(appSource.indexOf('async function projectMenuAction('));
+  assert.match(menu, /if \(action === 'new-session'\) \{\s*newSession\(p.cwd, p.cwd\);/);
+});
+
+test("an empty new view never inherits another view's unbound running agent", () => {
+  const source = appSource.slice(
+    appSource.indexOf('function runningForSession('),
+    appSource.indexOf('function modelForView('),
+  );
+  const unbound = { id: 'starting', sessionId: null, status: 'running' };
+  const bound = { id: 'existing-run', sessionId: 'existing', status: 'running' };
+  const runForView = runInNewContext(`${source}; runForView`, {
+    state: {
+      runs: new Map([
+        [unbound.id, unbound],
+        [bound.id, bound],
+      ]),
+    },
+    isRunning: (run) => run.status === 'running',
+  });
+  assert.equal(runForView({ sessionId: null, viewRunId: null }), null);
+  assert.equal(runForView({ sessionId: undefined }), null);
+  assert.equal(runForView({ sessionId: null, viewRunId: 'starting' }), unbound);
+  assert.equal(runForView({ sessionId: 'existing' }), bound);
 });
 
 test('new-session buttons do not forward the click event', () => {

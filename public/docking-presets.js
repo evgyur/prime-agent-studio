@@ -1,9 +1,10 @@
 /**
- * Named layout presets (Studio 4.3.x, multi-conversation slice).
+ * Named layout presets (Studio 4.3.x, multi-instance slice).
  *
  * Pure data module: no DOM, no localStorage, no network. A preset stores
- * geometry only (anonymous conversation slots, singleton placement), never
- * session ids, drafts, runs, or registry bindings.
+ * geometry only (anonymous conversation slots, anonymous tool slots,
+ * singleton placement), never session ids, drafts, runs, or registry
+ * bindings.
  *
  * Schema:
  *   PresetsDoc = { version: 1, items: Preset[] }
@@ -12,23 +13,32 @@
  * Conventions (part of the API contract):
  * - `validatePresets` returns a normalized deep-frozen doc or null. Names are
  *   trimmed for storage (display case preserved) and unique case-insensitively.
- * - Every stored layout is a canonical V3 doc (legacy inner V1/V2 accepted,
- *   migrated: `inspector` replaced in place with `session`, `agents`, `files`)
- *   with ANONYMOUS conversation slots: `conversation` for the first slot in
- *   position order, then `conv:slot-1`, `conv:slot-2`, .... validatePresets
- *   anonymizes each entry via createPresetLayout, so a persisted or imported
- *   layout can never retain a live `conv:<session>` ref.
+ * - Every stored layout is a canonical V4 doc (legacy inner V1/V2/V3
+ *   accepted, migrated: `inspector` replaced in place with `session`,
+ *   `agents`, `files`) with ANONYMOUS slots: `conversation` for the first
+ *   conversation slot in position order, then `conv:slot-1`, `conv:slot-2`,
+ *   ..., plus per-kind tool slots `tool:<kind>:slot-1`, ... in position
+ *   order. validatePresets anonymizes each entry via createPresetLayout, so
+ *   a persisted or imported layout can never retain a live `conv:<session>`
+ *   or `tool:<kind>:<nonce>` ref.
  * - `createPresetLayout` anonymizes a live layout (save path);
- *   `applyPresetLayout` binds anonymous slots to live instance refs (load path).
- *   Surplus live instances are NOT represented here: the parent parks them in
- *   its registry. Deficit slots are the parent's job (empty drafts via its own
- *   callback); this module only reports the need by returning null when ids
- *   are missing.
+ *   `applyPresetLayout` binds anonymous slots to live instance refs (load
+ *   path) supplied fresh by the parent on every load: no captured
+ *   association is stored. Surplus live instances are NOT represented here:
+ *   the parent parks them in its registry. Deficit slots are the parent's
+ *   job (new instances via its own callbacks); this module only reports the
+ *   need by returning null when ids are missing.
  * - No-op calls return the INPUT by reference where stated, so callers can
  *   skip persistence with a cheap identity check.
  */
 
-import { validateLayout, groupsOf, isConversationPanel } from './docking-layout.js';
+import {
+  validateLayout,
+  groupsOf,
+  isConversationPanel,
+  isToolPanel,
+  toolKindOf,
+} from './docking-layout.js';
 
 export const PRESETS_VERSION = 1;
 /** Maximum named presets stored in one doc. */
@@ -54,6 +64,17 @@ function freezeDeep(value, seen = new Set()) {
     for (const key of Object.keys(value)) freezeDeep(value[key], seen);
   }
   return Object.freeze(value);
+}
+
+/** Tool slot refs of a validated doc in position (pre-order) order. */
+function toolSlotsOf(clean) {
+  const slots = [];
+  for (const group of groupsOf(clean)) {
+    for (const panel of group.panels) {
+      if (isToolPanel(panel)) slots.push(panel);
+    }
+  }
+  return slots;
 }
 
 /** Conversation slot refs of a validated doc in position (pre-order) order. */
@@ -100,7 +121,7 @@ function remapConversations(clean, mapping) {
  * names (after trim), duplicate names (case-insensitive on the trimmed name),
  * or layouts that fail layout validation. Each stored layout is anonymized
  * via createPresetLayout (which also strips layout extras and normalizes to
- * canonical V3), so live instance refs never persist.
+ * canonical V4), so live instance refs never persist.
  */
 export function validatePresets(input) {
   if (!isPlainObject(input)) return null;
@@ -130,9 +151,11 @@ export function validatePresets(input) {
  * Anonymize a live layout for preset storage (save path).
  *
  * Returns a frozen canonical layout where conversation slots are renamed in
- * position order to `conversation`, `conv:slot-1`, `conv:slot-2`, ...;
- * singletons, splits, ratios, and actives (remapped) are preserved. Invalid
- * input => null. Already-anonymous layouts normalize to an equal doc.
+ * position order to `conversation`, `conv:slot-1`, `conv:slot-2`, ... and
+ * tool slots are renamed per-kind in position order to
+ * `tool:<kind>:slot-1`, `tool:<kind>:slot-2`, ...; singletons, splits,
+ * ratios, and actives (remapped) are preserved. Invalid input => null.
+ * Already-anonymous layouts normalize to an equal doc.
  */
 export function createPresetLayout(layout) {
   const clean = validateLayout(layout);
@@ -143,8 +166,16 @@ export function createPresetLayout(layout) {
     if (!mapping.has(slot))
       mapping.set(slot, mapping.size === 0 ? 'conversation' : `conv:slot-${(extra += 1)}`);
   }
+  const perKind = new Map();
+  for (const slot of toolSlotsOf(clean)) {
+    if (mapping.has(slot)) continue;
+    const kind = toolKindOf(slot);
+    const n = (perKind.get(kind) || 0) + 1;
+    perKind.set(kind, n);
+    mapping.set(slot, `tool:${kind}:slot-${n}`);
+  }
   if (mapping.size === 0) return clean;
-  return validateLayout({ version: 3, root: remapConversations(clean, mapping) });
+  return validateLayout({ version: 4, root: remapConversations(clean, mapping) });
 }
 
 /**
@@ -158,26 +189,61 @@ export function presetConversationCount(layout) {
 }
 
 /**
- * Bind a preset's anonymous slots to live conversation instance refs.
+ * Count the anonymous tool slots of a layout (preset or live).
+ * Invalid input => 0.
+ */
+export function presetToolCount(layout) {
+  const clean = validateLayout(layout);
+  if (!clean) return 0;
+  return toolSlotsOf(clean).length;
+}
+
+/**
+ * Tool kinds needed to bind a layout's tool slots, in position order.
+ * Invalid input => []. The parent creates one live instance per entry (via
+ * its own onCreateTool callback) and passes the resulting ids to
+ * applyPresetLayout; no association is captured here.
+ */
+export function presetToolNeeds(layout) {
+  const clean = validateLayout(layout);
+  if (!clean) return [];
+  return toolSlotsOf(clean).map((slot) => toolKindOf(slot));
+}
+
+/**
+ * Bind a preset's anonymous slots to live instance refs.
  *
  * `conversationIds` must hold at least as many unique valid conversation refs
- * as the layout has slots; slots bind in position order and surplus ids are
- * ignored (stripped, never stored). Returns a frozen validated layout, or
- * null when the layout is invalid, the ids are not an array, any id is not a
- * conversation ref, ids are duplicated, or fewer ids than slots are given.
- * A slot-free layout returns its normalized form regardless of ids.
+ * as the layout has conversation slots; `toolIds` (default []) must hold at
+ * least as many unique valid tool refs as the layout has tool slots, with
+ * kinds matching positionally. Slots bind in position order and surplus ids
+ * are ignored (stripped, never stored). Returns a frozen validated layout, or
+ * null when the layout is invalid, the ids are not arrays, any id is not a
+ * valid ref of the expected family, kinds mismatch, ids are duplicated, or
+ * fewer ids than slots are given. A slot-free layout returns its normalized
+ * form regardless of ids.
  */
-export function applyPresetLayout(layout, conversationIds) {
+export function applyPresetLayout(layout, conversationIds, toolIds = []) {
   const clean = validateLayout(layout);
   if (!clean) return null;
   const slots = slotsOf(clean);
-  if (slots.length === 0) return clean;
+  const toolSlots = toolSlotsOf(clean);
+  if (slots.length === 0 && toolSlots.length === 0) return clean;
   if (!Array.isArray(conversationIds) || conversationIds.length < slots.length) return null;
+  if (!Array.isArray(toolIds) || toolIds.length < toolSlots.length) return null;
   const seen = new Set();
   for (const id of conversationIds) {
     if (!isConversationPanel(id) || seen.has(id)) return null;
     seen.add(id);
   }
+  for (const id of toolIds) {
+    if (!isToolPanel(id) || seen.has(id)) return null;
+    seen.add(id);
+  }
   const mapping = new Map(slots.map((slot, index) => [slot, conversationIds[index]]));
-  return validateLayout({ version: 3, root: remapConversations(clean, mapping) });
+  for (let i = 0; i < toolSlots.length; i += 1) {
+    if (toolKindOf(toolIds[i]) !== toolKindOf(toolSlots[i])) return null;
+    mapping.set(toolSlots[i], toolIds[i]);
+  }
+  return validateLayout({ version: 4, root: remapConversations(clean, mapping) });
 }

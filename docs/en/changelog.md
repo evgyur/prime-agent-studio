@@ -4,6 +4,16 @@
 
 Changes by version. See [GitHub releases](https://github.com/zerr0o/prime-agent-studio/releases) for installers and source archives.
 
+## 4.3.0-beta.9
+
+- **Independent tool tabs**: open multiple Roadmap, Session, Agents, Files and Preferences panels, with up to sixteen tool panels alongside eight conversations. Each panel keeps its own selection, forms and dialogs.
+- **Lock a target**: pin a tool to its conversation and project, or let it follow the active conversation. Locks survive reloads; data and permissions stay live. Missing targets remain unavailable instead of silently switching to another conversation.
+- **Simpler layouts**: add and move tabs from the tab menu. The Layout dialog keeps the workspace switch, named layouts and reset. Named layouts store only panel types and geometry, not conversations, drafts or locks, and reuse parked panels without starting a run.
+- **Reliable Preferences**: the main button opens a popup even from an inactive tab; Add tab opens a docked instance. Settings stay global while each panel owns its category, forms and child-dialog return focus. Late responses no longer overwrite newer confirmed values.
+- **First-click links and images**: inactive primary and secondary conversations open their links and images on the first click. Modified clicks, keyboard activation, text selection and drafts remain intact.
+- **Correct live context**: Session panels show Computer Use owner, action and stop shortcut from one shared status poller. Controls stay bound to the active conversation. Project overview search and mobile focus no longer jump back to the primary conversation.
+- **Compatibility**: classic and mobile modes remain available. Closing a tab does not delete its contents or stop its run. Native floating windows are not included.
+
 ## 4.3.0-beta.8
 
 - **Conversations are ready immediately**: the input and four welcome suggestions appear as soon as the pane opens, including after adding a project. Suggestions fill the owning pane and follow the selected language.

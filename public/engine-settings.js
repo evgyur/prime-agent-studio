@@ -38,9 +38,19 @@ export function createEngineSettings({
   openModelPicker,
   icon,
   onChanged = () => {},
-}) {
-  const root = document.getElementById('engine-settings');
-  if (!root) return { open: async () => {}, update: () => {} };
+  getElement = null,
+  domId = null,
+  instanceId = '',
+  isPrimary = true,
+} = {}) {
+  void instanceId;
+  void isPrimary;
+  const scopedId = (logical) => (typeof domId === 'function' ? domId(logical) : logical);
+  const root =
+    typeof getElement === 'function'
+      ? getElement('engine-settings')
+      : document.getElementById('engine-settings');
+  if (!root) return { open: async () => {}, update: () => {}, root: null, dispose: () => {} };
   let data = null;
   let catalog = [];
   let busy = false;
@@ -163,11 +173,11 @@ export function createEngineSettings({
     const wrap = document.createElement('div');
     wrap.className = 'engine-field';
     const label = document.createElement('label');
-    label.htmlFor = `engine-${field}`;
+    label.htmlFor = scopedId(`engine-${field}`);
     label.dataset.i18n = fieldLabel(field);
     label.textContent = tr(fieldLabel(field));
     const button = document.createElement('button');
-    button.id = `engine-${field}`;
+    button.id = scopedId(`engine-${field}`);
     button.type = 'button';
     button.className = 'model-picker-button';
     button.dataset.engineModel = field;
@@ -212,8 +222,8 @@ export function createEngineSettings({
 
   const tierField = document.createElement('div');
   tierField.className = 'engine-field';
-  tierField.innerHTML = `<label for="engine-defaultServiceTier" data-i18n="engine.service_tier_label"></label>
-    <select id="engine-defaultServiceTier">
+  tierField.innerHTML = `<label for="${scopedId('engine-defaultServiceTier')}" data-i18n="engine.service_tier_label"></label>
+    <select id="${scopedId('engine-defaultServiceTier')}">
       <option value="default" data-i18n="engine.tier_default"></option>
       <option value="flex">Flex</option>
       <option value="priority">Priority</option>
@@ -221,7 +231,7 @@ export function createEngineSettings({
     </select>
     <p class="model-defaults-note" data-i18n="engine.service_tier_note"></p>`;
   modelGrid.append(tierField);
-  const tierSelect = $('#engine-defaultServiceTier');
+  const tierSelect = $(`#${CSS.escape(scopedId('engine-defaultServiceTier'))}`);
   tierSelect.onchange = refreshSave;
   const tierDirty = () => tierSelect.value !== (data?.defaultServiceTier || 'default');
 
@@ -252,12 +262,12 @@ export function createEngineSettings({
     const wrap = document.createElement('div');
     wrap.className = 'engine-budget';
     const label = document.createElement('label');
-    label.htmlFor = `engine-${field}`;
+    label.htmlFor = scopedId(`engine-${field}`);
     label.dataset.i18n = budgetLabel(field);
     const row = document.createElement('div');
     row.className = 'engine-budget-row';
     const input = document.createElement('input');
-    input.id = `engine-${field}`;
+    input.id = scopedId(`engine-${field}`);
     input.type = 'number';
     input.min = '1';
     input.step = '1';
@@ -515,16 +525,20 @@ export function createEngineSettings({
   // never cancelled on close: cancelling would skip the busy reset and wedge
   // the form disabled. A stale completion is discarded by the generation
   // guard and simply leaves needsLoad=true for the next opening.
-  const dialog = document.getElementById('model-config-dialog');
-  if (dialog) {
-    new MutationObserver(() => {
-      if (dialog.open) {
+  // Global singleton dialogs stay global: per-instance handlers only touch the
+  // owned root, so siblings never repaint each other. All are removable.
+  const modelConfigDialog = document.getElementById('model-config-dialog');
+  let modelConfigObserver = null;
+  if (modelConfigDialog) {
+    modelConfigObserver = new MutationObserver(() => {
+      if (modelConfigDialog.open) {
         if (needsLoad && !busy) void load();
       } else {
         needsLoad = true;
       }
-    }).observe(dialog, { attributes: true, attributeFilter: ['open'] });
-    if (dialog.open && needsLoad) void load();
+    });
+    modelConfigObserver.observe(modelConfigDialog, { attributes: true, attributeFilter: ['open'] });
+    if (modelConfigDialog.open && needsLoad) void load();
   }
 
   // Shared catalog can refresh while the picker dialog is open (app.js
@@ -533,20 +547,19 @@ export function createEngineSettings({
   // Engine drafts never touch the conversation model: picking only edits the
   // local draft; only an explicit engine save POSTs.
   const modelDialog = document.getElementById('model-dialog');
-  if (modelDialog) {
-    modelDialog.addEventListener('close', () => {
-      if (data && !busy) {
-        try {
-          const shared = typeof getModels === 'function' ? getModels() : null;
-          catalog = Array.isArray(shared) ? shared : catalog;
-        } catch {}
-        renderPickerModels();
-        refreshSave();
-      }
-    });
-  }
+  const onModelDialogClose = () => {
+    if (data && !busy) {
+      try {
+        const shared = typeof getModels === 'function' ? getModels() : null;
+        catalog = Array.isArray(shared) ? shared : catalog;
+      } catch {}
+      renderPickerModels();
+      refreshSave();
+    }
+  };
+  if (modelDialog) modelDialog.addEventListener('close', onModelDialogClose);
 
-  onLanguageChange(() => {
+  const offLanguage = onLanguageChange(() => {
     translateStatic();
     // Draft-preserving: bound texts refresh through bindText automatically;
     // control values are never refilled here so unsaved budgets and picker
@@ -556,6 +569,21 @@ export function createEngineSettings({
 
   return {
     open: load,
+    root,
+    dispose: () => {
+      generation++;
+      needsLoad = true;
+      try {
+        modelConfigObserver?.disconnect();
+      } catch {}
+      modelConfigObserver = null;
+      try {
+        modelDialog?.removeEventListener('close', onModelDialogClose);
+      } catch {}
+      try {
+        offLanguage?.();
+      } catch {}
+    },
     update: () => {
       if (data) {
         try {

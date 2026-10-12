@@ -24,7 +24,9 @@ function layoutFor(panels, dir) {
       first: root,
       second: group(panels[i], i),
     };
-  return { version: 3, root };
+  // Geometry envelope V4 (legacy V1/V2/V3 docs still migrate; see the
+  // workspace regression for the migration matrix).
+  return { version: 4, root };
 }
 try {
   browser = await launchStudioBrowser();

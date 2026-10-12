@@ -690,11 +690,29 @@ export function createProviderSettings({ api, toast, allowed, onChanged }) {
     clearTimeout(timer);
     view.replaceChildren();
     error();
+    lastOpener = null;
   });
   $('providers-close').onclick = $('providers-done').onclick = () => dialog.close();
-  document.getElementById('open-provider-settings').onclick = () => {
-    if (!allowed()) return;
-    dialog.showModal();
-    void load();
+  // Singleton global manager: one live dialog. open(opener?) takes the actual
+  // launching button/element (or an Event, normalized here). A Preferences
+  // clone passes its own scoped button; the dialog stacks above the owning
+  // instance and return ownership stays with it via its settings.js
+  // manager-close capture. The global read-only gate is unchanged.
+  let lastOpener = null;
+  const normalizeOpener = (opener) => {
+    if (!opener) return null;
+    if (typeof opener.preventDefault === 'function' && 'target' in opener)
+      return opener.currentTarget || opener.target?.closest?.('button') || opener.target || null;
+    return opener;
   };
+  function open(opener) {
+    const element = normalizeOpener(opener);
+    if (element) lastOpener = element;
+    if (!allowed()) return;
+    if (!dialog.open) dialog.showModal();
+    void load();
+  }
+  document.getElementById('open-provider-settings').onclick = (event) =>
+    open(event?.currentTarget || event?.target);
+  return { open };
 }

@@ -47,12 +47,39 @@ function isConflict(error) {
   return hay.includes('revision') || hay.includes('conflict');
 }
 
-export function createPublicApiSettings({ api, getContext = () => ({}), copyText, toast, icon } = {}) {
-  const $ = (id) => document.getElementById(id);
-  injectShell(icon);
+export function createPublicApiSettings({
+  api,
+  getContext = () => ({}),
+  copyText,
+  toast,
+  icon,
+  getElement = null,
+  domId = null,
+  instanceId = '',
+  isPrimary = true,
+} = {}) {
+  void instanceId;
+  void isPrimary;
+  const scoped = typeof getElement === 'function';
+  const $ = (id) => (scoped ? getElement(id) : document.getElementById(id));
+  const scopedId = (logical) => (typeof domId === 'function' ? domId(logical) : logical);
+  // Tag dynamically created nodes with their logical id so owned lookups and
+  // focus checks keep working on rewritten physical ids.
+  const tag = (element, logical) => {
+    try {
+      element.setAttribute('data-panel-id', logical);
+    } catch {}
+    return element;
+  };
+  injectShell(icon, { $, scopedId, tag, scoped });
   const dialog = $('settings-dialog');
   const content = $('public-api-content');
-  if (!dialog || !content) return { refresh: async () => {} };
+  if (!dialog || !content)
+    return {
+      refresh: async () => {},
+      root: null,
+      dispose: () => {},
+    };
 
   let revision;
   let enabled = false;
@@ -149,9 +176,10 @@ export function createPublicApiSettings({ api, getContext = () => ({}), copyText
       const control = $(SCOPE_INPUT[scope]);
       if (control) control.disabled = formOff;
     }
-    for (const input of document.querySelectorAll('#public-api-project-options input'))
+    for (const input of content.querySelectorAll('#' + CSS.escape(scopedId('public-api-project-options')) + ' input'))
       input.disabled = formOff;
-    for (const button of document.querySelectorAll('#public-api-token-list button')) button.disabled = off;
+    for (const button of content.querySelectorAll('#' + CSS.escape(scopedId('public-api-token-list')) + ' button'))
+      button.disabled = off;
     content.setAttribute('aria-busy', String(loading));
   }
 
@@ -362,9 +390,11 @@ export function createPublicApiSettings({ api, getContext = () => ({}), copyText
     const allProjects = $('public-api-all-projects')?.checked === true;
     const projectIds = allProjects
       ? ['*']
-      : [...document.querySelectorAll('#public-api-project-options input:checked')].map(
-          (input) => input.value,
-        );
+      : [
+          ...content.querySelectorAll(
+            '#' + CSS.escape(scopedId('public-api-project-options')) + ' input:checked',
+          ),
+        ].map((input) => input.value);
     const rawExpiry = String($('public-api-expiry')?.value || '').trim();
     let expiresAt = null;
     if (rawExpiry) {
@@ -483,14 +513,20 @@ export function createPublicApiSettings({ api, getContext = () => ({}), copyText
 
   function build() {
     content.replaceChildren();
+    // Every created id goes through scopedId() + data-panel-id tagging so
+    // clones stay unique while the primary keeps byte-identical ids.
+    const id = (element, logical) => {
+      element.id = scopedId(logical);
+      return tag(element, logical);
+    };
     const enableRow = document.createElement('div');
     enableRow.className = 'settings-row';
     const enableText = document.createElement('div');
     const enableLabel = node('label', '', 'api.enabled');
-    enableLabel.htmlFor = 'public-api-enabled';
+    enableLabel.htmlFor = scopedId('public-api-enabled');
     enableText.append(enableLabel, node('p', '', 'api.enabled_note'));
     const enableInput = document.createElement('input');
-    enableInput.id = 'public-api-enabled';
+    id(enableInput, 'public-api-enabled');
     enableInput.className = 'switch';
     enableInput.type = 'checkbox';
     enableInput.setAttribute('role', 'switch');
@@ -499,7 +535,7 @@ export function createPublicApiSettings({ api, getContext = () => ({}), copyText
     const kept = node('p', 'settings-footnote', 'api.disabled_keeps_tokens');
     const networkNote = node('p', 'settings-footnote', 'api.network_note');
     const status = document.createElement('p');
-    status.id = 'public-api-status';
+    id(status, 'public-api-status');
     status.className = 'settings-footnote';
     status.setAttribute('role', 'status');
     const endpointCard = document.createElement('div');
@@ -509,13 +545,13 @@ export function createPublicApiSettings({ api, getContext = () => ({}), copyText
     machineRow.className = 'public-api-machine';
     machineRow.append(node('span', '', 'api.machine'));
     const machineIdNode = document.createElement('code');
-    machineIdNode.id = 'public-api-machine-id';
+    id(machineIdNode, 'public-api-machine-id');
     machineIdNode.textContent = '—';
     machineRow.append(machineIdNode);
     const endpointList = document.createElement('div');
-    endpointList.id = 'public-api-endpoints';
+    id(endpointList, 'public-api-endpoints');
     const noEndpoint = node('p', 'settings-footnote', 'api.no_endpoint');
-    noEndpoint.id = 'public-api-no-endpoint';
+    id(noEndpoint, 'public-api-no-endpoint');
     endpointCard.append(machineRow, endpointList, noEndpoint);
     const warnings = document.createElement('div');
     warnings.className = 'public-api-warnings';
@@ -523,20 +559,20 @@ export function createPublicApiSettings({ api, getContext = () => ({}), copyText
     warnings.append(node('p', '', 'api.warn_runs'), node('p', '', 'api.warn_files'));
     const tokensHeading = node('h4', 'public-api-heading', 'api.tokens_title');
     const tokenList = document.createElement('div');
-    tokenList.id = 'public-api-token-list';
+    id(tokenList, 'public-api-token-list');
     const tokensEmpty = node('p', 'settings-footnote', 'api.tokens_empty');
-    tokensEmpty.id = 'public-api-tokens-empty';
+    id(tokensEmpty, 'public-api-tokens-empty');
     const createHeading = node('h4', 'public-api-heading', 'api.create_title');
     const form = document.createElement('form');
-    form.id = 'public-api-create-form';
+    id(form, 'public-api-create-form');
     form.noValidate = true;
     form.onsubmit = (event) => void createToken(event);
     const nameWrap = document.createElement('div');
     nameWrap.className = 'public-api-field';
     const nameLabel = node('label', '', 'api.name_label');
-    nameLabel.htmlFor = 'public-api-name';
+    nameLabel.htmlFor = scopedId('public-api-name');
     const nameInput = document.createElement('input');
-    nameInput.id = 'public-api-name';
+    id(nameInput, 'public-api-name');
     nameInput.type = 'text';
     nameInput.maxLength = 60;
     nameInput.autocomplete = 'off';
@@ -559,7 +595,7 @@ export function createPublicApiSettings({ api, getContext = () => ({}), copyText
       label.className = 'public-api-option';
       const input = document.createElement('input');
       input.type = 'checkbox';
-      input.id = SCOPE_INPUT[scope];
+      id(input, SCOPE_INPUT[scope]);
       const text = node('span', '', SCOPE_LABEL[scope]);
       label.append(input, text);
       scopeSet.append(label);
@@ -571,49 +607,49 @@ export function createPublicApiSettings({ api, getContext = () => ({}), copyText
     allLabel.className = 'public-api-option';
     const allInput = document.createElement('input');
     allInput.type = 'checkbox';
-    allInput.id = 'public-api-all-projects';
+    id(allInput, 'public-api-all-projects');
     allInput.onchange = () => renderProjects();
     allLabel.append(allInput, node('span', '', 'api.token_all_projects'));
     const options = document.createElement('div');
-    options.id = 'public-api-project-options';
+    id(options, 'public-api-project-options');
     options.className = 'public-api-options';
     projectSet.append(allLabel, options);
     const expiryWrap = document.createElement('div');
     expiryWrap.className = 'public-api-field';
     const expiryLabel = node('label', '', 'api.expiry_label');
-    expiryLabel.htmlFor = 'public-api-expiry';
+    expiryLabel.htmlFor = scopedId('public-api-expiry');
     const expiryInput = document.createElement('input');
-    expiryInput.id = 'public-api-expiry';
+    id(expiryInput, 'public-api-expiry');
     expiryInput.type = 'date';
     expiryWrap.append(expiryLabel, expiryInput, node('p', 'settings-footnote', 'api.expiry_hint'));
     const formError = document.createElement('p');
-    formError.id = 'public-api-form-error';
+    id(formError, 'public-api-form-error');
     formError.className = 'form-error';
     formError.setAttribute('role', 'alert');
     formError.hidden = true;
     formError.tabIndex = -1;
     const createButton = node('button', 'primary-button', 'api.create');
-    createButton.id = 'public-api-create';
+    id(createButton, 'public-api-create');
     createButton.type = 'submit';
     form.append(nameWrap, scopeSet, projectSet, expiryWrap, formError, createButton);
     const secret = document.createElement('div');
-    secret.id = 'public-api-secret';
+    id(secret, 'public-api-secret');
     secret.className = 'public-api-secret';
     secret.hidden = true;
     secret.append(node('strong', '', 'api.secret_title'), node('p', '', 'api.secret_note'));
     const credential = document.createElement('code');
-    credential.id = 'public-api-credential';
+    id(credential, 'public-api-credential');
     credential.className = 'public-api-credential';
     const secretActions = document.createElement('div');
     secretActions.className = 'network-link-actions';
     const copyButton = node('button', 'secondary-button', 'api.copy_secret');
-    copyButton.id = 'public-api-copy-secret';
+    id(copyButton, 'public-api-copy-secret');
     copyButton.type = 'button';
     copyButton.onclick = () => {
       if (pendingSecret) void copyText(pendingSecret);
     };
     const dismissButton = node('button', 'text-button', 'api.secret_saved');
-    dismissButton.id = 'public-api-dismiss-secret';
+    id(dismissButton, 'public-api-dismiss-secret');
     dismissButton.type = 'button';
     dismissButton.onclick = () => {
       clearSecret();
@@ -637,18 +673,28 @@ export function createPublicApiSettings({ api, getContext = () => ({}), copyText
     );
   }
 
-  function injectShell(iconFn) {
-    if (document.getElementById('settings-tab-api')) return;
-    const nav = document.querySelector('#settings-dialog .settings-nav');
-    const panels = document.querySelector('#settings-dialog .settings-panels');
-    const remoteTab = document.getElementById('settings-tab-remote');
+  // API tab + panel shell lives inside the OWNED dialog (never document).
+  // Clones get scoped ids + data-panel-id; the primary keeps legacy ids.
+  function injectShell(iconFn, shellScope) {
+    const find = shellScope?.$ || $;
+    const sid = shellScope?.scopedId || ((value) => value);
+    const mark = shellScope?.tag || ((element) => element);
+    const place = (element, logical) => {
+      element.id = sid(logical);
+      return mark(element, logical);
+    };
+    if (find('settings-tab-api')) return;
+    const ownerDialog = find('settings-dialog');
+    const nav = ownerDialog?.querySelector('.settings-nav');
+    const panels = ownerDialog?.querySelector('.settings-panels');
+    const remoteTab = find('settings-tab-remote');
     if (!nav || !panels) return;
     const tab = document.createElement('button');
-    tab.id = 'settings-tab-api';
+    place(tab, 'settings-tab-api');
     tab.type = 'button';
     tab.setAttribute('role', 'tab');
     tab.setAttribute('aria-selected', 'false');
-    tab.setAttribute('aria-controls', 'settings-panel-api');
+    tab.setAttribute('aria-controls', sid('settings-panel-api'));
     tab.tabIndex = -1;
     tab.dataset.settingsTab = 'api';
     const glyph = document.createElement('span');
@@ -666,11 +712,11 @@ export function createPublicApiSettings({ api, getContext = () => ({}), copyText
     if (remoteTab && remoteTab.nextSibling) nav.insertBefore(tab, remoteTab.nextSibling);
     else nav.append(tab);
     const panel = document.createElement('section');
-    panel.id = 'settings-panel-api';
+    place(panel, 'settings-panel-api');
     panel.className = 'settings-panel';
     panel.setAttribute('role', 'tabpanel');
     panel.tabIndex = 0;
-    panel.setAttribute('aria-labelledby', 'settings-tab-api');
+    panel.setAttribute('aria-labelledby', sid('settings-tab-api'));
     panel.hidden = true;
     const heading = document.createElement('div');
     heading.className = 'settings-section-heading';
@@ -682,19 +728,19 @@ export function createPublicApiSettings({ api, getContext = () => ({}), copyText
     scope.dataset.i18n = 'api.scope';
     heading.append(title, scope);
     const wrap = document.createElement('div');
-    wrap.id = 'public-api-settings';
+    place(wrap, 'public-api-settings');
     const toolbar = document.createElement('div');
     toolbar.className = 'settings-toolbar';
     const intro = document.createElement('p');
     intro.dataset.i18n = 'api.intro';
     const refreshButton = document.createElement('button');
-    refreshButton.id = 'public-api-refresh';
+    place(refreshButton, 'public-api-refresh');
     refreshButton.className = 'text-button';
     refreshButton.type = 'button';
     refreshButton.dataset.i18n = 'settings.refresh';
     refreshButton.textContent = 'Actualiser';
     const docsLink = document.createElement('a');
-    docsLink.id = 'public-api-docs';
+    place(docsLink, 'public-api-docs');
     docsLink.className = 'text-button';
     docsLink.href = '/api-docs';
     docsLink.target = '_blank';
@@ -702,17 +748,17 @@ export function createPublicApiSettings({ api, getContext = () => ({}), copyText
     docsLink.dataset.i18n = 'api_docs.open';
     toolbar.append(intro, docsLink, refreshButton);
     const errorBox = document.createElement('p');
-    errorBox.id = 'public-api-error';
+    place(errorBox, 'public-api-error');
     errorBox.className = 'form-error';
     errorBox.setAttribute('role', 'alert');
     errorBox.hidden = true;
     const remoteNote = document.createElement('p');
-    remoteNote.id = 'public-api-remote-note';
+    place(remoteNote, 'public-api-remote-note');
     remoteNote.className = 'settings-footnote';
     remoteNote.dataset.i18n = 'api.remote_note';
     remoteNote.hidden = true;
     const body = document.createElement('div');
-    body.id = 'public-api-content';
+    place(body, 'public-api-content');
     body.setAttribute('aria-busy', 'true');
     const loadingNote = document.createElement('p');
     loadingNote.className = 'settings-footnote';
@@ -721,24 +767,46 @@ export function createPublicApiSettings({ api, getContext = () => ({}), copyText
     body.append(loadingNote);
     wrap.append(toolbar, errorBox, remoteNote, body);
     panel.append(heading, wrap);
-    const syncPanel = document.getElementById('settings-panel-sync');
+    const syncPanel = find('settings-panel-sync');
     if (syncPanel) panels.insertBefore(panel, syncPanel);
     else panels.append(panel);
   }
 
   build();
   $('public-api-refresh').onclick = () => void refresh();
-  dialog.addEventListener('close', () => {
+  // Token secrets stay in memory only: cleared when THIS dialog closes, when
+  // the page hides, and on dispose. Never stored, never shared with siblings.
+  const onOwnedClose = () => {
     generation++;
     clearSecret();
-  });
-  window.addEventListener('pagehide', () => clearSecret());
-  onLanguageChange(() => {
+  };
+  dialog.addEventListener('close', onOwnedClose);
+  const onPageHide = () => clearSecret();
+  window.addEventListener('pagehide', onPageHide);
+  const offLanguage = onLanguageChange(() => {
     if (!dialog.open) return;
     renderStatus();
     renderEndpoints();
     renderTokens();
   });
 
-  return { refresh };
+  return {
+    refresh,
+    get root() {
+      return dialog;
+    },
+    dispose: () => {
+      generation++;
+      clearSecret();
+      try {
+        dialog.removeEventListener('close', onOwnedClose);
+      } catch {}
+      try {
+        window.removeEventListener('pagehide', onPageHide);
+      } catch {}
+      try {
+        offLanguage?.();
+      } catch {}
+    },
+  };
 }

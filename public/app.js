@@ -49,6 +49,15 @@ import { createProjectArchives } from './project-archives.js';
 import { createWorktreesUI } from './worktrees.js';
 import { createRoadmap } from './roadmap.js';
 import { createDocking } from './docking.js';
+import { clonePanelScope } from './panel-scope.js';
+import { createToolViews, captureToolTarget, resolveToolTarget, sameToolContext } from './tool-views.js';
+import {
+  TOOL_KINDS,
+  MAX_CONVERSATIONS,
+  isConversationPanel,
+  toolKindOf,
+  groupsOf,
+} from './docking-layout.js';
 import { createConversationViews, PRIMARY_VIEW_ID, originSessionId } from './conversation-views.js';
 import { createConversationPicker } from './conversation-picker.js';
 import { bindInlineImages } from './inline-images.js';
@@ -80,10 +89,10 @@ let commandsUI;
 let inspectorUI;
 let roadmapUI;
 let dockingUI;
+let toolViews = null;
 let convViews = null;
 const viewHistoryPages = new WeakMap();
 let settingsDockApi = null;
-let lastPrefsProject = null;
 let conversationPicker = null;
 const getDocking = () => dockingUI;
 // Split inspector tabs when the inspector owner API has landed; legacy single
@@ -165,11 +174,17 @@ let syncSnapshot = null;
 let syncCheckingId = null;
 let syncCheckGeneration = 0;
 let roadmapNavigationSequence = 0;
+const roadmapSummaries = new Map();
 let modelPickerTarget = null;
 let modelCatalogRequest = null;
 let modelCatalogPoll = null;
 let modelCatalogPollsRemaining = 0;
 const $ = (id) => document.getElementById(id);
+const toolTemplates = {
+  inspector: $('details-panel').cloneNode(true),
+  preferences: $('settings-dialog').cloneNode(true),
+  passkeys: $('passkey-dialog').cloneNode(true),
+};
 const icons = {
   plus: 'M12 5v14M5 12h14',
   bell: 'M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9ZM10 21h4',
@@ -978,10 +993,13 @@ function applyPreferences() {
         ? 'light'
         : 'dark'
       : prefs.theme;
-  $('enter-to-send').checked = prefs.enterToSend;
-  document.querySelectorAll('[name="reasoning-mode"]').forEach((input) => {
-    input.checked = input.value === reasoningMode(prefs);
-  });
+  for (const input of document.querySelectorAll('#enter-to-send, [data-panel-id="enter-to-send"]'))
+    input.checked = prefs.enterToSend;
+  document
+    .querySelectorAll('[name="reasoning-mode"], [data-panel-name="reasoning-mode"]')
+    .forEach((input) => {
+      input.checked = input.value === reasoningMode(prefs);
+    });
   document
     .querySelectorAll('[data-theme-choice]')
     .forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.themeChoice === prefs.theme)));
@@ -1010,7 +1028,7 @@ function applyPreferences() {
     open ? tr('ui.masquer_le_panneau') : tr('ui.afficher_le_panneau_session_agents_et_fichiers'),
   );
   bindAttribute($('toggle-details'), 'aria-label', () => $('toggle-details').title);
-  inspectorUI?.update();
+  updateToolPanels();
   try {
     dockingUI?.refreshTitles?.();
   } catch {}
@@ -1632,7 +1650,8 @@ function renderProjectOverview() {
 }
 // Informative only: the Git state recorded by the conversation (possibly on
 // another PC) compared with this PC's current HEAD for the project.
-function renderSessionGit(git, head) {
+function renderSessionGit(git, head, own = $, context = { readOnly: state.readOnly, run: activeRun() }) {
+  const $ = own;
   const row = $('detail-git-row');
   row.hidden = !git;
   $('detail-git-align-row').hidden = true;
@@ -1649,25 +1668,38 @@ function renderSessionGit(git, head) {
     ),
   );
   // Offer alignment only when this PC differs and nothing runs in the project.
-  $('detail-git-align-row').hidden = same || !git.commit || !head || state.readOnly || isRunning(activeRun());
+  $('detail-git-align-row').hidden =
+    same || !git.commit || !head || context.readOnly || context.unavailable || isRunning(context.run);
   bindAttribute(dd, 'title', () =>
     [git.repo, git.commit, git.at ? tr('session.git_recorded', { value1: dateLabel(git.at) }) : '']
       .filter(Boolean)
       .join('\n'),
   );
 }
-async function alignSessionGit() {
-  const s = session(),
+async function alignSessionGit(id = 'session', button = $('detail-git-align')) {
+  const context = toolContext(id);
+  const s = context.session,
     git = s?.git;
-  if (!git?.commit) return;
+  if (!git?.commit || context.readOnly || context.unavailable || !context.online || isRunning(context.run))
+    return;
   const dialog = $('git-align-dialog');
+  if (dialog.open) return;
   const target = [git.branch, git.commit.slice(0, 7)].filter(Boolean).join(' · ');
   bindText($('git-align-note'), () => tr('git.align_note', { value1: target }));
   dialog.returnValue = '';
   dialog.showModal();
   await new Promise((resolve) => dialog.addEventListener('close', resolve, { once: true }));
-  if (dialog.returnValue !== 'confirm') return;
-  const button = $('detail-git-align');
+  const current = toolContext(id);
+  if (
+    dialog.returnValue !== 'confirm' ||
+    current.readOnly ||
+    current.unavailable ||
+    !current.online ||
+    !sameToolContext(current, context) ||
+    current.session?.git?.commit !== git.commit ||
+    isRunning(current.run)
+  )
+    return;
   button.disabled = true;
   try {
     const result = await api('/api/projects/git-align', { method: 'POST', body: { sessionId: s.id } });
@@ -1707,68 +1739,13 @@ function renderDetails() {
   bindAttribute(document, 'title', () =>
     s?.title ? `${s.title} · Prime Agent Studio` : 'Prime Agent Studio',
   );
-  bindText(
-    $('detail-project-name'),
-    () => p?.name || (state.readOnly ? tr('ui.vos_projets') : tr('ui.votre_prochain_projet')),
-  );
-  bindText(
-    $('detail-project-path'),
-    () =>
-      p?.cwd ||
-      (state.readOnly
-        ? tr('ui.les_projets_du_studio_sont_accessibles_depuis_le_menu')
-        : tr('ui.connectez_un_dossier_local_pour_donner_du_contexte_a_votre_agent')),
-  );
-  $('copy-project-path').hidden = !p;
-  $('detail-project-knowledge').hidden = !p;
   bindText($('welcome-project').lastElementChild, () =>
     welcomeProjectText(dockingUI?.active ? convViews?.byId(PRIMARY_VIEW_ID)?.projectCwd : state.projectCwd),
   );
-  const status = isRunning(run)
-    ? run.status === 'stopping'
-      ? tr('ui.arret_en_cours')
-      : tr('ui.en_cours')
-    : s?.archived
-      ? tr('ui.archivee')
-      : s
-        ? tr('ui.disponible')
-        : state.readOnly
-          ? tr('ui.consultation')
-          : tr('ui.prete_a_demarrer');
-  $('detail-status').replaceChildren(
-    el('span', `status-dot${s?.archived ? ' waiting' : ''}`),
-    textNode(() => translateKnown(status)),
-  );
-  bindText($('detail-message-count'), () =>
-    s || run
-      ? String(activeMessages().filter((m) => m.role === 'user' || m.role === 'assistant').length)
-      : '—',
-  );
-  bindText($('detail-updated'), () => dateLabel(s?.updatedAt || run?.startedAt));
-  renderSessionGit(s?.git, p?.gitHead);
-  $('detail-session-id').hidden = !state.sessionId;
-  bindText($('detail-session-id'), () => (state.sessionId ? `ID ${state.sessionId}` : ''));
-  bindAttribute($('detail-session-id'), 'title', () => state.sessionId || '');
   $('session-menu-button').disabled = !state.sessionId;
-  $('export-session').hidden = !state.sessionId;
   $('session-state').hidden = !isRunning(run);
   bindText($('session-state'), () => tr('ui.agent_en_cours'));
-  const runs = [...state.runs.values()].filter(isRunning);
-  $('active-runs-section').hidden = !runs.length;
-  $('active-runs').replaceChildren();
-  for (const r of runs) {
-    const b = el('button', 'active-run');
-    b.append(
-      el('span', 'spinner'),
-      el(
-        'span',
-        'active-run-label',
-        () => session(r.sessionId)?.title || r.prompt?.slice(0, 55) || tr('ui.nouvelle_session'),
-      ),
-    );
-    b.onclick = () => selectRun(r);
-    $('active-runs').append(b);
-  }
+  if (toolViews) renderToolSession(toolViews.entries.get('session'));
   if (state.online && state.version?.available !== false) {
     if (p?.exists === false)
       banner(
@@ -1780,7 +1757,6 @@ function renderDetails() {
       );
     else if ($('global-banner').dataset.persistent !== 'true') banner('');
   }
-  computerUseUI?.update();
   inspectorUI?.update();
 }
 function renderNavigation() {
@@ -1795,8 +1771,8 @@ function renderNavigation() {
   worktreesUI?.update();
   updateComposer();
   if ($('open-roadmap')) $('open-roadmap').disabled = !state.projectCwd;
-  if ($('detail-project-roadmap')) $('detail-project-roadmap').hidden = !state.projectCwd;
-  roadmapUI?.update();
+  renderRoadmapSummary();
+  updateToolPanels();
 }
 marked.setOptions({ gfm: true, breaks: false });
 function markdown(text, { cwd = execCwdOf(), basePath = '', imageRoot } = {}) {
@@ -2207,16 +2183,7 @@ convViews = createConversationViews({
     computerUseUI?.onSessionChange();
     updateComposer();
     if (view) ensureViewUnits(view);
-    // Preferences gating follows the active project, not geometry: a
-    // saved-visible prefs tab must not keep pre-bootstrap/pre-switch tabs.
-    // refreshContext is a tiny prefs-owner method (requested); absent → no-op.
-    const prefsCwd = state.projectCwd;
-    if (prefsCwd !== lastPrefsProject) {
-      lastPrefsProject = prefsCwd;
-      try {
-        settingsDockApi?.refreshContext?.();
-      } catch {}
-    }
+    updateToolPanels();
   },
   mirrorToGlobal: (view) => {
     state.sessionId = view.sessionId;
@@ -3696,6 +3663,7 @@ async function sendMessage(event) {
   if (state.readOnly || (originSend && originSend.disabled) || state.sending) return;
   if (convViews && convViews.focusedId() !== entryOriginId) return;
   const originToken = origin?.token;
+  const originNonce = origin?.nonce;
   const originKey = origin ? convViews.draftKeyFor(origin) : null;
   const originImages = originUnits?.images || imageComposer;
   const originText = originUnits ? originUnits.text.get() : composerText();
@@ -3766,6 +3734,7 @@ async function sendMessage(event) {
     state.runs.set(run.id, run);
     if (imageDraft) originImages.accepted(imageDraft);
     if (run.sessionId) upsertSession(run.sessionId, run);
+    if (origin) toolViews?.bindDraftRun(origin.id, originNonce, run);
     if (convViews && origin) {
       // Key-scoped accept runs regardless of rebinding: the captured binding
       // key is cleared when it still holds the submitted text, even if this
@@ -4040,14 +4009,14 @@ function showModelConfigForm(model = null) {
   $('model-config-error').hidden = true;
   requestAnimationFrame(() => $(model ? 'custom-model-name' : 'custom-model-provider').focus());
 }
-async function openModelConfig() {
+async function openModelConfig(preferencesOwner = settingsDockApi) {
   if (state.readOnly) {
     toast(() => tr('ui.la_configuration_des_modeles_est_disponible_uniquement_sur_l_ordi'), true);
     return;
   }
   // Release the settings top layer (if modal) through the Preferences owner
   // so the popup session survives the async model-picker open that follows.
-  settingsDockApi?.prepareDockMove?.();
+  preferencesOwner?.prepareDockMove?.();
   $('model-config-loading').hidden = false;
   bindText($('model-config-loading'), () => tr('ui.chargement_de_la_configuration'));
   $('model-config-content').hidden = true;
@@ -4213,6 +4182,12 @@ async function bootstrap() {
     populateModels(data.models);
     state.projectCwd =
       state.projects.find((p) => samePath(p.cwd, selection.cwd))?.cwd || state.projects[0]?.cwd || null;
+    const initialView = convViews?.focused();
+    if (initialView && !initialView.projectCwd && !initialView.sessionId && !initialView.viewRunId) {
+      initialView.projectCwd = state.projectCwd;
+      initialView.execCwd = state.projectCwd;
+      convViews.persist();
+    }
     state.projectOverview = Boolean(state.projectCwd && (selection.projectOverview ?? state.remote));
     state.initialized = true;
     setConnection(true);
@@ -4285,7 +4260,7 @@ async function bootstrap() {
     // Permissions are known only now: re-gate a saved-visible prefs tab that
     // may still show pre-bootstrap full-control content.
     try {
-      settingsDockApi?.refreshContext?.();
+      updateToolPanels();
     } catch {}
     saveSelection();
     void syncSessionActivity();
@@ -4661,8 +4636,7 @@ async function removeProject(event) {
     button.disabled = false;
   }
 }
-async function logout() {
-  const button = $('logout-button');
+async function logout(button = $('logout-button')) {
   button.disabled = true;
   try {
     saveDraft();
@@ -4851,6 +4825,436 @@ for (const id of ['project-knowledge', 'detail-project-knowledge'])
     const selected = project();
     if (selected) knowledgeUI.open(selected, event.currentTarget);
   };
+function bindToolSession(entry, own) {
+  const context = () => toolContext(entry.id);
+  own('copy-project-path').onclick = () => {
+    const value = context();
+    if (!value.unavailable && value.projectCwd)
+      void copyText(value.projectCwd, () => tr('ui.chemin_du_projet_copie'));
+  };
+  own('detail-project-knowledge').onclick = (event) => {
+    const value = context();
+    if (!value.unavailable && value.project) knowledgeUI.open(value.project, event.currentTarget);
+  };
+  own('detail-project-roadmap').onclick = (event) => showToolRoadmapFor(context(), event.currentTarget);
+  own('export-session').onclick = () => {
+    const value = context();
+    if (!value.unavailable && value.sessionId) void exportSession(value.sessionId);
+  };
+  own('detail-git-align').onclick = () => void alignSessionGit(entry.id, own('detail-git-align'));
+}
+function renderToolSession(entry) {
+  if (!entry?.root) return;
+  const $ = entry.getElement;
+  const context = toolContext(entry.id);
+  const p = context.project,
+    s = context.session,
+    run = context.run;
+  bindText($('detail-project-name'), () => p?.name || tr('ui.votre_prochain_projet'));
+  bindText(
+    $('detail-project-path'),
+    () => p?.cwd || tr('ui.connectez_un_dossier_local_pour_donner_du_contexte_a_votre_agent'),
+  );
+  $('copy-project-path').hidden = !p || context.unavailable;
+  $('detail-project-knowledge').hidden = !p || context.unavailable;
+  $('detail-project-roadmap').hidden = !p || context.unavailable;
+  const status = context.unavailable
+    ? tr('docking.unavailable')
+    : isRunning(run)
+      ? run.status === 'stopping'
+        ? tr('ui.arret_en_cours')
+        : tr('ui.en_cours')
+      : s?.archived
+        ? tr('ui.archivee')
+        : s
+          ? tr('ui.disponible')
+          : context.readOnly
+            ? tr('ui.consultation')
+            : tr('ui.prete_a_demarrer');
+  $('detail-status').replaceChildren(
+    el('span', `status-dot${s?.archived ? ' waiting' : ''}`),
+    textNode(() => translateKnown(status)),
+  );
+  const messages = run?.initialized ? [...(run.base || []), ...(run.messages || [])] : context.view?.history;
+  const messageCount = messages
+    ? messages.filter((message) => ['user', 'assistant'].includes(message.role)).length
+    : s?.messageCount;
+  bindText($('detail-message-count'), () =>
+    context.unavailable || messageCount == null ? '—' : String(messageCount),
+  );
+  bindText($('detail-updated'), () => dateLabel(s?.updatedAt || run?.startedAt));
+  renderSessionGit(s?.git, p?.gitHead, $, context);
+  $('detail-session-id').hidden = !context.sessionId;
+  bindText($('detail-session-id'), () => (context.sessionId ? `ID ${context.sessionId}` : ''));
+  bindAttribute($('detail-session-id'), 'title', () => context.sessionId || '');
+  $('export-session').hidden = !context.sessionId || context.unavailable;
+  const runs = [...state.runs.values()].filter(
+    (item) =>
+      isRunning(item) &&
+      p &&
+      (p.sessions?.some((row) => row.id === item.sessionId) ||
+        samePath(item.cwd, context.execCwd) ||
+        samePath(item.cwd, p.cwd)),
+  );
+  $('active-runs-section').hidden = !runs.length || context.unavailable;
+  $('active-runs').replaceChildren();
+  for (const run of runs) {
+    const button = el('button', 'active-run');
+    button.append(
+      el('span', 'spinner'),
+      el(
+        'span',
+        'active-run-label',
+        () => session(run.sessionId)?.title || run.prompt?.slice(0, 55) || tr('ui.nouvelle_session'),
+      ),
+    );
+    button.onclick = () => selectRun(run);
+    $('active-runs').append(button);
+  }
+}
+function toolForContext(kind, context) {
+  if (context.unavailable || !context.projectCwd) return;
+  const matches = (entry) => entry.kind === kind && sameToolContext(toolContext(entry.id), context);
+  let entry = [...toolViews.entries.values()].find(matches);
+  if (!entry) {
+    entry = toolViews.createView(kind);
+    // At the registry limit Add can reuse a parked panel. A contextual opener
+    // must never borrow a different pin merely because it is the same kind.
+    if (!entry || (entry.locked && !matches(entry))) {
+      toast(() => tr('docking.registry_full'), true);
+      return;
+    }
+    if (!entry.locked && !sameToolContext(resolveToolTarget(null, toolSnapshot()), context)) {
+      entry.locked = true;
+      entry.target = captureToolTarget(
+        context.view || {
+          projectCwd: context.projectCwd,
+          execCwd: context.execCwd,
+          sessionId: context.sessionId,
+        },
+        context.run,
+      );
+      toolViews.persist();
+    }
+  }
+  entry = toolViews.ensure(entry.id);
+  if (!entry) return;
+  dockingUI.registerPanel(entry.id, entry.root);
+  syncDockingState();
+  return entry;
+}
+
+function showToolRoadmapFor(context, opener, tab) {
+  if (context.unavailable || !context.projectCwd) return;
+  if (!dockingUI?.active) return roadmapUI.open(opener, tab);
+  toolForContext('roadmap', context)?.ui.open(opener, tab);
+}
+
+// Tool tabs own identifiers and UI state; this snapshot supplies live shared data.
+function toolSnapshot() {
+  return {
+    focused: convViews?.focused() || null,
+    views: convViews ? [...convViews.views.values()] : [],
+    projects: state.projects,
+    runs: [...state.runs.values()],
+    panelIds: dockingUI ? groupsOf(dockingUI.getLayout()).flatMap((group) => group.panels) : [],
+    ready: state.initialized,
+  };
+}
+function toolContext(id) {
+  const owner =
+    !dockingUI?.active && TOOL_KINDS.includes(id)
+      ? resolveToolTarget(null, toolSnapshot())
+      : toolViews.context(id);
+  const view = owner.view || { sessionId: owner.sessionId, viewRunId: owner.run?.id };
+  const generation = tripleForView(view);
+  const kind = toolKindOf(id);
+  return {
+    ...owner,
+    cwd: owner.unavailable
+      ? null
+      : ['session', 'agents', 'files'].includes(kind)
+        ? owner.execCwd
+        : owner.projectCwd,
+    name: owner.project?.name,
+    sessions: owner.project?.sessions || [],
+    model: generation.model || state.modelCatalogDefault || '',
+    mainModel: generation.model || state.modelCatalogDefault || '',
+    thinking: generation.thinking,
+    enabled: state.initialized && state.inspectorAvailable === true && !owner.unavailable,
+    readOnly: !state.initialized || state.readOnly,
+    remote: state.remote,
+    nativeFileOpen: state.nativeFileOpen,
+    online: state.initialized && state.online && !owner.unavailable,
+    version: state.version,
+  };
+}
+function toolTargetLabel(context) {
+  if (context.unavailable) return tr('docking.unavailable');
+  return (
+    context.session?.title ||
+    (context.view && convViews?.titleOf(context.view.id)) ||
+    context.project?.name ||
+    tr('ui.nouvelle_session')
+  );
+}
+function toolTitle(id) {
+  const entry = toolViews?.entries.get(id);
+  if (!entry) return undefined;
+  return `${tr(`docking.${entry.kind}`)} · ${toolTargetLabel(toolContext(id))}`;
+}
+function toolLockState(id) {
+  const entry = toolViews?.entries.get(id);
+  if (!entry) return null;
+  const context = toolContext(id);
+  return {
+    locked: entry.locked,
+    unavailable: context.unavailable || !context.projectCwd || !state.initialized,
+    label: `${tr(entry.locked ? 'docking.unlock' : 'docking.lock')} · ${tr(entry.locked ? 'docking.locked' : 'docking.following', { name: toolTargetLabel(context) })}`,
+  };
+}
+function updateToolPanels() {
+  if (!toolViews) return;
+  const updated = new Set();
+  for (const entry of toolViews.entries.values()) {
+    toolViews.context(entry.id);
+    if (!entry.ui) continue;
+    if (entry.kind === 'session') renderToolSession(entry);
+    if (entry.kind === 'preferences') {
+      refreshToolPreferences(entry);
+      const context = toolContext(entry.id);
+      const key = JSON.stringify([
+        context.projectCwd,
+        context.sessionId,
+        context.unavailable,
+        context.readOnly,
+        context.remote,
+        context.online,
+      ]);
+      if (key !== entry.contextKey) {
+        entry.contextKey = key;
+        entry.ui.refreshContext();
+      }
+    } else if (!updated.has(entry.ui)) {
+      updated.add(entry.ui);
+      entry.ui.update();
+    }
+  }
+  computerUseUI?.update();
+  dockingUI?.refreshTitles();
+}
+function createToolInstance(entry) {
+  if (entry.kind === 'roadmap') {
+    const ui = makeToolRoadmap(entry);
+    return { ui, root: ui.root };
+  }
+  const scope = clonePanelScope(
+    toolTemplates[entry.kind === 'preferences' ? 'preferences' : 'inspector'],
+    entry.id,
+  );
+  hydrateIcons(scope.root);
+  entry.home = scope.root;
+  document.body.append(scope.root);
+  if (entry.kind === 'preferences') {
+    const passkeys = clonePanelScope(toolTemplates.passkeys, entry.id);
+    hydrateIcons(passkeys.root);
+    document.body.append(passkeys.root);
+    entry.passkeyRoot = passkeys.root;
+    const ui = makeToolPreferences(entry, scope);
+    return { ...scope, ui, passkeyRoot: passkeys.root };
+  }
+  scope.root.hidden = true;
+  const ui = createInspector({
+    api,
+    markdown,
+    getModels: () => state.models,
+    openModelPicker,
+    icon,
+    toast,
+    ...scope,
+    unit: entry.kind,
+    instanceId: entry.id,
+    getContext: () => toolContext(entry.id),
+    onClose: () => dockingUI?.closePanel(entry.id),
+  });
+  entry.ui = ui;
+  const root = ui.roots()[entry.kind];
+  const result = { ...scope, ui, root, home: scope.root };
+  if (entry.kind === 'session') bindToolSession(entry, scope.getElement);
+  return result;
+}
+function makeToolPreferences(entry, scope) {
+  const ui = createSettings({
+    api,
+    ...scope,
+    instanceId: entry.id,
+    isPrimary: entry.id === 'preferences',
+    onStudioPreferences: applyStudioPreferences,
+    onEngineSettings: async () => {
+      try {
+        await modelCatalogRequest?.catch(() => {});
+        await refreshModelCatalog();
+      } catch {
+      } finally {
+        updateComposer();
+      }
+    },
+    getContext: () => {
+      const context = toolContext(entry.id);
+      return { ...context, projectCwd: context.unavailable ? null : context.projectCwd };
+    },
+    openResources: (source, opener) => openToolResources(entry, source, opener),
+    copyText,
+    toast,
+    getModels: () => state.models,
+    openModelPicker,
+    icon,
+  });
+  // Some child requests can complete before the next dock notification.
+  Object.assign(entry, scope, { ui });
+  bindToolPreferences(entry);
+  return ui;
+}
+function bindToolPreferences(entry) {
+  const own = entry.getElement;
+  const root = entry.root;
+  own('enter-to-send').onchange = (event) => {
+    savePreferences({ enterToSend: event.target.checked });
+    applyPreferences();
+  };
+  for (const input of root.querySelectorAll('[name="reasoning-mode"], [data-panel-name="reasoning-mode"]'))
+    input.onchange = () => {
+      savePreferences({ reasoningMode: input.value });
+      applyPreferences();
+      messageNodes.clear();
+      for (const view of convViews.views.values()) convViews.markDirty(view.id);
+      renderMessages(true);
+    };
+  for (const button of root.querySelectorAll('[data-theme-choice]'))
+    button.onclick = () => {
+      savePreferences({ theme: button.dataset.themeChoice });
+      applyPreferences();
+    };
+  for (const button of root.querySelectorAll('[data-close-dialog]')) button.onclick = () => root.close();
+  own('open-model-config').onclick = () => void openModelConfig(entry.ui);
+  own('open-mcp-settings').onclick = (event) => void mcpSettingsUI.open(event.currentTarget);
+  own('open-provider-settings').onclick = (event) => void providerSettingsUI.open(event.currentTarget);
+  own('open-remote-access').onclick = (event) => void remoteAccessUI.open(event.currentTarget);
+  own('logout-button').onclick = () => void logout(own('logout-button'));
+  if (entry.id !== 'preferences') {
+    entry.passkeys = createPasskeySettings({
+      ...entry,
+      isPrimary: false,
+      getContext: () => toolContext(entry.id),
+    });
+    entry.push = createPushSettings({ ...entry, isPrimary: false, getContext: () => toolContext(entry.id) });
+    own('settings-tab-notifications')?.addEventListener(
+      'click',
+      () => void entry.push.refresh().catch(() => {}),
+    );
+  }
+  const heading = own('settings-title');
+  const group = el('div', 'settings-context-heading');
+  heading.replaceWith(group);
+  entry.contextLabel = el('p', 'settings-context-label');
+  group.append(heading, entry.contextLabel);
+  refreshToolPreferences(entry);
+}
+function refreshToolPreferences(entry) {
+  const own = entry.getElement;
+  if (!own) return;
+  const context = toolContext(entry.id);
+  own('enter-to-send').checked = prefs.enterToSend;
+  own('enter-to-send').closest('.settings-row').hidden = context.readOnly;
+  own('model-config-settings').hidden = context.readOnly;
+  own('remote-access-settings').hidden = context.readOnly;
+  own('provider-settings').hidden = context.readOnly || !state.providersAvailable;
+  own('mcp-settings').hidden = context.readOnly;
+  own('logout-button').hidden = !context.remote;
+  bindText(own('settings-runtime'), () =>
+    state.version?.available === false
+      ? tr('ui.prime_agent_introuvable_sur_cet_ordinateur')
+      : tr('ui.prime_agent_sessions_natives_conservees', { value1: state.version?.version || '' }),
+  );
+  if (entry.contextLabel)
+    bindText(entry.contextLabel, () =>
+      tr(entry.locked && dockingUI?.active ? 'docking.locked' : 'docking.following', {
+        name: toolTargetLabel(toolContext(entry.id)),
+      }),
+    );
+}
+function openToolResources(entry, source, opener) {
+  const context = toolContext(entry.id);
+  if (context.unavailable || context.readOnly || !context.projectCwd) return;
+  entry.resourceTarget = captureToolTarget(
+    context.view || {
+      projectCwd: context.projectCwd,
+      execCwd: context.execCwd,
+      sessionId: context.sessionId,
+    },
+    context.run,
+  );
+  const resourceContext = () => {
+    const owner = resolveToolTarget(entry.resourceTarget, toolSnapshot());
+    return {
+      ...owner,
+      cwd: owner.execCwd,
+      running: isRunning(owner.run),
+      remote: state.remote,
+      readOnly: state.readOnly || owner.unavailable,
+      loading: !state.initialized || !!owner.view?.loading,
+    };
+  };
+  entry.resources ||= createCommands({
+    api,
+    resourceOnly: true,
+    getContext: resourceContext,
+    onError: onComposerError,
+    onInsert: (command) => {
+      const own = resourceContext();
+      if (own.readOnly || own.loading) return false;
+      const id =
+        own.view?.id || openConversationView({ projectCwd: own.projectCwd, sessionId: own.sessionId });
+      const view = convViews.byId(id);
+      if (!view) return false;
+      if (dockingUI?.active) {
+        const mounted = groupsOf(dockingUI.getLayout()).flatMap((group) => group.panels);
+        if (!mounted.includes(view.id) && mounted.filter(isConversationPanel).length >= MAX_CONVERSATIONS) {
+          toast(() => tr('conversation_view.limit_reached'), true);
+          return false;
+        }
+      }
+      convViews.focusView(view.id);
+      afterViewFocused();
+      convViews.ensureFocusedVisible();
+      const units = ensureViewUnits(view);
+      if (units) units.text.select(command, units.text.get());
+      else selectComposerCommand(command, composerText());
+      saveDraft();
+      resizeComposer(units?.nodes.textarea, view);
+      return true;
+    },
+  });
+  entry.ui.trackChild?.(entry.resources.dialog, opener);
+  void entry.resources.open(source);
+}
+
+toolViews = createToolViews({
+  read: (key, fallback) => {
+    try {
+      const raw = localStorage.getItem(`prime-studio.${key}`);
+      return raw === null ? fallback : (JSON.parse(raw) ?? { invalid: true });
+    } catch (error) {
+      return error instanceof SyntaxError ? { invalid: true } : fallback;
+    }
+  },
+  write: writeStorage,
+  getSnapshot: toolSnapshot,
+  create: createToolInstance,
+  onChange: () => {
+    updateToolPanels();
+  },
+});
 inspectorUI = createInspector({
   api,
   markdown,
@@ -4858,104 +5262,115 @@ inspectorUI = createInspector({
   openModelPicker,
   icon,
   toast,
-  getContext: () => ({
-    cwd: execCwdOf(),
-    sessionId: state.sessionId || activeRun()?.sessionId,
-    enabled: state.inspectorAvailable === true,
-    readOnly: state.readOnly,
-    remote: state.remote,
-    nativeFileOpen: state.nativeFileOpen,
-    online: state.online,
-    mainModel: tripleForView(convViews?.focused()).model || state.modelCatalogDefault || '',
-  }),
+  getContext: {
+    session: () => toolContext('session'),
+    agents: () => toolContext('agents'),
+    files: () => toolContext('files'),
+  },
   onClose: () => {
     $('toggle-details').click();
     $('toggle-details').focus();
   },
 });
-roadmapUI = createRoadmap({
-  onSummary: (doc) => {
-    const percent =
-      doc?.initialized && Number.isFinite(doc?.progress?.percent)
-        ? Math.max(0, Math.min(100, Math.round(doc.progress.percent)))
-        : null;
-    $('roadmap-progress').hidden = percent === null;
-    $('roadmap-progress').textContent = percent === null ? '' : `${percent} %`;
-    bindAttribute($('open-roadmap'), 'aria-label', () =>
-      percent === null ? tr('roadmap.open') : tr('roadmap.toolbarProgress', { percent }),
-    );
-    bindAttribute($('open-roadmap'), 'title', () =>
-      percent === null ? tr('roadmap.open') : tr('roadmap.toolbarProgress', { percent }),
-    );
-  },
-  api,
-  toast,
-  getContext: () => ({
-    cwd: state.projectCwd,
-    name: project()?.name,
-    sessions: project()?.sessions || [],
-    sessionId: state.sessionId || activeRun()?.sessionId,
-    model: tripleForView(convViews?.focused()).model || state.modelCatalogDefault,
-    thinking: tripleForView(convViews?.focused()).thinking,
-    readOnly: state.readOnly,
-    online: state.online,
-  }),
-  onKnowledge: () => {
-    if (project()) knowledgeUI.open(project(), $('open-roadmap'));
-  },
-  onOpenSession: async (link) => {
-    const navigation = ++roadmapNavigationSequence;
-    const priorRequest = state.requestId;
-    const resolved = await api(
-      `/api/roadmap/session?${new URLSearchParams({ cwd: link.cwd, sessionId: link.sessionId, ...(link.rootSessionId ? { rootSessionId: link.rootSessionId } : {}) })}`,
-    );
-    if (navigation !== roadmapNavigationSequence || priorRequest !== state.requestId) return;
-    const rootSessionId = resolved.rootSessionId || resolved.sessionId;
-    await selectSession(rootSessionId, link.cwd);
-    if (
-      navigation !== roadmapNavigationSequence ||
-      !samePath(state.projectCwd, link.cwd) ||
-      state.sessionId !== rootSessionId
-    )
-      return;
-    if (resolved.agentId) await inspectorUI.openAgentById(resolved.agentId);
-    convViews?.ensureFocusedVisible();
-  },
-  onWork: async (result) => {
-    if (result.run) {
-      const existing = state.runs.get(result.run.id);
-      const run = existing || result.run;
-      if (!existing) state.runs.set(run.id, run);
-      await selectRun(run);
-    } else if (result.sessionId) await selectSession(result.sessionId, state.projectCwd);
-    convViews?.ensureFocusedVisible();
-    if (result.linkWarning) toast(() => tr('roadmap.linkWarning'), true);
-  },
-});
+function renderRoadmapSummary() {
+  const doc = roadmapSummaries.get(normalizedPath(state.projectCwd));
+  const percent =
+    doc?.initialized && Number.isFinite(doc?.progress?.percent)
+      ? Math.max(0, Math.min(100, Math.round(doc.progress.percent)))
+      : null;
+  $('roadmap-progress').hidden = percent === null;
+  $('roadmap-progress').textContent = percent === null ? '' : `${percent} %`;
+  bindAttribute($('open-roadmap'), 'aria-label', () =>
+    percent === null ? tr('roadmap.open') : tr('roadmap.toolbarProgress', { percent }),
+  );
+  bindAttribute($('open-roadmap'), 'title', () =>
+    percent === null ? tr('roadmap.open') : tr('roadmap.toolbarProgress', { percent }),
+  );
+}
+
+function makeToolRoadmap(entry) {
+  return createRoadmap({
+    instanceId: entry.id,
+    onSummary: (doc) => {
+      const context = toolContext(entry.id);
+      if (!context.projectCwd || context.unavailable) return;
+      roadmapSummaries.set(normalizedPath(context.projectCwd), doc);
+      renderRoadmapSummary();
+    },
+    api,
+    toast,
+    getContext: () => toolContext(entry.id),
+    onKnowledge: (context) => {
+      const owner = state.projects.find((item) => samePath(item.cwd, context.cwd));
+      if (owner) knowledgeUI.open(owner, entry.root || $('open-roadmap'));
+    },
+    onOpenSession: async (link) => {
+      const navigation = ++roadmapNavigationSequence;
+      const priorRequest = state.requestId;
+      const resolved = await api(
+        `/api/roadmap/session?${new URLSearchParams({ cwd: link.cwd, sessionId: link.sessionId, ...(link.rootSessionId ? { rootSessionId: link.rootSessionId } : {}) })}`,
+      );
+      if (navigation !== roadmapNavigationSequence || priorRequest !== state.requestId) return;
+      const rootSessionId = resolved.rootSessionId || resolved.sessionId;
+      await selectSession(rootSessionId, link.cwd);
+      if (
+        navigation !== roadmapNavigationSequence ||
+        !samePath(state.projectCwd, link.cwd) ||
+        state.sessionId !== rootSessionId
+      )
+        return;
+      if (resolved.agentId) {
+        const owner = dockingUI?.active
+          ? toolForContext('agents', resolveToolTarget(null, toolSnapshot()))?.ui
+          : inspectorUI;
+        await owner?.openAgentById(resolved.agentId);
+      }
+      convViews?.ensureFocusedVisible();
+    },
+    onWork: async (result, context) => {
+      if (result.run) {
+        const existing = state.runs.get(result.run.id);
+        const run = existing || result.run;
+        if (!existing) state.runs.set(run.id, run);
+        await selectRun(run);
+      } else if (result.sessionId) await selectSession(result.sessionId, context.cwd);
+      convViews?.ensureFocusedVisible();
+      if (result.linkWarning) toast(() => tr('roadmap.linkWarning'), true);
+    },
+  });
+}
+for (const [kind, root] of Object.entries(inspectorUI.roots())) {
+  Object.assign(toolViews.entries.get(kind), { root, ui: inspectorUI, getElement: $ });
+}
+roadmapUI = toolViews.ensure('roadmap').ui;
+Object.assign(toolViews.entries.get('preferences'), { root: $('settings-dialog'), getElement: $ });
 // Shared dock-state sync: safe to call before the settings UI exists
 // (settingsDockApi is still null then) and after it is created.
 function syncDockingState() {
   const active = !!dockingUI?.active;
   const visible = active ? dockingUI.visiblePanels() : [];
-  roadmapUI?.setDocked?.(
-    active
-      ? {
-          visible: visible.includes('roadmap'),
-          onOpen: () => dockingUI.openPanel('roadmap'),
-          onClose: () => dockingUI.closePanel('roadmap'),
-        }
-      : null,
-  );
-  settingsDockApi?.setDocked?.(
-    active
-      ? {
-          visible: visible.includes('preferences'),
-          onOpen: () => dockingUI.openPanel('preferences'),
-          onClose: () => dockingUI.closePanel('preferences'),
-        }
-      : null,
-  );
   inspectorUI?.setDocked?.(active, visible, (id) => dockingUI.openPanel(id));
+  if (!toolViews) return;
+  for (const entry of toolViews.entries.values()) {
+    if (!entry.ui || ['session', 'agents', 'files'].includes(entry.id)) continue;
+    if (['session', 'agents', 'files'].includes(entry.kind)) {
+      // Secondary tools have no classic/mobile surface: keep them parked.
+      entry.ui.setDocked(true, active && visible.includes(entry.id) ? [entry.kind] : [], () =>
+        dockingUI?.openPanel(entry.id),
+      );
+    } else {
+      entry.ui.setDocked(
+        active || entry.id.startsWith('tool:')
+          ? {
+              visible: active && visible.includes(entry.id),
+              onOpen: () => dockingUI?.openPanel(entry.id),
+              onClose: () => dockingUI?.closePanel(entry.id),
+            }
+          : null,
+      );
+    }
+  }
+  updateToolPanels();
 }
 // Main entrypoints always open the popup (Prefs default modal), even when
 // docked. The docked Preferences tab opens only via explicit AddTab.
@@ -4974,7 +5389,30 @@ dockingUI = createDocking({
   read: readStorage,
   write: writeStorage,
   toast,
-  titleOf: (id) => convViews?.titleOf(id) ?? undefined,
+  titleOf: (id) => toolTitle(id) ?? convViews?.titleOf(id) ?? undefined,
+  toolStateOf: toolLockState,
+  onToggleToolLock: (id) => toolViews.toggleLock(id),
+  onCreateTool: (kind) => {
+    try {
+      const entry = toolViews.createView(kind);
+      if (!entry) {
+        toast(() => tr('docking.registry_full'), true);
+        return null;
+      }
+      dockingUI.registerPanel(entry.id, entry.root);
+      syncDockingState();
+      return entry.id;
+    } catch (error) {
+      console.error('Unable to open tool panel', error);
+      toast(() => translateKnown(error.message) || tr('common.error'), true);
+      return null;
+    }
+  },
+  onRestoreTool: (id) => toolViews.ensure(id, { restored: true })?.root || null,
+  toolIdsOf: (kind) =>
+    [...toolViews.entries.values()]
+      .filter((entry) => entry.kind === kind && entry.id.startsWith('tool:'))
+      .map((entry) => entry.id),
   isFocusedPanel: (id) => !!convViews?.isFocused(id),
   // Tab glyph color: the owning project's folder color for conversation tabs,
   // '' when none (dock validates/falls back). Registry-sourced per view, so a
@@ -5013,7 +5451,7 @@ dockingUI = createDocking({
   onCreateConversation: (opts) => convViews?.handleCreateConversation(opts) || null,
   onBeforeModeChange: () => convViews?.captureForModeChange(),
   onBeforeMove: (id, node) => {
-    if (id === 'preferences') settingsDockApi?.prepareDockMove?.();
+    if (toolKindOf(id) === 'preferences') toolViews?.entries.get(id)?.ui?.prepareDockMove?.();
     // Same-group timing: dock parks panels before onActivatePanel runs. Capture
     // the live host scroll here, while it still has layout — never from a
     // hidden node. Classic switches are already covered by onBeforeModeChange.
@@ -5044,8 +5482,8 @@ dockingUI = createDocking({
   onResize: resizeDockedConversation,
 });
 dockingUI.updateViewport();
-for (const id of ['open-roadmap', 'project-roadmap', 'detail-project-roadmap'])
-  $(id).onclick = (event) => roadmapUI.open(event.currentTarget);
+for (const id of ['open-roadmap', 'project-roadmap'])
+  $(id).onclick = (event) => showToolRoadmapFor(resolveToolTarget(null, toolSnapshot()), event.currentTarget);
 archivesUI = createProjectArchives({
   toast,
   getContext: () => ({
@@ -5094,7 +5532,11 @@ async function commandsAction(name, args) {
   switch (name) {
     case 'roadmap':
     case 'backlog':
-      return roadmapUI.open($('open-roadmap'), name === 'backlog' ? 'backlog' : 'project');
+      return showToolRoadmapFor(
+        resolveToolTarget(null, toolSnapshot()),
+        $('open-roadmap'),
+        name === 'backlog' ? 'backlog' : 'project',
+      );
     case 'help':
       return commandsUI.open();
     case 'skills':
@@ -5230,7 +5672,7 @@ $('copy-project-path').onclick = () => copyText(state.projectCwd, () => tr('ui.c
 $('open-settings').onclick = () => openSettings();
 // Full control may rotate the remote PIN via the gateway (it signs out remotes, deliberately).
 // Consultation stays blocked via readOnly.
-createRemoteAccessSettings({ api, isRemote: () => state.readOnly, toast });
+const remoteAccessUI = createRemoteAccessSettings({ api, isRemote: () => state.readOnly, toast });
 $('project-menu').onclick = (e) => {
   const swatch = e.target.closest('[data-project-color]');
   if (swatch) {
@@ -5487,14 +5929,14 @@ document.addEventListener('click', (e) => {
   if (!e.target.closest('#project-menu') && !e.target.closest('.project-more')) closeProjectMenu();
   if (
     !e.target.closest('#session-menu') &&
-    !e.target.closest('#session-menu-button') &&
+    !e.target.closest('#session-menu-button, [data-panel-id="session-menu-button"]') &&
     !e.target.closest('.session-more')
   )
     closeSessionMenu();
 });
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
-    if ($('inspector-viewer').open || $('knowledge-dialog').open) return;
+    if (document.querySelector('.inspector-viewer:modal') || $('knowledge-dialog').open) return;
     closeProjectMenu();
     closeSessionMenu();
     closeSidebar();
@@ -5583,8 +6025,8 @@ setInterval(() => {
 setInterval(() => {
   if (state.initialized && !document.hidden) void refreshOverview();
 }, 10000);
-createMcpSettings({ api, toast });
-createProviderSettings({
+const mcpSettingsUI = createMcpSettings({ api, toast });
+const providerSettingsUI = createProviderSettings({
   api,
   toast,
   allowed: () => !state.readOnly && state.providersAvailable,
@@ -5593,34 +6035,10 @@ createProviderSettings({
     updateModelsAfterConfiguration({ catalog });
   },
 });
-const settingsUI = createSettings({
-  api,
-  onStudioPreferences: applyStudioPreferences,
-  // Saving or clearing the native imageModel refreshes the composer gate
-  // through the existing catalog GET; selection is preserved. A GET already
-  // in flight before the save would resolve stale, so await it first and
-  // only then issue the fresh read. No duplicate state, no reload.
-  onEngineSettings: async () => {
-    try {
-      await modelCatalogRequest?.catch(() => {});
-      await refreshModelCatalog();
-    } catch {
-    } finally {
-      updateComposer();
-    }
-  },
-  getContext: () => ({
-    remote: state.remote,
-    readOnly: state.readOnly,
-    projectCwd: state.projectCwd,
-    version: state.version,
-  }),
-  openResources: (source) => commandsUI.open(source),
-  copyText,
-  toast,
-  getModels: () => state.models,
-  openModelPicker,
-  icon,
+const settingsUI = makeToolPreferences(toolViews.entries.get('preferences'), {
+  root: $('settings-dialog'),
+  getElement: $,
+  domId: (id) => id,
 });
 settingsDockApi = settingsUI;
 syncDockingState();
@@ -5648,6 +6066,20 @@ void pushSettings.consumeDeepLink((sessionId) => selectSession(sessionId)).catch
 computerUseUI = createComputerUse({
   api,
   toast,
+  getDetailTargets: () =>
+    [...toolViews.entries.values()]
+      .filter((entry) => entry.kind === 'session' && entry.root?.getClientRects().length)
+      .map((entry) => ({
+        getElement: entry.getElement,
+        getContext: () => {
+          const context = toolContext(entry.id);
+          return {
+            ...context,
+            runId: context.run?.id || null,
+            projectOverview: !dockingUI?.active && state.projectOverview,
+          };
+        },
+      })),
   getContext: () => ({
     sessionId: state.sessionId,
     runId: activeRun()?.id || null,
@@ -5689,5 +6121,5 @@ subscribeSync((snapshot) => {
 });
 enableLiveComposers();
 if ($('sync-footer')) $('sync-footer').onclick = () => openSyncPreferences();
-$('detail-git-align').onclick = () => void alignSessionGit();
+bindToolSession(toolViews.entries.get('session'), $);
 void bootstrap();

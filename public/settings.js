@@ -20,12 +20,25 @@ export function createSettings({
   toast,
   onStudioPreferences = () => {},
   onEngineSettings = () => {},
+  onComputerPreferences = () => {},
   getModels,
   openModelPicker,
   icon,
-}) {
-  const updates = createDesktopUpdates({ api, getContext });
-  const interactions = createInteractionSettings({ api, getContext, onStudioPreferences });
+  getElement = null,
+  domId = null,
+  instanceId = '',
+  isPrimary = true,
+} = {}) {
+  const scoped = typeof getElement === 'function';
+  const $ = (id) => (scoped ? getElement(id) : document.getElementById(id));
+  const scopedId = (logical) => (typeof domId === 'function' ? domId(logical) : logical);
+  // Global singleton manager dialogs stay global by design (one live node
+  // each); only the initiating instance restores on their close.
+  const globalById = (id) => document.getElementById(id);
+  const primary = isPrimary !== false;
+  const scope = { getElement: scoped ? getElement : null, domId, instanceId, isPrimary };
+  const updates = createDesktopUpdates({ api, getContext, ...scope });
+  const interactions = createInteractionSettings({ api, getContext, onStudioPreferences, ...scope });
   const engineSettings = createEngineSettings({
     api,
     getContext,
@@ -33,12 +46,19 @@ export function createSettings({
     openModelPicker,
     icon,
     onChanged: onEngineSettings,
+    ...scope,
   });
-  const computerPreferences = createComputerPreferences({ api, getContext, getModels, openModelPicker });
+  const computerPreferences = createComputerPreferences({
+    api,
+    getContext,
+    getModels,
+    openModelPicker,
+    onChanged: onComputerPreferences,
+    ...scope,
+  });
   computerPreferences.start();
-  const syncSettings = createSyncSettings({ api, getContext, toast });
-  const publicApi = createPublicApiSettings({ api, getContext, copyText, toast, icon });
-  const $ = (id) => document.getElementById(id);
+  const syncSettings = createSyncSettings({ api, getContext, toast, ...scope });
+  const publicApi = createPublicApiSettings({ api, getContext, copyText, toast, icon, ...scope });
   const showLegacyComponentsRow = isDesktopComponentsAvailable() && !isNewComponentsBridgeAvailable();
   if (showLegacyComponentsRow) {
     $('settings-components-row').hidden = false;
@@ -79,7 +99,8 @@ export function createSettings({
     // move that bypassed prepareDockMove). Cleared on user cancel and on the
     // handshake itself — never resurrected later.
     bootUpdates = false,
-    bootPhase = true;
+    bootPhase = true,
+    disposed = false;
   const node = (tag, className, message) => {
     const element = document.createElement(tag);
     if (className) element.className = className;
@@ -142,7 +163,11 @@ export function createSettings({
       .setAttribute('aria-orientation', horizontal ? 'horizontal' : 'vertical');
   };
   narrow.addEventListener('change', orientation);
-  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => orientation()).observe(dialog);
+  const orientationObserver =
+    typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => orientation()) : null;
+  try {
+    orientationObserver?.observe(dialog);
+  } catch {}
   orientation();
   dialog.querySelector('.settings-nav').addEventListener('keydown', (event) => {
     if (!['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
@@ -240,13 +265,14 @@ export function createSettings({
     lastGateKey = gateKey();
     gatedOnce = true;
   }
-  new MutationObserver(() => {
+  const openObserver = new MutationObserver(() => {
     if (suppressObserverOnce) {
       suppressObserverOnce = false;
       return;
     }
     opened();
-  }).observe(dialog, { attributes: true, attributeFilter: ['open'] });
+  });
+  openObserver.observe(dialog, { attributes: true, attributeFilter: ['open'] });
   // dialog.close() queues its close event asynchronously, so a synchronous
   // try/finally flag around close() cannot work. Count programmatic closes
   // instead: increment only when open, so every increment pairs with exactly
@@ -277,14 +303,16 @@ export function createSettings({
       hideOnClose = true;
     }
   }
-  // A known child manager modal currently open means this close is a
-  // parent yield (mcp/remote close a modal parent before opening), not a user
-  // cancel: the managers return path restores the popup session afterwards.
+  // Dynamically tracked children (per-instance resourceOnly commands dialogs
+  // supplied by the parent via trackChild) plus the known global singletons.
+  // A currently open child means this close is a parent yield, not a user
+  // cancel: the return path restores the popup session afterwards.
+  const trackedChildren = new Map();
   const childManagerOpen = () =>
     ['model-config-dialog', 'providers-dialog', 'mcp-dialog', 'remote-access-dialog', 'commands-dialog'].some(
       (id) => document.getElementById(id)?.open,
-    );
-  dialog.addEventListener('close', () => {
+    ) || [...trackedChildren.keys()].some((node) => node?.open);
+  const onOwnedClose = () => {
     generation++;
     if (programmaticCloses > 0) {
       programmaticCloses--;
@@ -312,7 +340,8 @@ export function createSettings({
     // Generic user close (X / data-close-dialog / Esc in classic) while docked
     // removes the dock tab via the parent.
     if (dock) dock.onClose?.();
-  });
+  };
+  dialog.addEventListener('close', onOwnedClose);
   // Return to the category only when this panel launched the child manager.
   const managers = {
     'open-model-config': 'model-config-dialog',
@@ -322,19 +351,21 @@ export function createSettings({
     'settings-skills': 'commands-dialog',
     'settings-prompts': 'commands-dialog',
   };
-  dialog.addEventListener(
-    'click',
-    (event) => {
-      const manager = managers[event.target.closest('button')?.id];
-      if (manager) {
-        returnFrom = manager;
-        returnButton = event.target.closest('button');
-      }
-    },
-    true,
-  );
-  for (const id of new Set(Object.values(managers)))
-    $(id)?.addEventListener('close', () => {
+  const onManagerClick = (event) => {
+    // Scoped clones carry rewritten physical ids: resolve the logical id via
+    // data-panel-id first so manager launches route from the owning instance.
+    const button = event.target.closest('button');
+    const logical = button?.getAttribute?.('data-panel-id') || button?.id;
+    const manager = managers[logical];
+    if (manager) {
+      returnFrom = manager;
+      returnButton = button;
+    }
+  };
+  dialog.addEventListener('click', onManagerClick, true);
+  // One shared close listener per global manager dialog: only the instance
+  // that launched it (returnFrom match) restores; siblings stay silent.
+  const onManagerClose = (id) => () => {
       if (returnFrom !== id) return;
       const back = returnButton;
       returnFrom = undefined;
@@ -362,16 +393,66 @@ export function createSettings({
       }
       safeShowModal();
       back?.focus?.();
-    });
+    };
+  const managerHandlers = new Map();
+  for (const id of new Set(Object.values(managers))) {
+    const handler = onManagerClose(id);
+    managerHandlers.set(id, handler);
+    globalById(id)?.addEventListener('close', handler);
+  }
+  // Per-instance dynamic child (parent-owned resourceOnly commands dialog).
+  // The parent calls entry.ui.trackChild(dialog, opener) just before
+  // entry.resources.open(source). Only this instance restores on that child's
+  // close; siblings stay silent. Preserves popupOpen/dock state, never touches
+  // programmaticCloses, removable on dispose or after close.
+  function trackChild(childDialog, opener) {
+    if (!childDialog || trackedChildren.has(childDialog)) return;
+    const handler = () => {
+      trackedChildren.delete(childDialog);
+      try {
+        childDialog.removeEventListener('close', handler);
+      } catch {}
+      if (disposed) return;
+      if (dock) {
+        if (popupOpen) {
+          revealPopup();
+          safeShowModal();
+          try {
+            opener?.focus?.();
+          } catch {}
+          return;
+        }
+        if (!dock.visible) return;
+        dock.onOpen?.();
+        showDocked();
+        try {
+          if (dock.visible) opener?.focus?.();
+        } catch {}
+        return;
+      }
+      if (!dialog.open) safeShowModal();
+      try {
+        opener?.focus?.();
+      } catch {}
+    };
+    trackedChildren.set(childDialog, { opener, handler });
+    try {
+      childDialog.addEventListener('close', handler);
+    } catch {}
+  }
   for (const [id, source] of [
     ['settings-skills', 'skill'],
     ['settings-prompts', 'prompt'],
   ])
-    $(id).onclick = () => {
+    $(id).onclick = (event) => {
       // Docked: the shared settings node stays open underneath (non-modal); the
-      // commands dialog stacks as a real modal and returns via the managers map.
+      // child dialog stacks as a real modal and returns via trackChild.
+      // Classic: close first (the close event fires after the parent opens the
+      // child, so the yield guard still sees it open). The opener travels as
+      // the 2nd openResources arg for parent trackChild wiring.
+      const opener = event?.currentTarget || $(id);
       if (!dock) dialog.close();
-      void openResources(source);
+      void openResources(source, opener);
     };
 
   function controlsDisabled(value) {
@@ -393,7 +474,7 @@ export function createSettings({
         heading = node('div', 'network-heading'),
         title = node('div');
       const label = node('label', '', 'settings.' + channel.kind);
-      label.htmlFor = 'network-' + channel.kind;
+      label.htmlFor = scopedId('network-' + channel.kind);
       title.append(label, node('p', 'network-description', 'settings.' + channel.kind + '_note'));
       heading.append(title);
       const state = node('span', 'network-state', 'settings.status_' + channel.status);
@@ -417,7 +498,7 @@ export function createSettings({
         const fields = node('div', 'network-fields');
         const addressLabel = node('label', '', 'settings.interface'),
           address = node('select');
-        address.id = 'network-address-' + channel.kind;
+        address.id = scopedId('network-address-' + channel.kind);
         addressLabel.htmlFor = address.id;
         for (const item of channel.addresses)
           address.add(new Option(`${item.name} · ${item.address}`, item.address));
@@ -426,7 +507,7 @@ export function createSettings({
         address.dataset.unavailable = String(address.disabled);
         const portLabel = node('label', '', 'settings.port'),
           port = node('input');
-        port.id = 'network-port-' + channel.kind;
+        port.id = scopedId('network-port-' + channel.kind);
         portLabel.htmlFor = port.id;
         port.type = 'number';
         port.required = true;
@@ -465,7 +546,7 @@ export function createSettings({
         card.append(details);
       } else {
         const toggle = node('input', 'switch');
-        toggle.id = 'network-https';
+        toggle.id = scopedId('network-https');
         toggle.type = 'checkbox';
         toggle.setAttribute('role', 'switch');
         toggle.checked = channel.enabled;
@@ -481,7 +562,7 @@ export function createSettings({
         const portGroup = node('div'),
           portLabel = node('label', '', 'https.local_port'),
           port = node('input');
-        port.id = 'network-port-https';
+        port.id = scopedId('network-port-https');
         portLabel.htmlFor = port.id;
         port.type = 'number';
         port.required = true;
@@ -644,7 +725,10 @@ export function createSettings({
     $('network-generated-code').textContent = '';
     $('network-new-code').hidden = true;
   };
-  setInterval(() => {
+  // Owned poller: only this dialog's open remote tab refreshes. Disposed with
+  // the instance, so clones never stack duplicate network polls.
+  const networkTimer = setInterval(() => {
+    if (disposed) return;
     if (
       dialog.open &&
       dialog.getClientRects().length &&
@@ -656,11 +740,12 @@ export function createSettings({
   }, 8000);
 
   const qrDialog = node('dialog', 'modal settings-qr');
-  qrDialog.id = 'settings-qr-dialog';
-  qrDialog.setAttribute('aria-labelledby', 'settings-qr-title');
+  qrDialog.id = scopedId('settings-qr-dialog');
+  qrDialog.setAttribute('data-panel-id', 'settings-qr-dialog');
+  qrDialog.setAttribute('aria-labelledby', scopedId('settings-qr-title'));
   const qrHeading = node('div', 'modal-heading'),
     qrTitle = node('h2', '', 'settings.qr_title');
-  qrTitle.id = 'settings-qr-title';
+  qrTitle.id = scopedId('settings-qr-title');
   const qrClose = button('ui.fermer', () => qrDialog.close(), 'secondary-button');
   qrHeading.append(qrTitle, qrClose);
   const qrStatus = node('p'),
@@ -814,8 +899,9 @@ export function createSettings({
     }
   };
   // Text bindings update in place, preserving open connection options and unsaved fields.
-  onLanguageChange(() => {
-    if (dialog.open && (!dock || dock.visible) && selected === 'system') void refreshSystem();
+  const offLanguage = onLanguageChange(() => {
+    if (!disposed && dialog.open && (!dock || dock.visible) && selected === 'system')
+      void refreshSystem();
   });
   translateDOM(dialog);
   // Opens straight on one tab: the previously selected tab is not refreshed first.
@@ -847,22 +933,24 @@ export function createSettings({
     openUpdatesPane(false);
     const reveal = () => {
       try {
-        const panel = document.getElementById('studio-update-components');
-        const heading = document.getElementById('studio-update-components-heading');
+        const panel = $('studio-update-components');
+        const heading = $('studio-update-components-heading');
         if (panel && !panel.hidden) panel.scrollIntoView({ block: 'start' });
         if (heading) heading.focus({ preventScroll: true });
       } catch {}
     };
     // One layout frame after revealing the tab; never steal focus again later.
     requestAnimationFrame(() => {
-      if (dialog.open && selected === 'updates') reveal();
+      if (!disposed && dialog.open && selected === 'updates') reveal();
     });
   };
-  registerDesktopComponentsOpener(() => openComponentPanel());
+  // Global desktop surface hooks belong to the primary only: a single
+  // components opener, a single boot deep-link, no N duplicate registrations.
+  if (primary) registerDesktopComponentsOpener(() => openComponentPanel());
   try {
-    window.__PRIME_STUDIO_OPEN_UPDATES__ = () => openComponentPanel();
+    if (primary) window.__PRIME_STUDIO_OPEN_UPDATES__ = () => openComponentPanel();
   } catch {}
-  if (new URLSearchParams(location.search).get('settings') === 'updates') {
+  if (primary && new URLSearchParams(location.search).get('settings') === 'updates') {
     selected = 'updates';
     bootUpdates = true;
     // Boot intent is a popup session like the main entry (never an auto tab).
@@ -994,6 +1082,7 @@ export function createSettings({
     setDocked,
     prepareDockMove,
     refreshContext,
+    trackChild,
     openUpdates: () => openUpdatesPane(false),
     openTab,
     updates,
@@ -1001,5 +1090,59 @@ export function createSettings({
     getComputerModel: () => computerPreferences.getModel(),
     getComputerThinking: () => computerPreferences.getThinking(),
     refreshComputerPreferences: () => computerPreferences.refresh(),
+    get root() {
+      return dialog;
+    },
+    get instanceId() {
+      return instanceId;
+    },
+    get isPrimary() {
+      return primary;
+    },
+    dispose: () => {
+      // Tear down ONLY this instance: stale-guard flights, stop the owned
+      // poller, drop owned observers/listeners, dispose children, remove the
+      // owned QR node. Global manager dialogs and shared services untouched.
+      disposed = true;
+      generation++;
+      try {
+        clearInterval(networkTimer);
+      } catch {}
+      try {
+        openObserver.disconnect();
+      } catch {}
+      try {
+        orientationObserver?.disconnect();
+      } catch {}
+      try {
+        narrow.removeEventListener('change', orientation);
+      } catch {}
+      try {
+        dialog.removeEventListener('close', onOwnedClose);
+      } catch {}
+      try {
+        dialog.removeEventListener('click', onManagerClick, true);
+      } catch {}
+      for (const [id, handler] of managerHandlers)
+        try {
+          globalById(id)?.removeEventListener('close', handler);
+        } catch {}
+      managerHandlers.clear();
+      for (const [node, entry] of trackedChildren)
+        try {
+          node?.removeEventListener?.('close', entry?.handler);
+        } catch {}
+      trackedChildren.clear();
+      try {
+        offLanguage?.();
+      } catch {}
+      for (const child of [updates, interactions, engineSettings, computerPreferences, syncSettings, publicApi])
+        try {
+          child?.dispose?.();
+        } catch {}
+      try {
+        qrDialog.remove();
+      } catch {}
+    },
   };
 }

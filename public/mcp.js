@@ -578,9 +578,28 @@ export function createMcpSettings({ api, toast }) {
   }
   $('mcp-tools-mode').onchange = toolsMode;
   $('mcp-close').onclick = () => dialog.close();
+  // Singleton global manager: one live dialog. open(opener?) takes the actual
+  // launching button/element (or an Event, normalized here). A Preferences
+  // clone passes its own scoped button so ONLY its owning .settings-modal is
+  // released — never the global primary. Return ownership stays with the
+  // launching Preferences instance via its settings.js manager-close capture.
+  let lastOpener = null;
+  const normalizeOpener = (opener) => {
+    if (!opener) return null;
+    if (typeof opener.preventDefault === 'function' && 'target' in opener)
+      return opener.currentTarget || opener.target?.closest?.('button') || opener.target || null;
+    return opener;
+  };
   dialog.onclose = () => {
     generation++;
     void cancelLogin();
+    const opener = lastOpener;
+    lastOpener = null;
+    // Clone-owned launch: the owning Preferences instance restores itself, so
+    // never force focus back to the (possibly hidden) primary header opener.
+    if (opener && opener.isConnected !== false) {
+      if (opener !== document.getElementById('open-mcp-settings')) return;
+    }
     // Ordering: the settings managers return runs after this handler (it was
     // registered later at boot), so when the parent is still open underneath
     // it owns the final focus — ideally back inside Preferences. Only fall
@@ -592,11 +611,17 @@ export function createMcpSettings({ api, toast }) {
       if (back?.getClientRects?.().length) back.focus({ preventScroll: true });
     } catch {}
   };
-  document.getElementById('open-mcp-settings').onclick = async () => {
-    // Docked: the shared settings node stays open underneath (non-modal); the
-    // MCP dialog stacks as a real modal and returns via the settings managers.
-    const parent = document.getElementById('settings-dialog');
-    if (parent?.matches?.(':modal')) parent.close();
+  async function open(opener) {
+    const element = normalizeOpener(opener);
+    if (element) lastOpener = element;
+    const owner = element?.closest?.('.settings-modal');
+    if (owner) {
+      if (owner.matches?.(':modal')) owner.close();
+    } else {
+      // Legacy primary path (no opener): release the primary modal as before.
+      const parent = document.getElementById('settings-dialog');
+      if (parent?.matches?.(':modal')) parent.close();
+    }
     if (!dialog.open) dialog.showModal();
     view('list-view');
     bindText($('mcp-list'), () => tr('ui.chargement_des_connexions'));
@@ -605,5 +630,8 @@ export function createMcpSettings({ api, toast }) {
     } catch (e) {
       error(translateKnown(e.message));
     }
-  };
+  }
+  document.getElementById('open-mcp-settings').onclick = (event) =>
+    open(event?.currentTarget || event?.target);
+  return { open };
 }

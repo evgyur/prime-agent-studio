@@ -36,7 +36,10 @@ try {
   await expect(page.locator('[data-i18n="computer.toolsNote"]')).toContainText('avec votre autorisation');
   await expect(page.locator('#computer-use-label')).toHaveText('Computer Use');
   await page.locator('#settings-skills').click();
-  await expect(page.locator('#commands-dialog')).toBeVisible();
+  // Tool-panel architecture: Skills opens the per-Preferences resourceOnly
+  // dialog (dynamic cmd id), not the legacy primary #commands-dialog which
+  // stays hidden. Same functional assertion: a commands dialog is visible.
+  await expect(page.locator('dialog.command-dialog[open]')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.locator('#settings-skills')).toBeFocused();
   await page.locator('#settings-tab-remote').click();

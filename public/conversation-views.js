@@ -58,6 +58,19 @@ export function originSessionId(origin, fallbackSessionId) {
   return origin.sessionId || null;
 }
 
+// Pin identity (pure, regression-tested): an EXPLICIT new->session/run rebind
+// rotates the view nonce so the original unsent `conv:<nonce>` slot stays
+// intact and a nonce pin can never be hijacked by an unrelated selection.
+// Automatic send/SSE promotion mutates the view in place and bypasses
+// bindFocused, so rebinding the already-adopted run keeps the nonce and the
+// pin adopts that session.
+export function shouldRotateNonceOnBind(prev, binding) {
+  if (!prev || prev.kind !== 'new' || prev.sessionId) return false;
+  if (!binding || (!binding.sessionId && !binding.viewRunId)) return false;
+  if (binding.viewRunId && binding.viewRunId === prev.viewRunId) return false;
+  return true;
+}
+
 // Read-only rule as a pure function: a readonly composer has no writable
 // draft slot — saves/deletes are prohibited and nothing private is shown.
 export function writableDraftKey(view, isReadOnly) {
@@ -613,6 +626,21 @@ export function createConversationViews(deps) {
   }
   // Host column activation (primary view): pointerdown focuses first without
   // consuming, focusin covers keyboard entry. Same contract as shell binding.
+  // Guarded: the host must never steal focus it does not own. Undocked, the
+  // host can represent a retained focused secondary view; an already-primary
+  // focus needs no mirror (whose global write would silently clear
+  // projectOverview while the overview DOM stays visible, breaking overview
+  // rendering); and #project-overview is a global navigation surface, never
+  // conversation activation. A real background primary transcript still
+  // activates, deferred past gesture end like shells.
+  function hostActivationAllowed(event) {
+    if (!dockedActive) return false;
+    if (focusedId === PRIMARY_VIEW_ID) return false;
+    try {
+      if (event?.target?.closest?.('#project-overview')) return false;
+    } catch {}
+    return true;
+  }
   function bindHost() {
     if (host.dataset.cvwActive === 'true') return;
     host.dataset.cvwActive = 'true';
@@ -620,11 +648,13 @@ export function createConversationViews(deps) {
       'pointerdown',
       (event) => {
         if (event.button !== 0 && event.pointerType === 'mouse') return;
-        focusView(PRIMARY_VIEW_ID, { reveal: false });
+        if (!hostActivationAllowed(event)) return;
+        focusView(PRIMARY_VIEW_ID, { reveal: false, deferRender: true });
       },
       true,
     );
-    host.addEventListener('focusin', () => {
+    host.addEventListener('focusin', (event) => {
+      if (!hostActivationAllowed(event)) return;
       focusView(PRIMARY_VIEW_ID, { reveal: false });
     });
   }
@@ -812,6 +842,79 @@ export function createConversationViews(deps) {
     return refs;
   }
 
+  // First-click gesture safety: a synchronous transcript re-render between
+  // pointerdown and click disturbs the gesture and the browser drops the
+  // trusted click (focus lands, the link/image never opens). Pointerdown
+  // activation therefore switches all focus STATE synchronously but defers
+  // the transcript paint until the gesture ends. No event is prevented,
+  // stopped, replayed or synthesized: the original click always runs first
+  // on intact DOM with already-correct focus, then the paint flushes on the
+  // next task (never a microtask: microtasks can run mid-dispatch, before
+  // target/bubble listeners). Drags, cancels and blurs flush the same way,
+  // so a queued paint never strands; explicit/programmatic focus stays sync.
+  let deferredRender = false;
+  let flushArmed = false;
+  let flushTimer = 0;
+  function clearFlushTimer() {
+    if (!flushTimer) return;
+    try {
+      clearTimeout(flushTimer);
+    } catch {}
+    flushTimer = 0;
+  }
+  function disarmRenderFlush() {
+    if (!flushArmed) return;
+    flushArmed = false;
+    try {
+      document.removeEventListener('click', laterFlushRender, true);
+      window.removeEventListener('pointerup', pointerUpFallback, true);
+      window.removeEventListener('pointercancel', laterFlushRender);
+      window.removeEventListener('blur', laterFlushRender);
+      window.removeEventListener('dragend', laterFlushRender);
+    } catch {}
+  }
+  function pointerUpFallback(event) {
+    // End of gesture even when no click/dragend/blur follows (pointer
+    // released outside the window, aborted drag). Queued on the next task so
+    // it can never run inside click dispatch; a real click collapses it via
+    // its own capture listener before the task runs. Non-primary buttons
+    // (right/middle) never armed the queue, so they never flush it.
+    if (event && event.pointerType === 'mouse' && event.button !== 0) return;
+    laterFlushRender();
+  }
+  function flushDeferredRender() {
+    clearFlushTimer();
+    disarmRenderFlush();
+    if (!deferredRender) return;
+    deferredRender = false;
+    try {
+      hostRender(false);
+    } catch {}
+  }
+  function laterFlushRender() {
+    // Gesture-end (click dispatched, drag ended, pointer cancelled or focus
+    // lost): paint on the next task, after the full trusted click and its
+    // default action finish. Re-queued collapses stacked gesture ends.
+    clearFlushTimer();
+    try {
+      flushTimer = setTimeout(() => {
+        flushTimer = 0;
+        flushDeferredRender();
+      }, 0);
+    } catch {}
+  }
+  function armRenderFlush() {
+    disarmRenderFlush();
+    flushArmed = true;
+    try {
+      document.addEventListener('click', laterFlushRender, true);
+      window.addEventListener('pointerup', pointerUpFallback, true);
+      window.addEventListener('pointercancel', laterFlushRender);
+      window.addEventListener('blur', laterFlushRender);
+      window.addEventListener('dragend', laterFlushRender);
+    } catch {}
+  }
+
   // Shell click/focus-in activation for the wiring phase (STAGED — not bound
   // yet). Focuses the view synchronously and NEVER prevents, stops, or
   // re-dispatches the event: the original control action always proceeds on
@@ -825,7 +928,7 @@ export function createConversationViews(deps) {
       'pointerdown',
       (event) => {
         if (event.button !== 0 && event.pointerType === 'mouse') return;
-        focusView(view.id, { reveal: false });
+        focusView(view.id, { reveal: false, deferRender: true });
       },
       true,
     );
@@ -882,6 +985,11 @@ export function createConversationViews(deps) {
         };
       }
     }
+    // A queued gesture paint never strands: an armed flush still owns it and
+    // paints the current focus at gesture end, but an orphaned one (sync
+    // render already covered it elsewhere) flushes here while no gesture can
+    // be in flight to disturb.
+    if (deferredRender && !flushArmed) flushDeferredRender();
     // Guard first: programmatic openPanel re-enters via onActivatePanel.
     focusedId = id;
     // Mount before measuring: the shell must have layout for restore to stick.
@@ -898,22 +1006,32 @@ export function createConversationViews(deps) {
     }
     mirrorFocused(view);
     restoreFocusedDraft();
+    // No cache clears on a pure focus switch: message nodes memoize by
+    // content signature and revalidate themselves, so the same transcript
+    // reconciles to the same DOM. Clearing here would force a gratuitous
+    // rebuild that (besides wasted work) detaches nodes under an in-flight
+    // gesture — collapsing a text selection the user just formed. Rebinds
+    // (bindFocused, new content) still clear explicitly.
     if (view.id === PRIMARY_VIEW_ID) {
       try {
-        clearHostNodes?.();
-      } catch {}
-      try {
         restoreHostScrollState?.({ top: view.scrollTop || 0, follow: view.follow !== false });
-      } catch {}
-    } else {
-      try {
-        view.nodes.clear();
       } catch {}
     }
     // No force-bottom and no DOM moves: detached positions survive in their
     // own scroller; follow mode reattaches by itself. Transcript routing is
     // owned by the app render dispatcher (host shows primary, shells own).
-    hostRender(false);
+    // Pointerdown-initiated activation defers this paint past gesture end so
+    // the first click on a link/image both focuses and opens; every other
+    // path renders synchronously exactly as before.
+    if (opts.deferRender) {
+      deferredRender = true;
+      armRenderFlush();
+    } else {
+      deferredRender = false;
+      disarmRenderFlush();
+      clearFlushTimer();
+      hostRender(false);
+    }
     renderNavigation();
     saveSelection();
     persist();
@@ -933,6 +1051,14 @@ export function createConversationViews(deps) {
     const view = focused() || views.get(PRIMARY_VIEW_ID);
     saveFocusedDraft();
     captureHostScroll(view);
+    // Sidebar/programmatic rebinds paint synchronously below, which covers
+    // any queued gesture paint: drop the queue without painting twice.
+    deferredRender = false;
+    disarmRenderFlush();
+    clearFlushTimer();
+    // Capture pre-mutation identity: explicit new->session/run promotion
+    // rotates below; in-place automatic promotion never reaches here.
+    const rotateNonce = shouldRotateNonceOnBind(view, binding);
     view.kind = binding.kind;
     view.sessionId = binding.sessionId || null;
     view.projectCwd = binding.projectCwd ?? view.projectCwd;
@@ -940,6 +1066,7 @@ export function createConversationViews(deps) {
     view.viewRunId = binding.viewRunId || null;
     if (binding.nonce) view.nonce = binding.nonce;
     if (binding.kind === 'new' && !binding.keepNonce) view.nonce = freshNonce();
+    else if (rotateNonce) view.nonce = freshNonce();
     // Draft gen is single-binding: an explicit gen wins; binding onto a
     // session/run clears any stale new-chat pick (tripleForView additionally
     // ignores gen once session-bound). New-to-new rebinds keep picks, matching

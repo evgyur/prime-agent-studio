@@ -44,6 +44,11 @@ function scheduleShared() {
   if (typeof document !== 'undefined' && document.hidden) return;
   const delay = sharedData?.running ? 2000 : 30000;
   sharedTimer = setTimeout(() => void fetchShared(), delay);
+  // Node test harness: never keep the process alive for a background poll.
+  // Browsers ignore this (numeric timer id, no unref).
+  try {
+    sharedTimer?.unref?.();
+  } catch {}
 }
 
 async function fetchShared() {
@@ -88,7 +93,12 @@ export function initSyncMonitor({ api, getContext } = {}) {
   if (api) sharedApi = api;
   if (getContext) sharedGetContext = getContext;
   if (sharedStarted) {
-    scheduleShared();
+    // Startup ordering: the first init may run pre-bootstrap (readOnly) and
+    // skip its fetch, leaving no snapshot. When the live context replaces it,
+    // retry the missing initial snapshot at once; clones with a snapshot only
+    // reschedule. fetchShared keeps its hidden/permission/in-flight guards.
+    if (sharedData == null) void fetchShared();
+    else scheduleShared();
     return;
   }
   sharedStarted = true;
@@ -109,6 +119,18 @@ export function refreshSyncNow() {
   return fetchShared();
 }
 
+// Test-only teardown: stop the shared poller so isolated fixtures never hold
+// the runner's event loop. Production never calls this; the monitor is meant
+// to run for the Studio lifetime.
+export function __stopSyncMonitorForTests() {
+  try {
+    if (sharedTimer) clearTimeout(sharedTimer);
+  } catch {}
+  sharedTimer = 0;
+  sharedStarted = false;
+  sharedInFlight = false;
+}
+
 export function setSyncSnapshot(data) {
   sharedData = data;
   notifyShared();
@@ -124,11 +146,29 @@ export function patchSyncSession(id, syncState) {
   notifyShared();
 }
 
-export function createSyncSettings({ api, getContext, toast }) {
-  const $ = (id) => document.getElementById(id);
+export function createSyncSettings({
+  api,
+  getContext,
+  toast,
+  getElement = null,
+  domId = null,
+  instanceId = '',
+  isPrimary = true,
+} = {}) {
+  void instanceId;
+  void isPrimary;
+  const $ = (id) => (typeof getElement === 'function' ? getElement(id) : document.getElementById(id));
+  const scopedId = (logical) => (typeof domId === 'function' ? domId(logical) : logical);
+  // Global confirm dialog outside the settings root stays global by design.
+  const globalById = (id) => document.getElementById(id);
   const form = $('sync-form');
   const content = $('sync-content');
-  if (!form || !content) return { refresh: async () => {} };
+  if (!form || !content)
+    return {
+      refresh: async () => {},
+      root: null,
+      dispose: () => {},
+    };
   initSyncMonitor({ api, getContext });
   let data = sharedData;
   let busy = false;
@@ -390,7 +430,9 @@ export function createSyncSettings({ api, getContext, toast }) {
     const kept = new Map();
     for (const input of list.querySelectorAll('input[data-remote-path]'))
       kept.set(input.dataset.remotePath, input.value);
-    const focused = document.activeElement?.dataset?.remotePath;
+    const focused = list.contains(document.activeElement)
+      ? document.activeElement?.dataset?.remotePath
+      : undefined;
     list.replaceChildren();
     const desktopPicker = typeof window !== 'undefined' && window.__PRIME_STUDIO_DESKTOP__ === true;
     for (const remote of remotes) {
@@ -581,10 +623,17 @@ export function createSyncSettings({ api, getContext, toast }) {
     renderConflicts();
   }
 
+  // Focus ownership: only inputs inside THIS form count as "typing". Scoped
+  // clones carry rewritten physical ids, so match those (or data-panel-id)
+  // instead of the logical id.
   function render() {
     if (!data) return;
     const active = document.activeElement;
-    const typing = (id) => active && active.id === id;
+    const owned = active && form.contains(active) ? active : null;
+    const typing = (id) =>
+      owned &&
+      (owned.id === scopedId(id) ||
+        (typeof owned.getAttribute === 'function' && owned.getAttribute('data-panel-id') === id));
     if (!typing('sync-url')) $('sync-url').value = data.url || '';
     if (!typing('sync-access-key')) $('sync-access-key').value = data.accessKeyId || '';
     // Never echo secrets back into the inputs.
@@ -640,7 +689,9 @@ export function createSyncSettings({ api, getContext, toast }) {
     showError();
   }
 
+  let disposed = false;
   const onShared = (next) => {
+    if (disposed) return;
     if (!next) return;
     if (awaitingRun !== null && !next.running && (next.lastSync?.at || '') !== awaitingRun)
       reportRun(next.lastSync);
@@ -659,7 +710,7 @@ export function createSyncSettings({ api, getContext, toast }) {
       else setBusy(false);
     }
   };
-  subscribeSync(onShared);
+  const offShared = subscribeSync(onShared);
 
   async function refresh() {
     if (!allowed()) return;
@@ -782,7 +833,7 @@ export function createSyncSettings({ api, getContext, toast }) {
 
   async function forget() {
     if (busy || !allowed() || !data?.configured) return;
-    const dialog = $('sync-forget-dialog');
+    const dialog = globalById('sync-forget-dialog');
     dialog.returnValue = '';
     dialog.showModal();
     await new Promise((resolve) => dialog.addEventListener('close', resolve, { once: true }));
@@ -812,9 +863,26 @@ export function createSyncSettings({ api, getContext, toast }) {
   $('sync-refresh').onclick = () => void refresh();
   for (const swatch of form.querySelectorAll('[data-sync-device-color]'))
     swatch.onclick = () => void setDeviceColor(swatch.dataset.syncDeviceColor);
-  onLanguageChange(() => {
+  const offLanguage = onLanguageChange(() => {
     if (!form.hidden && data) render();
   });
 
-  return { refresh };
+  return {
+    refresh,
+    get root() {
+      return typeof getElement === 'function'
+        ? getElement('settings-dialog')
+        : document.getElementById('settings-dialog');
+    },
+    dispose: () => {
+      disposed = true;
+      generation++;
+      try {
+        offShared?.();
+      } catch {}
+      try {
+        offLanguage?.();
+      } catch {}
+    },
+  };
 }

@@ -134,6 +134,9 @@ async function openFilesTab({ width, language, readOnly = false }) {
     ({ cwd, language }) => {
       localStorage.setItem('prime-studio.selection', JSON.stringify({ cwd }));
       if (language) localStorage.setItem('prime-studio.language', language);
+      // Fixture-only: keep the classic inspector home (opt out of the default-on
+      // modular dock; honored via stored enabled:false). No production change.
+      localStorage.setItem('prime-studio.docking.layout', JSON.stringify({ enabled: false }));
     },
     { cwd, language },
   );
@@ -176,7 +179,9 @@ try {
     await page.locator('#git-commit-message').fill('');
     // Branch menu: local branches, then remote-only branches, plus creation.
     await page.locator('#git-branch-button').click();
-    const menu = page.locator('.git-branch-menu');
+    // Fixture-only: branch menu opens in the files-unit instance (scoped ids per
+    // multi-instance contract). Same visible menu/content, no production change.
+    const menu = page.locator('.git-branch-menu[data-inspector-instance="primary-files"]');
     await expect(menu).toBeVisible();
     await page.screenshot({ path: 'test-results/git-panel/branch-menu-1440.png', animations: 'disabled' });
     assert.deepEqual(await menu.getByRole('menuitem').allTextContents(), [
@@ -199,10 +204,10 @@ try {
     const dialog = page.getByRole('dialog');
     await expect(dialog).toContainText('Créer une branche');
     await page.screenshot({ path: 'test-results/git-panel/branch-dialog-1440.png', animations: 'disabled' });
-    await page.locator('#git-branch-name').fill('mauvaise branche');
+    await page.locator('#git-branch-name--files').fill('mauvaise branche');
     await dialog.getByRole('button', { name: 'Créer', exact: true }).click();
     await expect(dialog.locator('.form-error')).toBeVisible();
-    await page.locator('#git-branch-name').fill('feature-2');
+    await page.locator('#git-branch-name--files').fill('feature-2');
     await dialog.getByRole('button', { name: 'Créer', exact: true }).click();
     const createCall = calls.filter((call) => call.route === '/switch').at(-1);
     assert.deepEqual(createCall.body, { cwd, branch: 'feature-2', create: true });
@@ -266,9 +271,9 @@ try {
     const box = await page.locator('#inspector-git-bar').boundingBox();
     assert.ok(box && box.x >= -1 && box.x + box.width <= 391, JSON.stringify(box));
     await page.locator('#git-branch-button').click();
-    await expect(page.locator('.git-branch-menu')).toBeVisible();
+    await expect(page.locator('.git-branch-menu[data-inspector-instance="primary-files"]')).toBeVisible();
     await page.keyboard.press('Escape');
-    await expect(page.locator('.git-branch-menu')).toBeHidden();
+    await expect(page.locator('.git-branch-menu[data-inspector-instance="primary-files"]')).toBeHidden();
     await page.screenshot({ path: 'test-results/git-panel/status-390.png', animations: 'disabled' });
     await context.close();
   }
@@ -293,7 +298,7 @@ try {
     await expect(page.locator('#git-commit-button')).toHaveText('Commit');
     await expect(page.locator('#git-suggest-button')).toHaveText('Suggest a message');
     await page.locator('#git-branch-button').click();
-    await expect(page.locator('.git-branch-menu')).toContainText('New branch…');
+    await expect(page.locator('.git-branch-menu[data-inspector-instance="primary-files"]')).toContainText('New branch…');
     await page.screenshot({ path: 'test-results/git-panel/status-en-1440.png', animations: 'disabled' });
     await context.close();
   }

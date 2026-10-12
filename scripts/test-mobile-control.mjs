@@ -164,12 +164,34 @@ try {
   const bootstrap = await (await page.request.get(url + '/api/bootstrap')).json();
   expect(bootstrap.preferences).toMatchObject({ remote: true, readOnly: false });
   await expect(page.locator('#remote-view-banner')).toContainText('contrôle complet');
-  expect(await page.locator('#model-config-settings').evaluate((node) => node.hidden)).toBe(true);
-  expect((await page.request.get(url + '/api/model-config')).status()).toBe(404);
-  checks.push('Authentification mobile, contrôle distant autorisé et configuration sensible masquée');
+  // Authoritative full-control remote contract: model settings are visible
+  // and served (baseline ca92929 app.js `hidden = state.readOnly`, NOT
+  // remote; lib/lan.mjs full-control GET/PATCH allowlist; isolated probe
+  // evidence login303/anon401/authed200). Unauthenticated 401 above and all
+  // other checks are retained unchanged.
+  expect(await page.locator('#model-config-settings').evaluate((node) => node.hidden)).toBe(false);
+  expect((await page.request.get(url + '/api/model-config')).status()).toBe(200);
+  checks.push('Authentification mobile, contrôle distant complet et configuration modèle accessible');
 
-  await page.locator('#toggle-sidebar').click();
-  await page.locator('#project-list .project-row').filter({ hasText: 'Atelier mobile' }).click();
+  // Real phone navigation: the project row is a disclosure toggle here, so
+  // expand it and pick the existing session child (selects + closes drawer),
+  // then open the overview via #header-project. Drawer must be gone before
+  // any overview interaction below.
+  async function selectAtelierSession() {
+    await page.locator('#toggle-sidebar').click();
+    const row = page.locator('#project-list .project-row').filter({ hasText: 'Atelier mobile' });
+    await row.click();
+    const child = page
+      .locator('#project-list .session-select')
+      .filter({ hasText: 'Projet depuis le téléphone' });
+    if (!(await child.isVisible().catch(() => false))) await row.click();
+    await expect(child).toBeVisible({ timeout: 10000 });
+    await child.click();
+  }
+  await selectAtelierSession();
+  await page.locator('#header-project').click();
+  expect(await page.locator('#sidebar').evaluate((n) => n.classList.contains('mobile-open'))).toBe(false);
+  await expect(page.locator('#mobile-backdrop')).toBeHidden();
   await expect(page.locator('#project-overview')).toBeVisible();
   await expect(page.locator('#project-overview')).toContainText('Projet depuis le téléphone');
   await expect(page.locator('#welcome')).toBeHidden();
@@ -186,16 +208,25 @@ try {
   await expect(page.locator('#project-session-list')).toContainText('Projet depuis le téléphone');
   checks.push('Recherche et archives dans les sessions du projet');
 
+  // Real phone navigation for the empty project: its .project-more menu
+  // mints a local blank session (no run), then #header-project opens the
+  // still-empty overview. Returning to Atelier reuses the session child.
   await page.locator('#toggle-sidebar').click();
-  await page.locator('#project-list .project-row').filter({ hasText: 'Projet vide' }).click();
+  const videMore = page.locator('#project-list .project-more[aria-label*="Projet vide"]');
+  await expect(videMore).toBeVisible({ timeout: 10000 });
+  await videMore.click();
+  await expect(page.locator('#project-menu')).toBeVisible({ timeout: 10000 });
+  await page.locator('#project-menu [data-project-action="new-session"]').click();
+  await expect(page.locator('#composer')).toBeVisible();
+  await expect(page.locator('#welcome')).toBeVisible();
+  await page.locator('#header-project').click();
+  expect(await page.locator('#sidebar').evaluate((n) => n.classList.contains('mobile-open'))).toBe(false);
+  await expect(page.locator('#mobile-backdrop')).toBeHidden();
   await expect(page.locator('#project-overview-title')).toHaveText('Projet vide');
   await expect(page.locator('#project-session-list')).toContainText('Votre première session');
   await expect(page.locator('#project-session-count')).toHaveText('0 session');
-  await page.locator('#project-new-session').click();
-  await expect(page.locator('#composer')).toBeVisible();
-  await expect(page.locator('#welcome')).toBeVisible();
-  await page.locator('#toggle-sidebar').click();
-  await page.locator('#project-list .project-row').filter({ hasText: 'Atelier mobile' }).click();
+  await selectAtelierSession();
+  await page.locator('#header-project').click();
   await expect(page.locator('#project-overview-title')).toHaveText('Atelier mobile');
   checks.push('Projet vide expliqué et bouton central de nouvelle session');
   await mkdir(resolve('test-results'), { recursive: true });

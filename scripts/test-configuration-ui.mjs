@@ -23,6 +23,33 @@ try {
     await page.addInitScript((cwd) => {
       if (!localStorage.getItem('prime-studio.selection'))
         localStorage.setItem('prime-studio.selection', JSON.stringify({ cwd }));
+      // Deliberate classic-UI test: force the modular workspace off via saved
+      // state (not DOM hiding) so the roadmap starts closed as asserted.
+      localStorage.setItem(
+        'prime-studio.docking.layout',
+        JSON.stringify({
+          version: 4,
+          enabled: false,
+          root: {
+            kind: 'split',
+            id: 'main',
+            dir: 'row',
+            ratio: 0.68,
+            first: {
+              kind: 'group',
+              id: 'conversation-group',
+              panels: ['conversation'],
+              active: 'conversation',
+            },
+            second: {
+              kind: 'group',
+              id: 'tools-group',
+              panels: ['roadmap', 'session', 'agents', 'files'],
+              active: 'roadmap',
+            },
+          },
+        }),
+      );
     }, fixture.cwd);
     await page.goto(fixture.url);
     await expect(page.locator('#open-roadmap')).toBeEnabled();

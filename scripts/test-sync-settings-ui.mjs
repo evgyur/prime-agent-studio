@@ -109,6 +109,36 @@ try {
     channel: process.env.PRIME_STUDIO_TEST_BROWSER || 'chromium',
   });
   const context = await browser.newContext({ locale: 'fr-FR', viewport: { width: 1440, height: 1000 } });
+  // Classic-UI suite: force the modular workspace off via saved state (not
+  // DOM hiding) so the classic composer and footer stay on their asserted
+  // nodes while docking defaults ON for fresh profiles.
+  await context.addInitScript(() => {
+    localStorage.setItem(
+      'prime-studio.docking.layout',
+      JSON.stringify({
+        version: 4,
+        enabled: false,
+        root: {
+          kind: 'split',
+          id: 'main',
+          dir: 'row',
+          ratio: 0.68,
+          first: {
+            kind: 'group',
+            id: 'conversation-group',
+            panels: ['conversation'],
+            active: 'conversation',
+          },
+          second: {
+            kind: 'group',
+            id: 'tools-group',
+            panels: ['roadmap', 'session', 'agents', 'files'],
+            active: 'roadmap',
+          },
+        },
+      }),
+    );
+  });
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));

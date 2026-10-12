@@ -1,10 +1,13 @@
-// Isolated docking desktop slice test (Unity-style dock, first slice).
+// Isolated docking desktop slice test (Unity-style dock, V4 geometry slice).
 //
 // SCOPE: this file ONLY. No other Studio source is edited by this test.
-// STATUS: the Studio docking UI is implemented in parallel. This test targets
-//   the upcoming controller contract (see DOCK selectors below). Until the
-//   implementation lands, run `node --check scripts/test-docking-ui.mjs` only.
-//   The parent integrates the UI, then runs this file for real.
+// STATUS: geometry V4 + tool instances + Agencement simplification contract
+//   (see DOCK selectors below). The modular workspace defaults ON when no
+//   choice was saved; panel opening and keyboard moves live in the tab
+//   context menu (Add Tab / Move submenus), not in the settings dialog.
+//   Integration (app-owned roots) is NOT ready: run
+//   `node --check scripts/test-docking-ui.mjs` only until the parent
+//   integrates the UI, then run this file for real.
 // NEVER: production server, real provider account, real model, package.json
 //   edit, build, commit or publish. Seeding uses the real createApp fixture
 //   API plus normal UI input. Captures are genuine screenshots only: this test
@@ -19,6 +22,8 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { createApp } from '../server.mjs';
 import { createLanGateway, hashAccessCode } from '../lib/lan.mjs';
+import { createDefaultLayout, validateLayout } from '../public/docking-layout.js';
+import { validatePresets, createPresetLayout } from '../public/docking-presets.js';
 
 // ---------------------------------------------------------------------------
 // Upcoming controller contract (implementation required; gaps are reported
@@ -30,15 +35,17 @@ const DOCK = {
   toggle: '#docking-toggle',
   closeSettings: '#docking-close-settings',
   reset: '#docking-reset',
-  panelSelect: '#docking-panel',
-  targetSelect: '#docking-target',
-  zoneSelect: '#docking-zone',
-  moveButton: '#docking-move',
   workspace: '#dock-workspace',
   dropPreview: '.dock-drop-preview',
+  menu: '#docking-context-menu',
+  addMenu: '#docking-add-menu',
+  moveMenu: '#docking-move-menu',
 };
 const STORAGE_KEY = 'prime-studio.docking.layout';
-const PANEL_IDS = ['conversation', 'roadmap', 'inspector'];
+const layoutDefault = createDefaultLayout();
+// Default-mounted V4 set: legacy primary conversation plus the four tool
+// primaries docked by default (preferences mounts on demand via Add Tab).
+const PANEL_IDS = ['conversation', 'roadmap', 'session', 'agents', 'files'];
 const ZONES = ['center', 'left', 'right', 'top', 'bottom'];
 
 const OUT_ROOT = resolve('.local/docking-4.3/captures');
@@ -250,11 +257,19 @@ function step(text) {
   checks.push(text);
   console.log(`ok - ${text}`);
 }
-async function seedSelection(context, selection) {
-  await context.addInitScript((sel) => {
-    if (!localStorage.getItem('prime-studio.selection'))
-      localStorage.setItem('prime-studio.selection', JSON.stringify(sel));
-  }, selection);
+async function seedSelection(context, selection, { docked = true } = {}) {
+  await context.addInitScript(
+    ({ sel, dockedMode, layout }) => {
+      if (!localStorage.getItem('prime-studio.selection'))
+        localStorage.setItem('prime-studio.selection', JSON.stringify(sel));
+      // Deterministic dock preference without touching the DOM: an explicit
+      // opt-out (enabled:false) keeps the classic baseline undocked, while a
+      // missing envelope exercises the default-ON path for fresh profiles.
+      if (!dockedMode && !localStorage.getItem('prime-studio.docking.layout'))
+        localStorage.setItem('prime-studio.docking.layout', JSON.stringify(layout));
+    },
+    { sel: selection, dockedMode: docked, layout: { ...layoutDefault, enabled: false } },
+  );
 }
 async function contractGaps(page) {
   // Probe without long waits: missing nodes mean the UI slice is not there yet.
@@ -264,12 +279,11 @@ async function contractGaps(page) {
     ['toggle', DOCK.toggle],
     ['closeSettings', DOCK.closeSettings],
     ['reset', DOCK.reset],
-    ['panelSelect', DOCK.panelSelect],
-    ['targetSelect', DOCK.targetSelect],
-    ['zoneSelect', DOCK.zoneSelect],
-    ['moveButton', DOCK.moveButton],
-    // NOTE: #dock-workspace is created lazily on opt-in, so it is asserted
-    // after checking #docking-toggle, not in this pre-opt-in probe.
+    // NOTE: #dock-workspace is created lazily when the workspace activates
+    // (default ON, no saved choice), so it is asserted after load, not in
+    // this pre-activation probe. The tab context menu (#docking-context-menu
+    // with #docking-add-menu / #docking-move-menu) is created with the
+    // controller and appears on tab right-click once docked.
   ];
   const missing = [];
   for (const [name, selector] of probes) {
@@ -353,7 +367,7 @@ async function expectDefaultLayout(page, label) {
   );
   assert.deepEqual(
     findGroup(signature, 'tools-group').tabs,
-    ['roadmap', 'inspector'],
+    ['roadmap', 'session', 'agents', 'files'],
     `${label}: default tools group`,
   );
   assert.equal(
@@ -396,7 +410,7 @@ async function measureNodes(page, label) {
     return {
       conversation: rectOf('.conversation-column'),
       roadmap: rectOf('#roadmap-panel'),
-      inspector: rectOf('#details-panel'),
+      inspector: rectOf('#dock-view-session'),
       workspace: rectOf('#dock-workspace'),
       labelOverflow,
       docOverflow: document.documentElement.scrollWidth > window.innerWidth + 1,
@@ -472,7 +486,10 @@ try {
     viewport: { width: 1600, height: 1000 },
     reducedMotion: 'reduce',
   });
-  await seedSelection(context, { cwd, sessionId: 'docking-demo', projectOverview: false });
+  // Explicit opt-out seed: the classic baseline (Phase 0) runs undocked,
+  // and Phase 1 opts in through the real toggle. Fresh profiles with no
+  // seeded envelope exercise default-ON instead (Phase 12).
+  await seedSelection(context, { cwd, sessionId: 'docking-demo', projectOverview: false }, { docked: false });
   page = await context.newPage();
   page.setDefaultTimeout(15000);
   page.on('pageerror', (error) => errors.push(error.message));
@@ -530,20 +547,23 @@ try {
       'Docking UI contract not implemented yet. Missing selectors: ' +
         gaps.join(', ') +
         '. Needed: #open-docking (opens native #docking-settings dialog), #docking-toggle checkbox ' +
-        '(opt-in desktop), #docking-close-settings, #docking-reset, #docking-panel select ' +
-        '(conversation/roadmap/inspector), #docking-target select (current group ids), #docking-zone ' +
-        'select (center/left/right/top/bottom), #docking-move button, buttons[data-dock-open="id"], ' +
+        '(workspace on/off, default ON with no saved choice), #docking-close-settings, #docking-reset, ' +
+        'tab context menu #docking-context-menu with #docking-add-menu (buttons[data-dock-add]) and ' +
+        '#docking-move-menu (buttons[data-dock-move]) for keyboard-accessible Add Tab / Move, ' +
         '#dock-workspace (active only >1080px) with .dock-group[data-dock-group] + ' +
         'buttons[data-dock-tab] (role=tab, draggable) + [data-dock-close] per group, ' +
         '.dock-splitter[data-dock-split] (role=separator, tabindex=0), .dock-drop-preview during ' +
-        'internal drag, storage prime-studio.docking.layout {version:2,root,enabled:true} (V1 migrated).',
+        'internal drag, storage prime-studio.docking.layout {version:4,root,enabled:true} (V1-V3 migrated).',
     );
   }
   step(
-    'Docking controller contract present: settings dialog, opt-in toggle, workspace chrome and storage key.',
+    'Docking controller contract present: settings dialog, workspace toggle, workspace chrome and storage key.',
   );
 
   // ------------------------------------------------ Phase 1: opt-in + default.
+  // The fixture seeds an explicit opt-out (enabled:false) so the classic
+  // baseline above runs undocked; opting in here goes through the real
+  // toggle. A fresh profile with no saved choice defaults ON (Phase 12).
   await page.locator('#open-docking').click();
   await expect(page.locator(DOCK.dialog)).toBeVisible();
   await page.locator(DOCK.toggle).check();
@@ -553,11 +573,13 @@ try {
   await expectRefsStable(page, refState, 'opt-in');
   await expectScrollDetached(page, 'opt-in');
   await expectDefaultLayout(page, 'default');
+  // Persist through the normal UI (Reset commits), then pin the envelope.
+  await page.locator(DOCK.reset).click();
   const envelope = await storageEnvelope(page);
   assert.ok(envelope?.parsed, 'Docking layout envelope must be stored');
-  // Round-2 geometry V2: V1 docs are accepted and normalized to frozen V2 on
-  // output, so the saved envelope is version 2. Exact pin, not a weakening.
-  assert.equal(envelope.parsed.version, 2, 'Envelope version must be 2');
+  // Geometry V4: V1/V2/V3 docs are accepted and normalized to frozen V4 on
+  // output, so the saved envelope is version 4. Exact pin, not a weakening.
+  assert.equal(envelope.parsed.version, 4, 'Envelope version must be 4');
   assert.equal(envelope.parsed.enabled, true, 'Envelope must record enabled:true');
   assert.ok(envelope.parsed.root, 'Envelope must carry the layout root');
   await measureNodes(page, 'desktop-default');
@@ -599,15 +621,18 @@ try {
     await page.mouse.up();
     return previewSeen;
   }
-  // 2a. Center drop: inspector tab -> conversation group center.
-  const inspectorTabBox = await page.locator('button[data-dock-tab="inspector"]').boundingBox();
+  // 2a. Center drop: session tool tab -> conversation group center.
+  // The tab strip scrolls when tabs overflow: bring the source tab into view
+  // through the normal UI first so the grab point lands on the tab itself.
+  await page.locator('button[data-dock-tab="session"]').scrollIntoViewIfNeeded();
+  const sessionTabBox = await page.locator('button[data-dock-tab="session"]').boundingBox();
   const convGroupBox = await page.locator('.dock-group[data-dock-group="conversation-group"]').boundingBox();
   const previewCenter = await manualDrag(
     {
-      x: inspectorTabBox.x,
-      y: inspectorTabBox.y,
-      width: inspectorTabBox.width,
-      height: inspectorTabBox.height,
+      x: sessionTabBox.x,
+      y: sessionTabBox.y,
+      width: sessionTabBox.width,
+      height: sessionTabBox.height,
     },
     {
       x: convGroupBox.x + convGroupBox.width / 2,
@@ -621,15 +646,16 @@ try {
   let signature = await layoutSignature(page);
   assert.deepEqual(
     findGroup(signature, 'conversation-group').tabs,
-    ['conversation', 'inspector'],
-    'Center drop adds inspector as a tab of the conversation group',
+    ['conversation', 'session'],
+    'Center drop adds the session tool tab to the conversation group',
   );
   await expectRefsStable(page, refState, 'center-drop');
   step(
-    'Real mouse center drag moves the inspector tab into the conversation group with a visible drop preview.',
+    'Real mouse center drag moves the session tool tab into the conversation group with a visible drop preview.',
   );
 
   // 2b. Edge split: roadmap tab -> right edge of conversation group.
+  await page.locator('button[data-dock-tab="roadmap"]').scrollIntoViewIfNeeded();
   const roadmapTabBox = await page.locator('button[data-dock-tab="roadmap"]').boundingBox();
   const convBox2 = await page.locator('.dock-group[data-dock-group="conversation-group"]').boundingBox();
   const previewEdge = await manualDrag(
@@ -649,9 +675,16 @@ try {
   // on the trailing edge of the last tab: an unambiguous "move to end" under
   // remove-source-before-insertion (a center drop is not a directed gesture).
   const orderBefore = (await layoutSignature(page)).groups.find((group) =>
-    group.tabs.includes('inspector'),
+    group.tabs.includes('session'),
   )?.tabs;
   assert.ok(orderBefore && orderBefore.length >= 2, 'Need two tabs in one group to test ordering');
+  // Post-split groups are narrow and tab strips scroll: bring both drag ends
+  // into view through the normal UI before measuring, so the drop point lands
+  // inside the target group's bar.
+  await page.locator(`button[data-dock-tab="${orderBefore[0]}"]`).scrollIntoViewIfNeeded();
+  await page
+    .locator(`button[data-dock-tab="${orderBefore[orderBefore.length - 1]}"]`)
+    .scrollIntoViewIfNeeded();
   const reorderFrom = await page.locator(`button[data-dock-tab="${orderBefore[0]}"]`).boundingBox();
   const reorderLast = await page
     .locator(`button[data-dock-tab="${orderBefore[orderBefore.length - 1]}"]`)
@@ -662,7 +695,7 @@ try {
     false,
   );
   const orderAfter = (await layoutSignature(page)).groups.find((group) =>
-    group.tabs.includes('inspector'),
+    group.tabs.includes('session'),
   )?.tabs;
   assert.deepEqual([...orderAfter].sort(), [...orderBefore].sort(), 'Same tabs must remain after reorder');
   assert.notDeepEqual(orderAfter, orderBefore, 'Real tab drag must change tab order');
@@ -758,44 +791,72 @@ try {
   await expectScrollDetached(page, 'keyboard-nudge');
   step('Keyboard separator nudge resizes adjacent groups; DOM refs and draft survive.');
 
-  // ------------------------------------------------ Phase 4: menu-only movement.
+  // ------------------------------------------------ Phase 4: context-menu movement.
+  // The settings dialog holds no move controls anymore; keyboard moves go
+  // through the real tab context menu (⋯ button, right-click, or Shift+F10).
   signature = await layoutSignature(page);
-  await page.locator('#open-docking').click();
-  await expect(page.locator(DOCK.dialog)).toBeVisible();
-  const panelOptions = await page.locator(`${DOCK.panelSelect} option`).allTextContents();
-  const panelValues = await page
-    .locator(DOCK.panelSelect)
-    .evaluate((el) => [...el.options].map((o) => o.value));
-  assert.deepEqual(
-    [...panelValues].sort(),
-    [...PANEL_IDS].sort(),
-    `Panel select values must be ${PANEL_IDS}`,
-  );
-  const targetValues = await page
-    .locator(DOCK.targetSelect)
-    .evaluate((el) => [...el.options].map((o) => o.value));
-  for (const group of signature.groups)
-    assert.ok(targetValues.includes(group.id), `Target select must list current group ${group.id}`);
-  const zoneValues = await page
-    .locator(DOCK.zoneSelect)
-    .evaluate((el) => [...el.options].map((o) => o.value));
-  assert.deepEqual([...zoneValues].sort(), [...ZONES].sort(), `Zone select values must be ${ZONES}`);
-  // The edge split dissolved the default tools-group, so the menu move targets
-  // a group that actually exists: the one not currently holding the inspector.
-  const menuTarget = signature.groups.find((group) => !group.tabs.includes('inspector'));
+  // The edge split dissolved the default tools-group, so the menu move
+  // targets a group that actually exists: the one not holding session.
+  const menuTarget = signature.groups.find((group) => !group.tabs.includes('session'));
   assert.ok(menuTarget, 'A second live group must exist as the menu-move target');
-  await page.locator(DOCK.panelSelect).selectOption('inspector');
-  await page.locator(DOCK.targetSelect).selectOption(menuTarget.id);
-  await page.locator(DOCK.zoneSelect).selectOption('center');
-  await page.locator(DOCK.moveButton).click();
-  await page.locator(DOCK.closeSettings).click();
+  // Keyboard-only path first: focus the tab, open with Shift+F10, Escape
+  // restores focus to the tab.
+  await page.locator('button[data-dock-tab="session"]').focus();
+  await page.keyboard.press('Shift+F10');
+  await expect(page.locator(DOCK.menu)).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator(DOCK.menu)).not.toBeVisible();
+  assert.equal(
+    await page.evaluate(() => document.activeElement?.dataset?.dockTab ?? null),
+    'session',
+    'Escape must return focus to the invoking tab',
+  );
+  step('Keyboard-only tab menu opens with Shift+F10 and closes with Escape.');
+  // Pointer path: right-click the tab, open the Move submenu, assert every
+  // live group is offered as a tab target plus all four edge splits, then
+  // drive the true keyboard path (focus + ArrowRight opens with focus inside,
+  // ArrowDown navigates) before moving with a real click.
+  await page.locator('button[data-dock-tab="session"]').click({ button: 'right' });
+  await expect(page.locator(DOCK.menu)).toBeVisible();
+  const moveSubmenuButton = page.locator(`${DOCK.menu} .dock-menu-submenu`).nth(1);
+  await moveSubmenuButton.hover();
+  await expect(page.locator(DOCK.moveMenu)).toBeVisible();
+  const centerMoves = await page
+    .locator(`${DOCK.moveMenu} button[data-dock-move^="center:"]`)
+    .evaluateAll((items) => items.map((item) => item.dataset.dockMove));
+  for (const group of signature.groups)
+    assert.ok(
+      centerMoves.includes(`center:${group.id}`),
+      `Move submenu must offer current group ${group.id} as a tab target`,
+    );
+  for (const zone of ['left', 'right', 'top', 'bottom'])
+    assert.ok(
+      (await page.locator(`${DOCK.moveMenu} button[data-dock-move^="${zone}:"]`).count()) >= 1,
+      `Move submenu must offer the ${zone} edge split`,
+    );
+  await moveSubmenuButton.focus();
+  await page.keyboard.press('ArrowRight');
+  const moveFirst = await page.evaluate(() => document.activeElement?.dataset?.dockMove ?? null);
+  assert.ok(moveFirst, 'ArrowRight must open the Move submenu with focus inside');
+  await page.keyboard.press('ArrowDown');
+  const moveFocused = await page.evaluate(() => document.activeElement?.dataset?.dockMove ?? null);
+  assert.ok(moveFocused && moveFocused !== moveFirst, 'Arrow keys must navigate the Move submenu');
+  await page.keyboard.press('ArrowLeft');
+  await expect(page.locator(DOCK.moveMenu)).not.toBeVisible();
+  await expect(moveSubmenuButton).toBeFocused();
+  // The pointer never left the button, so a re-hover would be a no-op;
+  // reopen through the keyboard path proven above.
+  await moveSubmenuButton.focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(page.locator(DOCK.moveMenu)).toBeVisible();
+  await page.locator(`${DOCK.moveMenu} button[data-dock-move="center:${menuTarget.id}"]`).click();
   signature = await layoutSignature(page);
   assert.ok(
-    findGroup(signature, menuTarget.id).tabs.includes('inspector'),
-    `Menu-only move relocates inspector into ${menuTarget.id}`,
+    findGroup(signature, menuTarget.id).tabs.includes('session'),
+    `Menu-only move relocates session into ${menuTarget.id}`,
   );
   await expectRefsStable(page, refState, 'menu-move');
-  step('Menu-only movement (panel/target/zone + move button) relocates panels without any pointer drag.');
+  step('Context-menu movement (Move submenu + keyboard nav) relocates panels without any pointer drag.');
 
   // ------------------------------------------------ Phase 5: splitter pointer resize + Escape.
   const splitRow = page.locator('.dock-splitter[data-dock-split][aria-orientation="vertical"]');
@@ -844,31 +905,161 @@ try {
   step('Splitter pointer drag resizes groups; Escape cancels an in-flight resize.');
 
   // ------------------------------------------------ Phase 6: close + reopen (same node).
-  await page.locator('[data-dock-close="inspector"]').first().click();
+  await page.locator('[data-dock-close="session"]').first().click();
   signature = await layoutSignature(page);
   assert.ok(
-    !signature.groups.some((group) => group.tabs.includes('inspector')),
-    'Closing the inspector tab must remove it from every group',
+    !signature.groups.some((group) => group.tabs.includes('session')),
+    'Closing the session tool tab must remove it from every group',
   );
-  // Reopen buttons live in the settings dialog openers section: open it
-  // through the normal UI, click, then close it again.
-  await page.locator('#open-docking').click();
-  await expect(page.locator(DOCK.dialog)).toBeVisible();
-  await page.locator('button[data-dock-open="inspector"]').first().click();
-  await page.locator(DOCK.closeSettings).click();
-  await expect(page.locator(DOCK.dialog)).not.toBeVisible();
+  // Reopen goes through the real Add Tab submenu: with zero session-kind
+  // tabs open, the session entry reopens the closed primary.
+  const anyTab = page.locator('button[data-dock-tab]').first();
+  await anyTab.click({ button: 'right' });
+  await expect(page.locator(DOCK.menu)).toBeVisible();
+  await page.locator(`${DOCK.menu} .dock-menu-submenu`).first().hover();
+  await expect(page.locator(DOCK.addMenu)).toBeVisible();
+  await page.locator(`${DOCK.addMenu} button[data-dock-add="session"]`).click();
   signature = await layoutSignature(page);
   assert.ok(
-    signature.groups.some((group) => group.tabs.includes('inspector')),
-    'Reopen must restore the inspector tab',
+    signature.groups.some((group) => group.tabs.includes('session')),
+    'Add Tab must restore the session tool tab',
   );
-  // Reopen shows (activates) the inspector, backgrounding the conversation.
+  // Reopen shows (activates) the session tab, backgrounding the conversation.
   // Re-activate the conversation through the normal UI for the checks below.
   await page.locator('button[data-dock-tab="conversation"]').click();
   await expect(page.locator('.dock-group[data-dock-group="conversation-group"]')).toBeVisible();
   await expectRefsStable(page, refState, 'close-reopen');
   await expectScrollDetached(page, 'close-reopen');
   step('Per-group close hides the active tab; reopen restores the identical DOM node.');
+
+  // ------------------------------------------------ Phase 6b: tool instances + named presets.
+  // Controller checks: a valid 8-tool replacement preset must load over a
+  // current 16-tool layout (old geometry never gates future geometry), and
+  // parked instances must be reused (same ids, locks preserved) instead of
+  // minted again — including across a reload via parent parked metadata.
+  const toolTabsOf = async () =>
+    (await layoutSignature(page)).groups
+      .flatMap((group) => group.tabs)
+      .filter((tab) => tab.startsWith('tool:'));
+  // Build to the 16-tool cap through the real Add Tab menu: 11 roadmap extras
+  // join the five primaries.
+  for (let n = 0; n < 11; n++) {
+    await page.locator('button[data-dock-tab]').first().click({ button: 'right' });
+    await expect(page.locator(DOCK.menu)).toBeVisible();
+    await page.locator(`${DOCK.menu} .dock-menu-submenu`).first().hover();
+    await expect(page.locator(DOCK.addMenu)).toBeVisible();
+    await page.locator(`${DOCK.addMenu} button[data-dock-add="roadmap"]`).click();
+  }
+  // Preferences stays closed by default: reopen its primary through Add Tab.
+  await page.locator('button[data-dock-tab]').first().click({ button: 'right' });
+  await expect(page.locator(DOCK.menu)).toBeVisible();
+  await page.locator(`${DOCK.menu} .dock-menu-submenu`).first().hover();
+  await expect(page.locator(DOCK.addMenu)).toBeVisible();
+  await page.locator(`${DOCK.addMenu} button[data-dock-add="preferences"]`).click();
+  const sixteenIds = (await toolTabsOf()).sort();
+  assert.equal(sixteenIds.length, 11, 'eleven roadmap instances join the five primaries');
+  assert.ok(
+    (await layoutSignature(page)).groups
+      .flatMap((g) => g.tabs)
+      .filter((id) => ['roadmap', 'session', 'agents', 'files', 'preferences'].includes(id) || id.startsWith('tool:')).length === 16,
+    'sixteen tool tabs mounted in total',
+  );
+  step('Eleven roadmap tool instances mount through Add Tab (16-tool cap).');
+  // Save the sixteen layout through the normal UI.
+  await page.locator('#open-docking').click();
+  await expect(page.locator(DOCK.dialog)).toBeVisible();
+  await page.locator('#docking-preset-name').fill('sixteen');
+  await page.locator('#docking-save-layout').click();
+  assert.equal(
+    await page.locator('#docking-preset-choice').inputValue(),
+    'sixteen',
+    'saved sixteen preset becomes the selected layout',
+  );
+  await page.locator(DOCK.closeSettings).click();
+  await expect(page.locator(DOCK.dialog)).not.toBeVisible();
+  // Seed a valid 8-tool replacement preset (different kinds: files/agents
+  // extras the live layout never had) built with the real geometry modules,
+  // merged into the stored presets doc like any persisted entry.
+  const liveEight = validateLayout({
+    version: 4,
+    root: {
+      kind: 'group',
+      id: 'seed',
+      panels: [
+        'conversation',
+        'roadmap',
+        'session',
+        'agents',
+        'files',
+        'tool:files:seed-f1',
+        'tool:files:seed-f2',
+        'tool:files:seed-f3',
+        'tool:files:seed-f4',
+        'tool:agents:seed-a1',
+        'tool:agents:seed-a2',
+        'tool:agents:seed-a3',
+        'tool:agents:seed-a4',
+      ],
+      active: 'roadmap',
+    },
+  });
+  assert.ok(liveEight, 'seed live eight-tool layout validates');
+  const eightAnon = createPresetLayout(liveEight);
+  assert.ok(eightAnon && !JSON.stringify(eightAnon).includes('seed-'), 'seed preset anonymized');
+  await page.evaluate((eight) => {
+    const key = 'prime-studio.docking.presets';
+    const doc = JSON.parse(localStorage.getItem(key) || '{"version":1,"items":[]}');
+    doc.items.push({ name: 'eight', layout: eight });
+    localStorage.setItem(key, JSON.stringify(doc));
+  }, eightAnon);
+  // Reload: parked tool metadata must restore the identical sixteen ids.
+  await page.reload();
+  await expect(page.locator('#connection-label')).toContainText('connecté');
+  await expect(page.locator(DOCK.workspace)).toBeVisible();
+  assert.deepEqual(
+    (await toolTabsOf()).sort(),
+    sixteenIds,
+    'reload restores the parked sixteen tool ids identically',
+  );
+  // Fresh refs: the reload rebuilt every DOM node, so later structural
+  // checks compare against this post-reload snapshot (never pre-reload refs).
+  const refStateTools = await snapshotRefs(page);
+  step('Reload restores parked tool instances with identical ids (no lock loss).');
+  // Load the 8-tool replacement over the current 16-tool layout: deficits of
+  // never-seen kinds must be created, never rejected against old geometry.
+  await page.locator('#open-docking').click();
+  await expect(page.locator(DOCK.dialog)).toBeVisible();
+  await page.locator('#docking-preset-choice').selectOption('eight');
+  await page.locator('#docking-load-layout').click();
+  await page.locator(DOCK.closeSettings).click();
+  await expect(page.locator(DOCK.dialog)).not.toBeVisible();
+  const eightIds = (await toolTabsOf()).sort();
+  assert.equal(eightIds.length, 8, 'eight replacement tool tabs mount over sixteen current');
+  assert.ok(
+    eightIds.every((id) => id.startsWith('tool:files:') || id.startsWith('tool:agents:')),
+    'replacement binds the seeded files/agents kinds',
+  );
+  assert.ok(eightIds.every((id) => !id.includes('seed-')), 'no seed nonce leaks into live ids');
+  step('Valid 8-tool replacement preset loads over a 16-tool layout (deficits created).');
+  // Round-trip back: the parked roadmap ids must be reused identically.
+  await page.locator('#open-docking').click();
+  await expect(page.locator(DOCK.dialog)).toBeVisible();
+  await page.locator('#docking-preset-choice').selectOption('sixteen');
+  await page.locator('#docking-load-layout').click();
+  await page.locator(DOCK.closeSettings).click();
+  await expect(page.locator(DOCK.dialog)).not.toBeVisible();
+  assert.deepEqual(
+    (await toolTabsOf()).sort(),
+    sixteenIds,
+    'loading sixteen reuses the parked roadmap ids (no duplicates minted)',
+  );
+  step('Preset round-trip reuses parked tool ids instead of minting new ones.');
+  // Reset to the default layout so later phases run on known geometry.
+  await page.locator('#open-docking').click();
+  await page.locator(DOCK.reset).click();
+  await page.locator(DOCK.closeSettings).click();
+  await expectDefaultLayout(page, 'presets-reset');
+  await expectRefsStable(page, refStateTools, 'presets-reset');
 
   await measureNodes(page, 'desktop-rearranged');
   await page.screenshot({ path: await freshShot(SHOTS.desktopRearranged), animations: 'disabled' });
@@ -922,12 +1113,14 @@ try {
   step('Malformed storage falls back to the default layout with no crash and no page error.');
 
   // ------------------------------------------------ Phase 9: reset.
+  // Any edge split rearranges (edge items key off the right-clicked group);
+  // Reset must then restore the default layout.
+  await page.locator('button[data-dock-tab="roadmap"]').click({ button: 'right' });
+  await expect(page.locator(DOCK.menu)).toBeVisible();
+  await page.locator(`${DOCK.menu} .dock-menu-submenu`).nth(1).hover();
+  await expect(page.locator(DOCK.moveMenu)).toBeVisible();
+  await page.locator(`${DOCK.moveMenu} button[data-dock-move^="left:"]`).first().click();
   await page.locator('#open-docking').click();
-  await page.locator(DOCK.panelSelect).selectOption('roadmap');
-  const firstGroupId = (await layoutSignature(page)).groups[0].id;
-  await page.locator(DOCK.targetSelect).selectOption(firstGroupId);
-  await page.locator(DOCK.zoneSelect).selectOption('left');
-  await page.locator(DOCK.moveButton).click();
   await page.locator(DOCK.reset).click();
   await page.locator(DOCK.closeSettings).click();
   await expectDefaultLayout(page, 'reset');
@@ -935,22 +1128,22 @@ try {
   step('Reset restores the default conversation/tools layout after rearrangement.');
 
   // ------------------------------------------------ Phase 10: project/context switches stay fresh.
-  // Normal UI precondition: activate the inspector dock tab before using its
-  // internal Session/Agents/Files tabs.
-  await page.locator('button[data-dock-tab="inspector"]').click();
-  await page.locator('#inspector-tab-agents').click();
-  await expect(page.locator('#inspector-agents')).toBeVisible();
-  await page.locator('#inspector-tab-files').click();
-  await expect(page.locator('#inspector-files')).toBeVisible();
-  await page.locator('#inspector-tab-session').click();
+  // Session/Agents/Files are separate dock tabs now: activate each through
+  // the normal UI and check its live content follows context switches.
+  await page.locator('button[data-dock-tab="agents"]').click();
+  await expect(page.locator('#dock-view-agents')).toBeVisible();
+  await page.locator('button[data-dock-tab="files"]').click();
+  await expect(page.locator('#dock-view-files')).toBeVisible();
+  await page.locator('button[data-dock-tab="session"]').click();
+  await expect(page.locator('#dock-view-session')).toBeVisible();
   await page.locator('#session-list .session-select').filter({ hasText: 'Préparer la distribution' }).click();
   await expect(page.locator('#messages')).toContainText('Préparer la distribution');
   await page.locator('#session-list .session-select').filter({ hasText: 'Calibrer la sortie' }).click();
   await expect(page.locator('#messages')).toContainText('Synthèse disponible');
   // No overlay click while docked (classic .roadmap-open CSS would hide the
-  // docked inspector): the docked panel keeps its DOM content either way.
+  // docked panels): the docked panel keeps its DOM content either way.
   await expect(page.locator('#roadmap-panel')).toContainText('Rendre le dock du Studio fiable');
-  step('Roadmap and inspector follow project/context switches; internal Session/Agents/Files tabs work.');
+  step('Roadmap and Session/Agents/Files tool tabs follow project/context switches.');
 
   // Read-only gateway spot check (quick; documents coverage otherwise).
   const salt = 'd'.repeat(32);
@@ -1054,17 +1247,17 @@ try {
       await expect(english.locator('#connection-label')).not.toBeEmpty();
     });
   await english.locator('#session-list .session-select').first().click();
-  if ((await english.locator(DOCK.openButton).count()) > 0) {
-    await english.locator(DOCK.openButton).click();
-    await english
-      .locator(DOCK.toggle)
-      .check()
-      .catch(() => {});
-    await english
-      .locator(DOCK.closeSettings)
-      .click()
-      .catch(() => {});
-  }
+  // Fresh profile, no saved choice: the workspace defaults ON on desktop.
+  await expect(english.locator(DOCK.workspace)).toBeVisible();
+  await english.locator(DOCK.openButton).click();
+  await expect(english.locator(DOCK.dialog)).toBeVisible();
+  assert.equal(
+    await english.locator(DOCK.toggle).isChecked(),
+    true,
+    'Fresh profile must default the workspace toggle ON',
+  );
+  await english.locator(DOCK.closeSettings).click();
+  await expect(english.locator(DOCK.dialog)).not.toBeVisible();
   await measureNodes(english, 'english');
   await english.screenshot({ path: await freshShot(SHOTS.english), animations: 'disabled' });
   await enContext.close();
@@ -1086,20 +1279,11 @@ try {
   await manuallyDetachScroller(page);
   const toolsId = (await layoutSignature(page)).groups.find((group) => group.tabs.includes('roadmap'))?.id;
   assert.ok(toolsId, 'A live group holding the roadmap must exist');
-  await page.locator('#open-docking').click();
-  await expect(page.locator(DOCK.dialog)).toBeVisible();
-  await page.locator(DOCK.panelSelect).selectOption('inspector');
-  await page.locator(DOCK.targetSelect).selectOption(toolsId);
-  await page.locator(DOCK.zoneSelect).selectOption('bottom');
-  await page.locator(DOCK.moveButton).click();
-  await page.locator(DOCK.closeSettings).click();
-  await expect(page.locator(DOCK.dialog)).not.toBeVisible();
-  const convBox = () =>
-    page.evaluate(() => {
-      const el = document.querySelector('.conversation-column');
-      const box = el.getBoundingClientRect();
-      return { width: Math.round(box.width), visible: box.width > 0 && box.height > 0 };
-    });
+  await page.locator('button[data-dock-tab="session"]').click({ button: 'right' });
+  await expect(page.locator(DOCK.menu)).toBeVisible();
+  await page.locator(`${DOCK.menu} .dock-menu-submenu`).nth(1).hover();
+  await expect(page.locator(DOCK.moveMenu)).toBeVisible();
+  await page.locator(`${DOCK.moveMenu} button[data-dock-move="bottom:${toolsId}"]`).click();
   const stackedBoxes = await page.evaluate(() => {
     const rect = (selector) => {
       const el = document.querySelector(selector);
@@ -1108,13 +1292,13 @@ try {
         ? { top: Math.round(box.top), height: Math.round(box.height) }
         : null;
     };
-    return { roadmap: rect('#roadmap-panel'), inspector: rect('#details-panel') };
+    return { roadmap: rect('#roadmap-panel'), session: rect('#dock-view-session') };
   });
   assert.ok(stackedBoxes.roadmap, 'Roadmap panel must stay visible in the stacked tools column');
-  assert.ok(stackedBoxes.inspector, 'Inspector panel must stay visible in the stacked tools column');
+  assert.ok(stackedBoxes.session, 'Session tool frame must stay visible in the stacked tools column');
   assert.ok(
-    stackedBoxes.inspector.top >= stackedBoxes.roadmap.top + stackedBoxes.roadmap.height - 4,
-    `Inspector must sit below the roadmap (roadmap=${JSON.stringify(stackedBoxes.roadmap)}, inspector=${JSON.stringify(stackedBoxes.inspector)})`,
+    stackedBoxes.session.top >= stackedBoxes.roadmap.top + stackedBoxes.roadmap.height - 4,
+    `Session must sit below the roadmap (roadmap=${JSON.stringify(stackedBoxes.roadmap)}, session=${JSON.stringify(stackedBoxes.session)})`,
   );
   // Shrink the conversation pane with real separator key presses until it
   // lands in the 260-320px band (CSS minimum pins the lower bound).
@@ -1142,18 +1326,18 @@ try {
   await expect(page.locator('#composer')).toBeVisible();
   await expect(page.locator('#composer')).toBeEnabled();
   await expect(page.locator('#roadmap-panel')).toBeVisible();
-  await expect(page.locator('#inspector-tab-session')).toBeVisible();
-  await page.locator('#inspector-tab-agents').click();
-  await expect(page.locator('#inspector-agents')).toBeVisible();
-  await page.locator('#inspector-tab-session').click();
+  await expect(page.locator('button[data-dock-tab="session"]')).toBeVisible();
+  await page.locator('button[data-dock-tab="agents"]').click();
+  await expect(page.locator('#dock-view-agents')).toBeVisible();
+  await page.locator('button[data-dock-tab="session"]').click();
   await expectRefsStable(page, refState, 'narrow-260');
   await expectScrollDetached(page, 'narrow-260');
   step(
-    `Narrow 260-320px conversation pane (${narrowWidth}px) keeps composer, roadmap and inspector controls reachable.`,
+    `Narrow 260-320px conversation pane (${narrowWidth}px) keeps composer, roadmap and session controls reachable.`,
   );
   await measureNodes(page, 'narrow-260-1081');
   await page.screenshot({ path: await freshShot(SHOTS.narrow260), animations: 'disabled' });
-  step('Three simultaneous panels (conversation, roadmap, inspector below roadmap) captured at 1081px.');
+  step('Three simultaneous panels (conversation, roadmap, session below roadmap) captured at 1081px.');
 
   // ------------------------------------------------ Phase 14: authenticated read-only remote.
   // Minimal remote context: PIN login through a read-only fixture gateway,
@@ -1176,7 +1360,11 @@ try {
       viewport: { width: 1600, height: 1000 },
       reducedMotion: 'reduce',
     });
-    await seedSelection(roContext, { cwd, sessionId: 'docking-demo', projectOverview: false });
+    await seedSelection(
+      roContext,
+      { cwd, sessionId: 'docking-demo', projectOverview: false },
+      { docked: false },
+    );
     const roPage = await roContext.newPage();
     roPage.setDefaultTimeout(15000);
     roPage.on('pageerror', (error) => errors.push(error.message));
@@ -1211,21 +1399,24 @@ try {
     await expect(roPage.locator(DOCK.dialog)).toBeVisible();
     await roPage.locator(DOCK.toggle).check();
     await expect(roPage.locator(DOCK.workspace)).toBeVisible();
+    await roPage.locator(DOCK.reset).click();
+    await roPage.locator(DOCK.closeSettings).click();
+    await expect(roPage.locator(DOCK.dialog)).not.toBeVisible();
     await expectDefaultLayout(roPage, 'readonly-default');
     const roEnvelope = await storageEnvelope(roPage);
     assert.equal(roEnvelope?.parsed?.enabled, true, 'Read-only opt-in persists client-side');
     const roSigBefore = await layoutSignature(roPage);
-    const roTarget = roSigBefore.groups.find((group) => !group.tabs.includes('inspector'));
+    const roTarget = roSigBefore.groups.find((group) => !group.tabs.includes('session'));
     assert.ok(roTarget, 'A live group must exist as the read-only menu-move target');
-    await roPage.locator(DOCK.panelSelect).selectOption('inspector');
-    await roPage.locator(DOCK.targetSelect).selectOption(roTarget.id);
-    await roPage.locator(DOCK.zoneSelect).selectOption('center');
-    await roPage.locator(DOCK.moveButton).click();
-    await roPage.locator(DOCK.closeSettings).click();
+    await roPage.locator('button[data-dock-tab="session"]').click({ button: 'right' });
+    await expect(roPage.locator(DOCK.menu)).toBeVisible();
+    await roPage.locator(`${DOCK.menu} .dock-menu-submenu`).nth(1).hover();
+    await expect(roPage.locator(DOCK.moveMenu)).toBeVisible();
+    await roPage.locator(`${DOCK.moveMenu} button[data-dock-move="center:${roTarget.id}"]`).click();
     const roSigAfter = await layoutSignature(roPage);
     assert.ok(
-      findGroup(roSigAfter, roTarget.id).tabs.includes('inspector'),
-      `Read-only menu move relocates inspector into ${roTarget.id}`,
+      findGroup(roSigAfter, roTarget.id).tabs.includes('session'),
+      `Read-only menu move relocates session into ${roTarget.id}`,
     );
     await expectRefsStable(roPage, roRefs, 'readonly-move');
     await expect(roPage.locator('#composer')).toBeDisabled();

@@ -1,5 +1,18 @@
 import { t as tr, bindText, translateKnown } from './i18n.js';
 export function createRemoteAccessSettings({ api, isRemote, toast }) {
+  // Singleton global manager: one live dialog, no per-clone copy. open(opener?)
+  // takes the actual launching button/element (or an Event, normalized here).
+  // A Preferences clone passes its own scoped button so ONLY its owning
+  // .settings-modal is released — never the global primary. Return ownership
+  // stays with the launching instance via its settings.js manager-close
+  // capture. The global read-only gate is unchanged.
+  let lastOpener = null;
+  const normalizeOpener = (opener) => {
+    if (!opener) return null;
+    if (typeof opener.preventDefault === 'function' && 'target' in opener)
+      return opener.currentTarget || opener.target?.closest?.('button') || opener.target || null;
+    return opener;
+  };
   const $ = (id) => document.getElementById(id);
   const dialog = $('remote-access-dialog'),
     form = $('remote-code-form');
@@ -27,6 +40,7 @@ export function createRemoteAccessSettings({ api, isRemote, toast }) {
   }
   dialog.addEventListener('close', () => {
     generation++;
+    lastOpener = null;
     clear();
   });
   $('show-remote-code').onchange = (event) => {
@@ -37,12 +51,20 @@ export function createRemoteAccessSettings({ api, isRemote, toast }) {
       showError();
       refresh();
     };
-  $('open-remote-access').onclick = async () => {
+  async function open(opener) {
+    const element = normalizeOpener(opener);
+    if (element) lastOpener = element;
     if (isRemote()) return;
     // Docked: the shared settings node stays open underneath (non-modal); the
     // remote-access dialog stacks as a real modal and returns via managers.
-    const parent = $('settings-dialog');
-    if (parent?.matches?.(':modal')) parent.close();
+    const owner = element?.closest?.('.settings-modal');
+    if (owner) {
+      if (owner.matches?.(':modal')) owner.close();
+    } else {
+      // Legacy primary path (no opener): release the primary modal as before.
+      const parent = $('settings-dialog');
+      if (parent?.matches?.(':modal')) parent.close();
+    }
     clear();
     const turn = ++generation;
     busy = false;
@@ -70,7 +92,9 @@ export function createRemoteAccessSettings({ api, isRemote, toast }) {
           : translateKnown(error.message),
       );
     }
-  };
+  }
+  // Primary opener stays wired to the same open().
+  $('open-remote-access').onclick = (event) => open(event?.currentTarget || event?.target);
   form.onsubmit = async (event) => {
     event.preventDefault();
     if (isRemote() || busy || !configured) return;
@@ -99,4 +123,5 @@ export function createRemoteAccessSettings({ api, isRemote, toast }) {
       }
     }
   };
+  return { open };
 }

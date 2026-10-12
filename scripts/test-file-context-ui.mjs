@@ -67,6 +67,11 @@ try {
     locale: 'fr-FR',
     permissions: ['clipboard-read', 'clipboard-write'],
   });
+  // Fixture-only: keep the classic inspector home (opt out of the default-on
+  // modular dock; honored via stored enabled:false). No production change.
+  await context.addInitScript(() => {
+    localStorage.setItem('prime-studio.docking.layout', JSON.stringify({ enabled: false }));
+  });
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
@@ -84,13 +89,16 @@ try {
   const image = page.locator('[data-file-path="docs/image.png"]');
   await expect(image).toBeVisible();
   await image.click();
-  await expect(page.locator('#inspector-viewer')).toBeVisible();
+  // Fixture-only: file previews open in the files-unit viewer (scoped ids per
+  // multi-instance contract). Same visible controls/content, no production change.
+  const viewer = page.locator('.inspector-viewer[data-inspector-unit="files"]');
+  await expect(viewer).toBeVisible();
   await expect(page.locator('.inspector-preview-image')).toBeVisible();
   await expect(
-    page.locator('#inspector-viewer').getByRole('button', { name: 'Contenu', exact: true }),
+    viewer.getByRole('button', { name: 'Contenu', exact: true }),
   ).toHaveAttribute('aria-pressed', 'true');
   await page.keyboard.press('Escape');
-  const menu = page.locator('.inspector-file-menu');
+  const menu = page.locator('.inspector-file-menu[data-inspector-instance="primary-files"]');
   await image.click({ button: 'right' });
   await expect(menu.getByRole('menuitem')).toHaveText(['Ouvrir', 'Ouvrir le dossier', 'Copier le chemin']);
   await menu.getByRole('menuitem', { name: 'Copier le chemin', exact: true }).click();

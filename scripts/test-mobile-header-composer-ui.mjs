@@ -426,12 +426,24 @@ function assertToolbarFits(snap) {
 
 try {
   browser = await launchStudioBrowser({ headless: true });
-  const page = await browser.newPage({
+  // Classic-layout suite: seed an explicit modular opt-out BEFORE app boot so
+  // the 1440px desktop section measures the classic full-width composer (all
+  // label/geometry assertions unchanged). Mobile sections stay viewport-gated.
+  const classicSeed = async (ctx) => {
+    await ctx.addInitScript(() => {
+      try {
+        localStorage.setItem('prime-studio.docking.layout', JSON.stringify({ enabled: false }));
+      } catch {}
+    });
+  };
+  const classicCtx = await browser.newContext({
     locale: 'fr-FR',
     viewport: { width: 390, height: 844 },
     isMobile: true,
     hasTouch: true,
   });
+  await classicSeed(classicCtx);
+  const page = await classicCtx.newPage();
   pages.push(page);
   page.setDefaultTimeout(15000);
   const errors = [];
@@ -619,12 +631,14 @@ try {
     stableShot(page, 'desktop', 'r1-desktop-1440-fr'),
   );
 
-  const english = await browser.newPage({
+  const englishCtx = await browser.newContext({
     locale: 'en-US',
     viewport: { width: 390, height: 844 },
     isMobile: true,
     hasTouch: true,
   });
+  await classicSeed(englishCtx);
+  const english = await englishCtx.newPage();
   pages.push(english);
   english.setDefaultTimeout(15000);
   english.on('pageerror', (error) => errors.push(error.message));

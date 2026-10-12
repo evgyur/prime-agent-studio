@@ -4,6 +4,16 @@
 
 Les changements par version. Retrouvez les installateurs et les archives du code source dans les [releases GitHub](https://github.com/zerr0o/prime-agent-studio/releases).
 
+## 4.3.0-beta.9
+
+- **Onglets outils indépendants** : ouvrez plusieurs panneaux Roadmap, Session, Agents, Fichiers et Préférences, jusqu’à seize panneaux outils aux côtés de huit conversations. Chaque panneau garde sa sélection, ses formulaires et ses dialogues.
+- **Verrouillage de cible** : fixez un outil à sa conversation et son projet, ou laissez-le suivre la conversation active. Les verrous survivent au rechargement ; données et droits restent actualisés. Une cible absente demeure indisponible, sans remplacement silencieux par une autre conversation.
+- **Agencements simplifiés** : ajoutez et déplacez les onglets depuis leur menu. Le dialogue Agencement conserve l’activation de l’espace modulable, les agencements nommés et la réinitialisation. Les agencements nommés ne contiennent que les types et la géométrie des panneaux, sans conversation, brouillon ni verrou, et réutilisent les panneaux rangés sans démarrer d’exécution.
+- **Préférences fiables** : le bouton principal ouvre une pop-up même depuis un onglet inactif ; Ajouter un onglet crée une instance ancrée. Les réglages restent globaux, mais chaque panneau garde sa catégorie, ses formulaires et le retour du focus depuis ses dialogues enfants. Une réponse tardive ne remplace plus une valeur confirmée plus récente.
+- **Liens et images au premier clic** : une conversation principale ou secondaire inactive ouvre ses liens et images dès le premier clic. Les clics modifiés, le clavier, la sélection de texte et les brouillons sont préservés.
+- **Contexte actualisé** : les panneaux Session affichent le propriétaire, l’action et le raccourci d’arrêt de Computer Use depuis un seul moniteur partagé. Les commandes restent liées à la conversation active. La recherche dans l’aperçu du projet et le focus mobile ne reviennent plus à la conversation principale.
+- **Compatibilité** : les modes classique et mobile restent disponibles. Fermer un onglet ne supprime pas son contenu et n’arrête pas son exécution. Les fenêtres natives détachées ne sont pas incluses.
+
 ## 4.3.0-beta.8
 
 - **Conversations immédiatement utilisables** : la saisie et les quatre suggestions d’accueil apparaissent dès l’ouverture, y compris après l’ajout d’un projet. Les suggestions remplissent le bon panneau et suivent la langue choisie.

@@ -2,10 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   PANEL_IDS,
+  TOOL_KINDS,
   MAX_CONVERSATIONS,
+  MAX_TOOL_PANELS,
   MIN_RATIO,
   MAX_RATIO,
   isConversationPanel,
+  isToolPanel,
+  toolKindOf,
   isPanelId,
   createDefaultLayout,
   validateLayout,
@@ -17,12 +21,12 @@ import {
 } from '../public/docking-layout.js';
 
 // Default-mounted set: legacy primary conversation + roadmap/session/agents/files
-// (the old whole `inspector` panel is gone in geometry V3; its former tabs dock
-// as three separate panels). Preferences and dynamic conv: refs mount on
-// demand; geometry V3 caps live conversations at MAX_CONVERSATIONS (legacy
-// primary included).
+// (the old whole `inspector` panel is gone in geometry V3+; its former tabs dock
+// as three separate panels). Preferences and dynamic conv:/tool: refs mount on
+// demand; geometry V4 caps live conversations at MAX_CONVERSATIONS (legacy
+// primary included) and live tool tabs at MAX_TOOL_PANELS (primaries included).
 const ALL = ['conversation', 'roadmap', 'session', 'agents', 'files'];
-const MAX_TABS = 5 + MAX_CONVERSATIONS;
+const MAX_TABS = MAX_TOOL_PANELS + MAX_CONVERSATIONS;
 const MAX_TREE_NODES = 2 * MAX_TABS - 1;
 
 function group(id, panels, active) {
@@ -106,9 +110,11 @@ function assertInvariants(doc, label) {
   }
 }
 
-test('PANEL_IDS is the fixed V3 set and ratios bound splits', () => {
+test('PANEL_IDS is the fixed V4 set and ratios bound splits', () => {
   assert.deepEqual([...PANEL_IDS], ['conversation', 'roadmap', 'session', 'agents', 'files', 'preferences']);
+  assert.deepEqual([...TOOL_KINDS], ['roadmap', 'session', 'agents', 'files', 'preferences']);
   assert.equal(MAX_CONVERSATIONS, 8);
+  assert.equal(MAX_TOOL_PANELS, 16);
   assert.equal(MIN_RATIO, 0.15);
   assert.equal(MAX_RATIO, 0.85);
 });
@@ -118,6 +124,25 @@ test('panel id helpers classify singletons, legacy, and dynamic refs', () => {
   assert.ok(isConversationPanel('conv:a'), 'dynamic ref');
   assert.ok(isConversationPanel('conv:slot-12'), 'dynamic ref');
   assert.ok(isConversationPanel('conv:Aa0-_'), 'charset');
+  assert.ok(isToolPanel('tool:roadmap:a'), 'dynamic tool ref');
+  assert.ok(isToolPanel('tool:preferences:Aa0-_'), 'tool charset');
+  assert.equal(toolKindOf('tool:session:xyz'), 'session', 'tool kind');
+  assert.equal(toolKindOf('tool:files:slot-1'), 'files', 'tool slot kind');
+  // Contract: fixed primaries map to themselves (parent registry uses this
+  // for all five primary ids); dynamic refs map to their kind.
+  for (const kind of ['roadmap', 'session', 'agents', 'files', 'preferences'])
+    assert.equal(toolKindOf(kind), kind, `fixed primary ${kind} maps to itself`);
+  assert.equal(toolKindOf('conversation'), null, 'legacy conversation has no tool kind');
+  assert.equal(toolKindOf('conv:a'), null, 'conversation instance has no tool kind');
+  assert.equal(toolKindOf('inspector'), null, 'removed panel has no tool kind');
+  assert.equal(toolKindOf('tool:bogus:a'), null, 'unknown kind has no tool kind');
+  assert.equal(toolKindOf('tool:bogus:a'), null, 'unknown kind');
+  assert.equal(toolKindOf('tool:roadmap:'), null, 'empty nonce');
+  assert.equal(toolKindOf(`tool:roadmap:${'x'.repeat(65)}`), null, 'over-long nonce');
+  assert.equal(isToolPanel('roadmap'), false, 'primary is not a dynamic tool ref');
+  assert.equal(isToolPanel('preferences'), false, 'prefs primary is not a dynamic tool ref');
+  assert.equal(isToolPanel('conv:a'), false, 'conversation is not a tool ref');
+  assert.equal(isToolPanel('tool:inspector:a'), false, 'removed kind rejected');
   assert.equal(isConversationPanel('conv:'), false, 'empty id');
   assert.equal(isConversationPanel('conv:a b'), false, 'space');
   assert.equal(isConversationPanel(`conv:${'x'.repeat(65)}`), false, 'over-long id');
@@ -136,13 +161,15 @@ test('panel id helpers classify singletons, legacy, and dynamic refs', () => {
     'singletons',
   );
   assert.ok(isPanelId('conversation') && isPanelId('conv:tab-1'), 'conversations');
+  assert.ok(isPanelId('tool:roadmap:n1') && isPanelId('tool:preferences:n2'), 'tool instances');
   assert.equal(isPanelId('inspector'), false, 'removed whole-inspector panel rejected');
   assert.equal(isPanelId('conv:'), false, 'bad ref');
+  assert.equal(isPanelId('tool:roadmap:'), false, 'bad tool ref');
 });
 
 test('default layout matches the contract', () => {
   const doc = createDefaultLayout();
-  assert.equal(doc.version, 3);
+  assert.equal(doc.version, 4);
   assert.equal(doc.root.kind, 'split');
   assert.equal(doc.root.id, 'main');
   assert.equal(doc.root.dir, 'row');
@@ -205,7 +232,7 @@ test('validateLayout rejects invalid docs with null', () => {
     'non-object': 42,
     null: null,
     array: [],
-    'wrong version': { ...structuredClone(base), version: 4 },
+    'wrong version': { ...structuredClone(base), version: 5 },
     'missing version': { root: base.root },
     'missing root': { version: 3 },
     'removed whole-inspector panel in v3': (() => {
@@ -313,7 +340,7 @@ test('validateLayout rejects invalid docs with null', () => {
 test('validateLayout accepts the empty root (all panels closed)', () => {
   const empty = { version: 1, root: { kind: 'group', id: 'root', panels: [], active: null } };
   const clean = validateLayout(empty);
-  assert.deepEqual(clean, { version: 3, root: { kind: 'group', id: 'root', panels: [], active: null } });
+  assert.deepEqual(clean, { version: 4, root: { kind: 'group', id: 'root', panels: [], active: null } });
 });
 
 test('validateLayout accepts valid nested topologies (no arbitrary nesting ban)', () => {
@@ -329,7 +356,7 @@ test('validateLayout accepts valid nested topologies (no arbitrary nesting ban)'
   };
   const clean = validateLayout(nested);
   assert.ok(clean, '3-group nested tree is valid');
-  assert.equal(clean.version, 3, 'legacy normalized to v3');
+  assert.equal(clean.version, 4, 'legacy normalized to v4');
   assert.equal(nodeCount(clean), 5);
   assert.equal(groupsOf(clean).length, 3);
   assert.deepEqual(openPanels(clean).sort(), ['agents', 'conversation', 'files', 'roadmap', 'session']);
@@ -345,7 +372,7 @@ test('validateLayout is bounded on cyclic and huge inputs', () => {
   // canonical output drops the extra field entirely.
   const stripped = validateLayout(cyclicExtra);
   assert.deepEqual(stripped, {
-    version: 3,
+    version: 4,
     root: { kind: 'group', id: 'a', panels: ['conversation'], active: 'conversation' },
   });
 
@@ -742,7 +769,7 @@ function parentOf(doc, id) {
   throw new Error(`missing node ${id}`);
 }
 
-test('validateLayout normalizes v1 to frozen v3 with inspector migrated in place', () => {
+test('validateLayout normalizes v1 to frozen v4 with inspector migrated in place', () => {
   const v1 = {
     version: 1,
     root: split(
@@ -755,7 +782,7 @@ test('validateLayout normalizes v1 to frozen v3 with inspector migrated in place
   };
   const clean = validateLayout(v1);
   assert.ok(clean, 'v1 accepted');
-  assert.equal(clean.version, 3, 'normalized to v3');
+  assert.equal(clean.version, 4, 'normalized to v4');
   assert.deepEqual(
     findById(clean, 'c').panels,
     ['session', 'agents', 'files'],
@@ -763,10 +790,10 @@ test('validateLayout normalizes v1 to frozen v3 with inspector migrated in place
   );
   assert.equal(findById(clean, 'c').active, 'session', 'active inspector becomes session');
   assert.ok(Object.isFrozen(clean) && Object.isFrozen(clean.root), 'frozen');
-  assert.deepEqual(validateLayout(clean), clean, 'v3 output revalidates identically');
+  assert.deepEqual(validateLayout(clean), clean, 'v4 output revalidates identically');
 });
 
-test('legacy migration replaces inspector in place (v1 default becomes v3 default)', () => {
+test('legacy migration replaces inspector in place (v1 default becomes v4 default)', () => {
   const v1Default = {
     version: 1,
     root: split(
@@ -777,7 +804,7 @@ test('legacy migration replaces inspector in place (v1 default becomes v3 defaul
       group('tools-group', ['roadmap', 'inspector'], 'roadmap'),
     ),
   };
-  assert.deepEqual(validateLayout(v1Default), createDefaultLayout(), 'v1 default migrates to the v3 default');
+  assert.deepEqual(validateLayout(v1Default), createDefaultLayout(), 'v1 default migrates to the v4 default');
 });
 
 test('legacy migration keeps position when inspector sits mid-group (active follows)', () => {
@@ -787,7 +814,7 @@ test('legacy migration keeps position when inspector sits mid-group (active foll
   };
   const clean = validateLayout(v1);
   assert.ok(clean, 'v1 accepted');
-  assert.equal(clean.version, 3);
+  assert.equal(clean.version, 4);
   assert.deepEqual(clean.root.panels, ['roadmap', 'session', 'agents', 'files', 'conversation']);
   assert.equal(clean.root.active, 'session');
   assertInvariants(clean, 'migrated mid-group inspector');
@@ -806,7 +833,7 @@ test('legacy v2 migration preserves prefs and dynamic conv refs around inspector
   };
   const clean = validateLayout(v2);
   assert.ok(clean, 'v2 accepted');
-  assert.equal(clean.version, 3);
+  assert.equal(clean.version, 4);
   assert.deepEqual(findById(clean, 'a').panels, ['conversation', 'conv:live-1']);
   assert.equal(findById(clean, 'a').active, 'conv:live-1');
   assert.deepEqual(findById(clean, 'b').panels, [
@@ -821,12 +848,17 @@ test('legacy v2 migration preserves prefs and dynamic conv refs around inspector
   assertInvariants(clean, 'migrated v2 with prefs and conv refs');
 });
 
-test('v3 rejects inspector but mutators treat it as an unknown no-op panel', () => {
+test('v3 and v4 reject inspector but mutators treat it as an unknown no-op panel', () => {
   const withInspector = {
     version: 3,
     root: group('root', ['conversation', 'inspector'], 'conversation'),
   };
   assert.equal(validateLayout(withInspector), null, 'inspector rejected in v3');
+  assert.equal(
+    validateLayout({ version: 4, root: group('root', ['conversation', 'inspector'], 'conversation') }),
+    null,
+    'inspector rejected in v4',
+  );
   const doc = createDefaultLayout();
   assert.strictEqual(movePanel(doc, { panel: 'inspector', targetGroupId: 'tools-group' }), doc, 'move no-op');
   assert.strictEqual(closePanel(doc, 'inspector'), doc, 'close no-op');
@@ -852,6 +884,16 @@ test('validateLayout rejects conv: refs and preferences in v1 only', () => {
   assert.ok(validateLayout(v3Conv), 'conv: ref accepted in v3');
   const v3Prefs = { ...structuredClone(withPrefs), version: 3 };
   assert.ok(validateLayout(v3Prefs), 'preferences accepted in v3');
+  const v4Conv = { ...structuredClone(withConv), version: 4 };
+  assert.ok(validateLayout(v4Conv), 'conv: ref accepted in v4');
+  const v4Prefs = { ...structuredClone(withPrefs), version: 4 };
+  assert.ok(validateLayout(v4Prefs), 'preferences accepted in v4');
+  const toolDoc = (version, panels) => validateLayout({ version, root: group('root', panels, panels[0]) });
+  assert.equal(toolDoc(1, ['conversation', 'tool:roadmap:n1']), null, 'tool: ref rejected in v1');
+  assert.equal(toolDoc(2, ['conversation', 'tool:roadmap:n1']), null, 'tool: ref rejected in v2');
+  assert.equal(toolDoc(3, ['conversation', 'tool:roadmap:n1']), null, 'tool: ref rejected in v3');
+  assert.ok(toolDoc(4, ['conversation', 'tool:roadmap:n1']), 'tool: ref accepted in v4');
+  assert.equal(toolDoc(4, ['conversation', 'tool:bogus:n1']), null, 'unknown tool kind rejected in v4');
   for (const fresh of ['session', 'agents', 'files']) {
     assert.equal(
       validateLayout({ version: 1, root: group('root', ['conversation', fresh], 'conversation') }),
@@ -872,7 +914,7 @@ test('validateLayout rejects conv: refs and preferences in v1 only', () => {
 
 test('validateLayout rejects unknown versions', () => {
   const base = createDefaultLayout();
-  for (const version of [0, 4, 99, '3', null, undefined]) {
+  for (const version of [0, 5, 99, '4', null, undefined]) {
     assert.equal(
       validateLayout({ ...structuredClone(base), version }),
       null,
@@ -905,6 +947,94 @@ function convIds(n) {
   for (let i = 1; i < n; i += 1) ids.push(`conv:t${i}`);
   return ids;
 }
+
+test('v3 docs migrate to frozen v4 unchanged (no tool refs yet)', () => {
+  const v3 = {
+    version: 3,
+    root: split(
+      'main',
+      'row',
+      0.68,
+      group('conversation-group', ['conversation'], 'conversation'),
+      group('tools-group', ['roadmap', 'session', 'agents', 'files'], 'roadmap'),
+    ),
+  };
+  const clean = validateLayout(v3);
+  assert.ok(clean, 'v3 accepted');
+  assert.equal(clean.version, 4, 'normalized to v4');
+  assert.deepEqual(clean, createDefaultLayout(), 'v3 default migrates to the v4 default');
+  assert.deepEqual(validateLayout(clean), clean, 'v4 output revalidates identically');
+});
+
+test('fixed primaries stay addressable while dynamic tool instances open beside them', () => {
+  let doc = validateLayout({
+    version: 4,
+    root: split(
+      'main',
+      'row',
+      0.5,
+      group('a', ['roadmap', 'tool:roadmap:n1'], 'roadmap'),
+      group('b', ['conversation'], 'conversation'),
+    ),
+  });
+  assert.ok(doc, 'tool instance validates');
+  doc = movePanel(doc, { panel: 'tool:roadmap:n2', targetGroupId: 'b' });
+  assert.deepEqual(findById(doc, 'b').panels, ['conversation', 'tool:roadmap:n2']);
+  assert.equal(findById(doc, 'b').active, 'tool:roadmap:n2');
+  doc = activatePanel(doc, 'tool:roadmap:n1');
+  assert.equal(findById(doc, 'a').active, 'tool:roadmap:n1');
+  assert.strictEqual(activatePanel(doc, 'tool:roadmap:missing'), doc, 'unknown tool ref no-op');
+  doc = closePanel(doc, 'tool:roadmap:n1');
+  assert.deepEqual(openPanels(doc).sort(), ['conversation', 'roadmap', 'tool:roadmap:n2']);
+  assertInvariants(doc, 'tool instance lifecycle');
+});
+
+function toolIds(kind, n, prefix = 'n') {
+  const ids = [];
+  for (let i = 0; i < n; i += 1) ids.push(`tool:${kind}:${prefix}${i}`);
+  return ids;
+}
+
+test('tool bound: 16 tool tabs validate, the 17th is rejected', () => {
+  const sixteen = {
+    version: 4,
+    root: group(
+      'root',
+      ['roadmap', 'session', 'agents', 'files', 'preferences', ...toolIds('roadmap', 11)],
+      'roadmap',
+    ),
+  };
+  const clean = validateLayout(sixteen);
+  assert.ok(clean, '16 tool tabs validate');
+  assertInvariants(clean, '16 tool tabs');
+  const seventeen = {
+    version: 4,
+    root: group(
+      'root',
+      ['roadmap', 'session', 'agents', 'files', 'preferences', ...toolIds('roadmap', 12)],
+      'roadmap',
+    ),
+  };
+  assert.equal(validateLayout(seventeen), null, '17 tool tabs rejected');
+  // Full house: 8 conversations + 16 tools = 24 tabs validate.
+  const full = {
+    version: 4,
+    root: split(
+      'main',
+      'row',
+      0.5,
+      group('a', convIds(8), 'conversation'),
+      group(
+        'b',
+        ['roadmap', 'session', 'agents', 'files', 'preferences', ...toolIds('session', 11)],
+        'roadmap',
+      ),
+    ),
+  };
+  const fullClean = validateLayout(full);
+  assert.ok(fullClean, '24 tabs validate');
+  assertInvariants(fullClean, 'full house');
+});
 
 test('conversation bound: 8 instances validate, the 9th is rejected', () => {
   const eight = {
@@ -980,7 +1110,7 @@ test('mutators support dynamic conv refs alongside the fixed set', () => {
   assertInvariants(doc, 'dynamic edge open');
 });
 
-test('mutators normalize legacy input to v3 (migrating inspector)', () => {
+test('mutators normalize legacy input to v4 (migrating inspector)', () => {
   const v1 = {
     version: 1,
     root: split(
@@ -992,14 +1122,14 @@ test('mutators normalize legacy input to v3 (migrating inspector)', () => {
     ),
   };
   const moved = movePanel(v1, { panel: 'session', targetGroupId: 'conversation-group' });
-  assert.equal(moved.version, 3, 'move normalizes to v3');
+  assert.equal(moved.version, 4, 'move normalizes to v4');
   assert.deepEqual(findById(moved, 'conversation-group').panels, ['conversation', 'session']);
   assertInvariants(moved, 'v1 move');
   const closed = closePanel(v1, 'roadmap');
-  assert.equal(closed.version, 3, 'close normalizes to v3');
+  assert.equal(closed.version, 4, 'close normalizes to v4');
   assert.deepEqual(findById(closed, 'tools-group').panels, ['session', 'agents', 'files']);
   const active = activatePanel(v1, 'session');
-  assert.equal(active.version, 3, 'activate normalizes to v3');
+  assert.equal(active.version, 4, 'activate normalizes to v4');
   assert.equal(findById(active, 'tools-group').active, 'session');
   const v2 = {
     version: 2,
@@ -1012,13 +1142,28 @@ test('mutators normalize legacy input to v3 (migrating inspector)', () => {
     ),
   };
   const moved2 = movePanel(v2, { panel: 'preferences', targetGroupId: 'conversation-group' });
-  assert.equal(moved2.version, 3, 'v2 move normalizes to v3');
+  assert.equal(moved2.version, 4, 'v2 move normalizes to v4');
   assert.deepEqual(findById(moved2, 'tools-group').panels, ['roadmap', 'session', 'agents', 'files']);
   assertInvariants(moved2, 'v2 move');
 });
 
-test('random operations over v3 ids preserve invariants', () => {
-  const pool = ['conversation', 'conv:t1', 'conv:t2', 'roadmap', 'session', 'agents', 'files', 'preferences'];
+test('random operations over v4 ids preserve invariants', () => {
+  const pool = [
+    'conversation',
+    'conv:t1',
+    'conv:t2',
+    'roadmap',
+    'session',
+    'agents',
+    'files',
+    'preferences',
+    'tool:roadmap:n1',
+    'tool:roadmap:n2',
+    'tool:session:n1',
+    'tool:agents:n1',
+    'tool:files:n1',
+    'tool:preferences:n1',
+  ];
   const zones = ['center', 'left', 'right', 'top', 'bottom'];
   let seed = 0x2f6e2b21;
   const random = () => {
@@ -1046,6 +1191,83 @@ test('random operations over v3 ids preserve invariants', () => {
       const ids = collectNodeIds(doc);
       doc = resizeSplit(doc, pick(ids), random() * 1.2 - 0.1);
     }
-    assertInvariants(doc, `v3 fuzz step ${i}`);
+    assertInvariants(doc, `v4 fuzz step ${i}`);
   }
+});
+
+// --- Restore-preservation regression (root review blocker) ------------------
+// A persisted layout with tool refs spread over several groups must survive
+// the initial createDocking restore byte-identical: same panels, same order,
+// same ratios, same actives. The dock registers supplied roots in place and
+// prunes ONLY still-missing refs; it must never relocate a restored pane
+// (no movePanel into a first group, which would collapse splits).
+test('restore-preservation: tool refs across groups validate byte-identical', () => {
+  const stored = {
+    version: 4,
+    root: split(
+      'main',
+      'row',
+      0.6,
+      split(
+        'left',
+        'column',
+        0.4,
+        group('ga', ['conversation', 'tool:roadmap:n1'], 'tool:roadmap:n1'),
+        group('gb', ['tool:session:n2', 'roadmap'], 'roadmap'),
+      ),
+      group('gc', ['tool:files:n3', 'agents', 'tool:roadmap:n4'], 'tool:files:n3'),
+    ),
+  };
+  const clean = validateLayout(stored);
+  assert.ok(clean, 'multi-group tool layout validates');
+  // Registration keeps the tree: every ref present means zero closes.
+  const present = new Set([
+    'conversation',
+    'tool:roadmap:n1',
+    'tool:session:n2',
+    'roadmap',
+    'tool:files:n3',
+    'agents',
+    'tool:roadmap:n4',
+  ]);
+  let next = clean;
+  for (const id of groupsOf(next).flatMap((group) => group.panels))
+    if (!present.has(id)) next = closePanel(next, id);
+  assert.strictEqual(next, clean, 'fully-supplied restore prunes nothing (same ref)');
+  assert.deepEqual(
+    groupsOf(next).map((group) => [group.id, group.panels, group.active]),
+    [
+      ['ga', ['conversation', 'tool:roadmap:n1'], 'tool:roadmap:n1'],
+      ['gb', ['tool:session:n2', 'roadmap'], 'roadmap'],
+      ['gc', ['tool:files:n3', 'agents', 'tool:roadmap:n4'], 'tool:files:n3'],
+    ],
+    'panels, order and actives preserved per group',
+  );
+  assert.equal(findById(next, 'main').ratio, 0.6, 'root ratio preserved');
+  assert.equal(findById(next, 'left').ratio, 0.4, 'nested ratio preserved');
+  // Only still-missing roots prune, and only their own branch collapses.
+  const partial = new Set([...present].filter((id) => id !== 'tool:session:n2'));
+  let pruned = clean;
+  for (const id of groupsOf(pruned).flatMap((group) => group.panels))
+    if (!partial.has(id)) pruned = closePanel(pruned, id);
+  assert.deepEqual(findById(pruned, 'gb').panels, ['roadmap'], 'missing ref pruned in place');
+  assert.equal(findById(pruned, 'gb').active, 'roadmap', 'active falls back inside its group');
+  assert.deepEqual(findById(pruned, 'ga').panels, ['conversation', 'tool:roadmap:n1']);
+  assert.deepEqual(findById(pruned, 'gc').panels, ['tool:files:n3', 'agents', 'tool:roadmap:n4']);
+  assert.equal(findById(pruned, 'main').ratio, 0.6, 'unrelated splits untouched');
+  assertInvariants(pruned, 'partial restore');
+});
+
+test('dock restore path relocates nothing (source regression)', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const source = await readFile(new URL('../public/docking.js', import.meta.url), 'utf8');
+  const start = source.indexOf('Synchronous prune-time restore');
+  assert.ok(start >= 0, 'restore block must exist');
+  const end = source.indexOf('refreshDialog();', start);
+  assert.ok(end > start, 'restore block must end before final refresh');
+  const block = source.slice(start, end);
+  assert.match(block, /registerPanel/, 'restore registers supplied roots');
+  assert.match(block, /closePanel/, 'restore prunes only still-missing roots');
+  assert.doesNotMatch(block, /movePanel/, 'restore never relocates panes across groups');
+  assert.doesNotMatch(block, /openPanel/, 'restore never reopens panes elsewhere');
 });

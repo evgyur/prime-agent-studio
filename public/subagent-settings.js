@@ -16,8 +16,16 @@ export function createSubagentSettings({
   icon,
   toast,
   project = false,
+  prefix: prefixOverride,
+  instanceId,
 }) {
-  const prefix = project ? 'project-subagent' : 'default-subagent';
+  // Scoped prefix for multi-instance hosts. Default preserves legacy IDs.
+  // Clones pass a unique prefix (e.g. `tool-agents-<nonce>--project-subagent`)
+  // so model/thinking/save IDs never collide across instances. All lookups
+  // stay scoped to `root`, so duplicate legacy IDs cannot leak across roots.
+  const prefix = prefixOverride || (project ? 'project-subagent' : 'default-subagent');
+  const saveId = !project && !prefixOverride ? 'save-subagent-defaults' : `${prefix}-save`;
+  void instanceId;
   let data = null,
     cwd = '',
     busy = false,
@@ -32,7 +40,7 @@ export function createSubagentSettings({
         ${
           project
             ? '<select class="subagent-scope" aria-label="Réglages des sous-agents du projet" data-i18n-aria-label="ui.reglages_des_sous_agents_du_projet"><option value="global" data-i18n="agents.global">Globaux</option><option value="project" data-i18n="ui.ce_projet">Ce projet</option></select>'
-            : '<button id="save-subagent-defaults" class="primary-button" type="submit" data-i18n="ui.enregistrer">Enregistrer</button>'
+            : `<button id="${saveId}" class="primary-button subagent-save" type="submit" data-i18n="ui.enregistrer">Enregistrer</button>`
         }
       </div>
       <fieldset class="subagent-fields">
@@ -56,12 +64,20 @@ export function createSubagentSettings({
       <button class="subagent-reload inspector-refresh" type="button" hidden data-i18n="ui.recharger_les_reglages">Recharger les réglages</button>
     </form>`;
   const $ = (selector) => root.querySelector(selector);
+  // Instance prefixes embed tool ids (`tool:agents:<nonce>`); raw colons are
+  // valid in HTML ids and getElementById, but `#a:b` parses as pseudo-classes
+  // in querySelector. Escape logical IDs (native CSS.escape in browsers).
+  const escapeCssId = (value) =>
+    typeof CSS !== 'undefined' && CSS?.escape
+      ? CSS.escape(value)
+      : String(value).replace(/[^A-Za-z0-9_-]/g, (ch) => `\\${ch}`);
+  const byId = (id) => root.querySelector(`#${escapeCssId(id)}`);
   bindText($('.subagent-heading h3'), () => tr(project ? 'ui.sous_agents_du_projet' : 'agents.subagents'));
-  const modelButton = $(`#${prefix}-model`),
-    thinkingSelect = $(`#${prefix}-thinking`);
+  const modelButton = byId(`${prefix}-model`),
+    thinkingSelect = byId(`${prefix}-thinking`);
   $('.subagent-model-icon').append(icon('model'));
   $('.model-picker-chevron').append(icon('chevron'));
-  $(`#${prefix}-model-label`).setAttribute('for', modelButton.id);
+  byId(`${prefix}-model-label`).setAttribute('for', modelButton.id);
   const option = (value, label) => translatedOption(label, value);
 
   function error(message = '') {
@@ -73,7 +89,7 @@ export function createSubagentSettings({
     $('.subagent-fields').hidden = project && (!data || $('.subagent-scope').value === 'global');
     $('.subagent-fields').disabled = disabled;
     if (project) $('.subagent-scope').disabled = disabled;
-    else $('#save-subagent-defaults').disabled = disabled;
+    else if ($('.subagent-save')) $('.subagent-save').disabled = disabled;
   }
   function render(preserve = true) {
     const model = getModels().find((m) => m.id === draft.model);
@@ -241,15 +257,27 @@ export function createSubagentSettings({
     controls();
     if (cwd && context.active && context.online && needsLoad && !busy) void load();
   }
-  document.addEventListener('subagent-defaults-changed', (event) => {
+  const onDefaultsChanged = (event) => {
     if (!project || event.detail.source === root || (event.detail.cwd && event.detail.cwd !== cwd)) return;
     needsLoad = true;
     update();
-  });
-  onLanguageChange(() => {
+  };
+  document.addEventListener('subagent-defaults-changed', onDefaultsChanged);
+  const stopLanguage = onLanguageChange(() => {
+    if (!root.isConnected) return;
     render();
     if (data && !busy) savedStatus();
   });
   render();
-  return { open: load, update };
+  return {
+    open: load,
+    update,
+    destroy() {
+      generation++;
+      document.removeEventListener('subagent-defaults-changed', onDefaultsChanged);
+      try {
+        stopLanguage?.();
+      } catch {}
+    },
+  };
 }

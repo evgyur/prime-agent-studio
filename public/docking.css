@@ -158,6 +158,47 @@
   background: var(--surface-hover);
   color: var(--text);
 }
+/* Per-tab context lock: a sibling of the tab button, never nested in it.
+   Dock owns this chrome; lock state and labels come from the parent. */
+.dock-lock {
+  display: grid;
+  flex: none;
+  place-items: center;
+  align-self: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 4px;
+  color: var(--muted);
+  opacity: 0.55;
+}
+.dock-lock-icon {
+  display: grid;
+  width: 14px;
+  height: 14px;
+}
+.dock-lock-icon svg {
+  width: 100%;
+  height: 100%;
+}
+.dock-lock:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+  opacity: 1;
+}
+.dock-lock.is-locked {
+  color: var(--accent-text);
+  opacity: 1;
+}
+.dock-lock:disabled {
+  opacity: 0.35;
+}
+.dock-lock:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.dock-tab.is-locked {
+  color: var(--text);
+}
 .dock-content,
 .dock-panel-frame {
   display: flex;
@@ -175,8 +216,10 @@
   display: none !important;
 }
 /* A modal still cannot paint below a display:none ancestor. Keep the inactive
-   tab out of layout while letting its shared Preferences popup reach the top layer. */
-.dock-panel-frame[hidden]:has(> #settings-dialog:modal) {
+   tab out of layout while letting its shared Preferences popup reach the top layer.
+   The :has(> dialog:modal) form covers scoped clones plus the legacy id. */
+.dock-panel-frame[hidden]:has(> #settings-dialog:modal),
+.dock-panel-frame[hidden]:has(> dialog:modal) {
   display: contents !important;
 }
 .dock-panel {
@@ -265,7 +308,8 @@
   font-size: 11px;
   text-align: center;
 }
-#dock-workspace #details-panel {
+#dock-workspace #details-panel,
+#dock-workspace [data-panel-id='details-panel'] {
   width: 100%;
   border: 0;
 }
@@ -279,7 +323,9 @@
   min-height: 32px;
   border-radius: 5px;
 }
-#dock-workspace #roadmap-panel {
+#dock-workspace #roadmap-panel,
+#dock-workspace [data-panel-id='roadmap-panel'],
+#dock-workspace .roadmap-panel {
   position: static;
   inset: auto;
   width: 100%;
@@ -361,39 +407,6 @@
 }
 .docking-controls:disabled {
   opacity: 0.5;
-}
-.docking-openers {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 22px;
-}
-.docking-movement {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, 1fr);
-  gap: 10px;
-}
-.docking-movement label {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-  min-width: 0;
-  color: var(--muted);
-  font-size: 11px;
-}
-.docking-movement select {
-  max-width: 100%;
-  min-width: 0;
-  padding: 8px;
-  border: 1px solid var(--line);
-  background: var(--surface);
-  color: var(--text);
-  border-radius: 6px;
-  font: inherit;
-}
-.docking-movement > button {
-  grid-column: 1 / -1;
-  justify-self: end;
 }
 .docking-footer {
   display: flex;
@@ -509,8 +522,22 @@
 .docking-preset-status.is-error {
   color: var(--red);
 }
-/* The same Preferences dialog becomes a non-modal region in its dock frame. */
-#dock-workspace #settings-dialog:not(:modal) {
+/* Owner/pin hint inside the Preferences popup header (modal only: the
+   docked header stays hidden). Plain typography, no header background. */
+.settings-context-heading {
+  min-width: 0;
+}
+.settings-context-label {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+/* The same Preferences dialog becomes a non-modal region in its dock frame.
+   Scoped clones match by data-panel-id or .settings-modal class. */
+#dock-workspace :is(#settings-dialog, [data-panel-id='settings-dialog'], .settings-modal):not(:modal) {
   position: static;
   inset: auto;
   margin: 0;
@@ -522,19 +549,19 @@
   border-radius: 0;
   box-shadow: none;
 }
-#dock-workspace #settings-dialog:not(:modal) > .modal-heading,
-#dock-workspace #settings-dialog:not(:modal) > .settings-actions {
+#dock-workspace :is(#settings-dialog, [data-panel-id='settings-dialog'], .settings-modal):not(:modal) > .modal-heading,
+#dock-workspace :is(#settings-dialog, [data-panel-id='settings-dialog'], .settings-modal):not(:modal) > .settings-actions {
   display: none;
 }
-#dock-workspace #settings-dialog:not(:modal) .settings-layout {
+#dock-workspace :is(#settings-dialog, [data-panel-id='settings-dialog'], .settings-modal):not(:modal) .settings-layout {
   min-width: 0;
 }
 @container dock-panel (max-width: 700px) {
-  #dock-workspace #settings-dialog:not(:modal) .settings-layout {
+  #dock-workspace :is(#settings-dialog, [data-panel-id='settings-dialog'], .settings-modal):not(:modal) .settings-layout {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto minmax(0, 1fr);
   }
-  #dock-workspace #settings-dialog:not(:modal) .settings-nav {
+  #dock-workspace :is(#settings-dialog, [data-panel-id='settings-dialog'], .settings-modal):not(:modal) .settings-nav {
     flex-direction: row;
     overflow-x: auto;
     border-right: 0;
@@ -542,7 +569,7 @@
     padding: 7px;
     gap: 3px;
   }
-  #dock-workspace #settings-dialog:not(:modal) .settings-nav button {
+  #dock-workspace :is(#settings-dialog, [data-panel-id='settings-dialog'], .settings-modal):not(:modal) .settings-nav button {
     flex: 0 0 auto;
     min-height: 34px;
     padding: 7px 9px;
@@ -550,34 +577,34 @@
     gap: 6px;
     white-space: nowrap;
   }
-  #dock-workspace #settings-dialog:not(:modal) .settings-nav button svg {
+  #dock-workspace :is(#settings-dialog, [data-panel-id='settings-dialog'], .settings-modal):not(:modal) .settings-nav button svg {
     width: 15px;
     height: 15px;
   }
-  #dock-workspace #settings-dialog:not(:modal) .settings-panel {
+  #dock-workspace :is(#settings-dialog, [data-panel-id='settings-dialog'], .settings-modal):not(:modal) .settings-panel {
     padding: 20px 16px;
   }
-  #dock-workspace #settings-dialog:not(:modal) .settings-row {
+  #dock-workspace :is(#settings-dialog, [data-panel-id='settings-dialog'], .settings-modal):not(:modal) .settings-row {
     flex-wrap: wrap;
     gap: 12px;
   }
-  #dock-workspace #settings-dialog:not(:modal) .settings-row > div:first-child {
+  #dock-workspace :is(#settings-dialog, [data-panel-id='settings-dialog'], .settings-modal):not(:modal) .settings-row > div:first-child {
     flex: 1 1 160px;
   }
-  #dock-workspace #settings-dialog:not(:modal) .settings-resource-actions {
+  #dock-workspace :is(#settings-dialog, [data-panel-id='settings-dialog'], .settings-modal):not(:modal) .settings-resource-actions {
     flex-wrap: wrap;
   }
-  #dock-workspace #settings-dialog:not(:modal) .settings-section-heading h3 {
+  #dock-workspace :is(#settings-dialog, [data-panel-id='settings-dialog'], .settings-modal):not(:modal) .settings-section-heading h3 {
     font-size: 18px;
   }
-  #dock-workspace #settings-dialog:not(:modal) .public-api-endpoint {
+  #dock-workspace :is(#settings-dialog, [data-panel-id='settings-dialog'], .settings-modal):not(:modal) .public-api-endpoint {
     flex-wrap: wrap;
   }
-  #dock-workspace #settings-dialog:not(:modal) .public-api-token-head {
+  #dock-workspace :is(#settings-dialog, [data-panel-id='settings-dialog'], .settings-modal):not(:modal) .public-api-token-head {
     flex-direction: column;
     gap: 4px;
   }
-  #dock-workspace #settings-dialog:not(:modal) .public-api-expiry {
+  #dock-workspace :is(#settings-dialog, [data-panel-id='settings-dialog'], .settings-modal):not(:modal) .public-api-expiry {
     white-space: normal;
   }
 }
@@ -709,10 +736,5 @@
   }
   .dock-panel .rm-section-head {
     flex-wrap: wrap;
-  }
-}
-@media (max-width: 600px) {
-  .docking-movement {
-    grid-template-columns: 1fr;
   }
 }

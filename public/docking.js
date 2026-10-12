@@ -2,7 +2,11 @@ import { t as tr, bindText, bindAttribute, onLanguageChange } from './i18n.js';
 import {
   isPanelId,
   isConversationPanel,
+  isToolPanel,
+  toolKindOf,
+  TOOL_KINDS,
   MAX_CONVERSATIONS,
+  MAX_TOOL_PANELS,
   MIN_RATIO,
   MAX_RATIO,
   createDefaultLayout,
@@ -20,6 +24,7 @@ import {
   validatePresets,
   createPresetLayout,
   presetConversationCount,
+  presetToolNeeds,
   applyPresetLayout,
 } from './docking-presets.js';
 
@@ -41,11 +46,17 @@ const tabPaths = {
   preferences:
     'm10 3-.5 2-2 .9-1.8-.6-2 3.4L5.2 10v2l-1.5 1.3 2 3.4 1.8-.6 2 .9.5 2h4l.5-2 2-.9 1.8.6 2-3.4-1.5-1.3v-2l1.5-1.3-2-3.4-1.8.6-2-.9L14 3h-4ZM15 11a3 3 0 1 1-6 0 3 3 0 0 1 6 0',
 };
-function tabIcon(id) {
-  const type = isConversationPanel(id) ? 'conversation' : id;
-  const icon = el('span', 'dock-tab-icon');
+export function tabIcon(id) {
+  const type = isConversationPanel(id) ? 'conversation' : toolKindOf(id) || id;
+  return glyphIcon('dock-tab-icon', [tabPaths[type]], type);
+}
+// Single icon-helper interface: shapes may be plain path-d strings (tab
+// glyphs) or { tag, attrs } objects (lock glyphs: rect + shackle path).
+// Strings normalize to <path d="..."> so both call shapes stay valid.
+function glyphIcon(cls, shapes, type) {
+  const icon = el('span', cls);
   icon.setAttribute('aria-hidden', 'true');
-  icon.dataset.dockType = type;
+  if (type) icon.dataset.dockType = type;
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   for (const [key, value] of Object.entries({
     viewBox: '0 0 24 24',
@@ -56,13 +67,25 @@ function tabIcon(id) {
     'stroke-linejoin': 'round',
   }))
     svg.setAttribute(key, value);
-  const path = document.createElementNS(svg.namespaceURI, 'path');
-  path.setAttribute('d', tabPaths[type]);
-  svg.append(path);
+  for (const shape of shapes) {
+    const item = typeof shape === 'string' ? { tag: 'path', attrs: { d: shape } } : shape;
+    const node = document.createElementNS(svg.namespaceURI, item.tag);
+    for (const [key, value] of Object.entries(item.attrs)) node.setAttribute(key, value);
+    svg.append(node);
+  }
   icon.append(svg);
   return icon;
 }
-const zones = ['center', 'left', 'right', 'top', 'bottom'];
+// Padlock chrome for context locks: same stroke style as tab glyphs.
+export function lockIcon(locked) {
+  return glyphIcon('dock-lock-icon', [
+    { tag: 'rect', attrs: { x: '5', y: '10.5', width: '14', height: '9.5', rx: '2' } },
+    locked
+      ? { tag: 'path', attrs: { d: 'M8 10.5V7a4 4 0 0 1 8 0v3.5' } }
+      : { tag: 'path', attrs: { d: 'M8 10.5V7a4 4 0 0 1 7.8-1.3' } },
+  ]);
+}
+const edgeZones = ['left', 'right', 'top', 'bottom'];
 const zoneTitles = {
   center: 'docking.center',
   left: 'docking.left',
@@ -96,6 +119,11 @@ export function createDocking({
   onCreateConversation,
   onChooseConversation,
   onDropConversation,
+  onCreateTool,
+  onRestoreTool,
+  onToggleToolLock,
+  toolStateOf,
+  toolIdsOf,
   isFocusedPanel,
   projectColorOf,
   onBeforeModeChange,
@@ -103,19 +131,31 @@ export function createDocking({
 }) {
   panels = Object.assign(Object.create(null), panels);
   const panelIds = () => Object.keys(panels);
-  const label = (id) => titleOf?.(id) || tr(titles[id] || 'docking.conversation');
+  const label = (id) => titleOf?.(id) || tr(titles[toolKindOf(id) || id] || 'docking.conversation');
   const stored = read('docking.layout', null);
   const restored = validateLayout(stored);
   let layout = restored || createDefaultLayout();
-  let enabled = !!restored && stored.enabled === true;
-  // A stale sidecar must not leave an undefined panel in the DOM. No session is deleted.
+  // Modular workspace defaults ON when no choice was saved; an explicit
+  // opt-out (enabled:false) is honored. The mobile gate still applies via
+  // the viewport match in updateViewport.
+  let enabled = stored?.enabled !== false;
+  // Tool instance refs missing from the registry are restored synchronously
+  // below (after the dialog exists); other unknown panels close here. No
+  // session is deleted.
+  const restoredToolRefs = restored
+    ? [
+        ...new Set(groupsOf(restored).flatMap((group) => group.panels)),
+      ].filter((id) => isToolPanel(id) && !panels[id])
+    : [];
   for (const id of groupsOf(layout).flatMap((group) => group.panels))
-    if (!panels[id]) layout = closePanel(layout, id);
+    if (!panels[id] && !isToolPanel(id)) layout = closePanel(layout, id);
   let active = false;
   let dragged = null;
   let resizing = null;
   // Drop-preview fast path (beta.3): dragover only records the latest point;
   // one rAF does the measuring + DOM placement, skipped when target unchanged.
+  // Entry paints synchronously (see schedulePreview): fast drags can starve
+  // frames, and a first paint must never depend on a quiet frame.
   let previewKey = null;
   let previewGroup = null;
   let pendingPreview = null;
@@ -176,45 +216,10 @@ export function createDocking({
   );
   const help = el('p', 'docking-help', () => tr('docking.help'));
   const fields = el('fieldset', 'docking-controls');
-  fields.append(el('legend', '', () => tr('docking.panels')));
-  const openers = el('div', 'docking-openers');
-  const newConversation = button(
-    () => tr('docking.new_conversation'),
-    () => addConversation(targetChoice.value),
-    'secondary-button',
-  );
-  newConversation.id = 'docking-new-conversation';
-  fields.append(openers);
-  const movement = el('div', 'docking-movement');
-  function select(id, key) {
-    const row = el('label');
-    row.append(el('span', '', () => tr(key)));
-    const input = el('select');
-    input.id = id;
-    row.append(input);
-    movement.append(row);
-    return input;
-  }
-  const panelChoice = select('docking-panel', 'docking.panel');
-  const targetChoice = select('docking-target', 'docking.target');
-  const zoneChoice = select('docking-zone', 'docking.position');
-  const move = button(
-    () => tr('docking.move'),
-    () => {
-      commit(
-        movePanel(layout, {
-          panel: panelChoice.value,
-          targetGroupId: targetChoice.value,
-          zone: zoneChoice.value,
-        }),
-        panelChoice.value,
-      );
-    },
-    'primary-button',
-  );
-  move.id = 'docking-move';
-  movement.append(move);
-  fields.append(movement);
+  // Agencement stays minimal: mode toggle + Reset + named presets below.
+  // No Panels legend: the red panel-buttons section was removed entirely.
+  // Panel opening and keyboard moves live in the tab context menu (real
+  // buttons, reachable via the ⋯ chrome button or the ContextMenu key).
   const footer = el('footer', 'docking-footer');
   const reset = button(
     () => tr('docking.reset'),
@@ -360,7 +365,24 @@ export function createDocking({
     }
     storePresets([...presets.items, item], 'docking.saved', name);
   }
-  function loadPreset() {
+  // Candidate tool instances of one kind, visible first, then parked
+  // registry order (parent toolIdsOf may include parked metadata whose roots
+  // are not mounted yet). toolPool narrows to mounted roots; the load path
+  // lazily restores parked candidates via onRestoreTool only as needed,
+  // never the whole registry eagerly.
+  function toolCandidates(kind) {
+    const fromParent = toolIdsOf?.(kind);
+    const base = Array.isArray(fromParent) && fromParent.length > 0 ? fromParent : panelIds();
+    const ordered = [...groupsOf(layout).flatMap((group) => group.panels), ...base];
+    const out = [];
+    for (const id of ordered)
+      if (isToolPanel(id) && toolKindOf(id) === kind && !out.includes(id)) out.push(id);
+    return out;
+  }
+  function toolPool(kind) {
+    return toolCandidates(kind).filter((id) => panels[id]);
+  }
+  async function loadPreset() {
     const item = presets.items.find((item) => item.name === presetChoice.value);
     if (!item) return;
     cancelPreset();
@@ -374,14 +396,59 @@ export function createDocking({
     ];
     const needed = presetConversationCount(item.layout);
     while (ids.length < needed) {
-      const id = onCreateConversation?.({ activate: false });
+      const id = await onCreateConversation?.({ activate: false });
       if (!id || !panels[id] || ids.includes(id)) {
         presetMessage('docking.load_failed', '', true);
         return;
       }
       ids.push(id);
     }
-    const next = applyPresetLayout(item.layout, ids);
+    // Reuse visible/parked dynamic instances of matching kind first (locks
+    // preserved); lazily restore parked metadata only for slots with no
+    // mounted root; create only true deficits. Surplus instances stay parked
+    // in the parent registry. No association is captured: every load remaps.
+    // The CURRENT layout size never gates creation: the preset replaces
+    // geometry, and final V4 validation enforces MAX_TOOL_PANELS on the
+    // result (a valid 8-tool preset loads over a current 16-tool layout).
+    const needs = presetToolNeeds(item.layout);
+    const toolIds = [];
+    const used = new Set();
+    for (const kind of needs) {
+      let id = toolPool(kind).find((entry) => !used.has(entry));
+      if (!id) {
+        for (const candidate of toolCandidates(kind)) {
+          if (used.has(candidate) || panels[candidate]) continue;
+          try {
+            const node = onRestoreTool?.(candidate);
+            if (node instanceof Element && registerPanel(candidate, node)) {
+              id = candidate;
+              break;
+            }
+          } catch {}
+        }
+      }
+      if (!id) {
+        const fresh = await onCreateTool?.(kind);
+        if (!fresh || used.has(fresh)) {
+          presetMessage('docking.load_failed', '', true);
+          return;
+        }
+        if (!panels[fresh]) {
+          try {
+            const node = onRestoreTool?.(fresh);
+            if (node instanceof Element) registerPanel(fresh, node);
+          } catch {}
+        }
+        if (!panels[fresh]) {
+          presetMessage('docking.load_failed', '', true);
+          return;
+        }
+        id = fresh;
+      }
+      used.add(id);
+      toolIds.push(id);
+    }
+    const next = applyPresetLayout(item.layout, ids, toolIds);
     if (!next) {
       presetMessage('docking.load_failed', '', true);
       return;
@@ -410,13 +477,19 @@ export function createDocking({
   addMenu.id = 'docking-add-menu';
   addMenu.setAttribute('role', 'menu');
   bindAttribute(addMenu, 'aria-label', () => tr('docking.add_tab'));
-  menu.hidden = addMenu.hidden = true;
-  document.body.append(menu, addMenu);
+  const moveMenu = el('div', 'dock-menu');
+  moveMenu.id = 'docking-move-menu';
+  moveMenu.setAttribute('role', 'menu');
+  bindAttribute(moveMenu, 'aria-label', () => tr('docking.move_to'));
+  menu.hidden = addMenu.hidden = moveMenu.hidden = true;
+  document.body.append(menu, addMenu, moveMenu);
   let menuOrigin = null;
   let addMenuButton = null;
+  let moveMenuButton = null;
   const closeMenu = (restoreFocus = false) => {
-    menu.hidden = addMenu.hidden = true;
+    menu.hidden = addMenu.hidden = moveMenu.hidden = true;
     addMenuButton?.setAttribute('aria-expanded', 'false');
+    moveMenuButton?.setAttribute('aria-expanded', 'false');
     if (restoreFocus && menuOrigin?.isConnected) menuOrigin.focus({ preventScroll: true });
   };
   function menuItem(text, action, disabled = false) {
@@ -434,20 +507,92 @@ export function createDocking({
     menuOrigin = origin;
     menu.replaceChildren();
     addMenu.replaceChildren();
+    moveMenu.replaceChildren();
     const finish = (action) => () => {
       closeMenu();
       action();
     };
-    const openAdd = (focus = true) => {
-      addMenu.hidden = false;
-      addMenuButton.setAttribute('aria-expanded', 'true');
-      const rect = addMenuButton.getBoundingClientRect();
+    const placeSubmenu = (popup, anchor) => {
+      popup.hidden = false;
+      anchor.setAttribute('aria-expanded', 'true');
+      const rect = anchor.getBoundingClientRect();
       const x =
-        rect.right + addMenu.offsetWidth + 4 > innerWidth - 12
-          ? rect.left - addMenu.offsetWidth - 4
+        rect.right + popup.offsetWidth + 4 > innerWidth - 12
+          ? rect.left - popup.offsetWidth - 4
           : rect.right + 4;
-      placeViewportMenu(addMenu, x, rect.top);
+      placeViewportMenu(popup, x, rect.top);
+    };
+    // Submenu contents rebuild on every open (hover and ArrowRight re-enter):
+    // appending without clearing would duplicate entries.
+    const buildAddMenu = () => {
+      const create = menuItem(
+        () => tr('docking.new_conversation'),
+        finish(() => addConversation(groupId)),
+        !onChooseConversation,
+      );
+      create.dataset.dockAdd = 'new-conversation';
+      addMenu.append(create);
+      const separator = el('hr');
+      separator.setAttribute('role', 'separator');
+      addMenu.append(separator);
+      // One entry per tool kind: reopen the primary only when ZERO instances
+      // of the kind are open; otherwise mint a NEW lockable instance via the
+      // parent (never reactivate a singleton, never resurrect a hidden legacy
+      // primary while a dynamic instance already carries the kind).
+      for (const kind of TOOL_KINDS) {
+        const openOfKind = groupsOf(layout).some((group) =>
+          group.panels.some((panel) => panel === kind || toolKindOf(panel) === kind),
+        );
+        const room = toolCount() < MAX_TOOL_PANELS;
+        const canNew = !!onCreateTool && room;
+        const canReopen = !openOfKind && !!panels[kind] && room;
+        const item = menuItem(
+          () => label(kind),
+          finish(() => {
+            if (!openOfKind && panels[kind]) openPanel(kind, groupId);
+            else addTool(kind, groupId);
+          }),
+          !canNew && !canReopen,
+        );
+        item.dataset.dockAdd = kind;
+        bindAttribute(item, 'title', () => label(kind));
+        addMenu.append(item);
+      }
+    };
+    const openAdd = (focus = true) => {
+      addMenu.replaceChildren();
+      buildAddMenu();
+      placeSubmenu(addMenu, addMenuButton);
       if (focus) addMenu.querySelector('button:not(:disabled)')?.focus({ preventScroll: true });
+    };
+    const groupLabel = (group) => group.panels.map(label).join(' · ') || tr('docking.empty');
+    const openMove = (focus = true) => {
+      // Keyboard path for panel moves: every live group as a tab target
+      // plus edge splits of the current group. Real buttons, no dialog.
+      moveMenu.replaceChildren();
+      const live = groupsOf(layout);
+      const current = live.find((group) => group.id === groupId);
+      for (const target of live) {
+        const item = menuItem(
+          () => `${tr('docking.center')} · ${groupLabel(target)}`,
+          finish(() => commit(movePanel(layout, { panel: id, targetGroupId: target.id }), id)),
+          !id,
+        );
+        item.dataset.dockMove = `center:${target.id}`;
+        moveMenu.append(item);
+      }
+      const lone = current && current.panels.length < 2 && current.panels.includes(id);
+      for (const zone of edgeZones) {
+        const item = menuItem(
+          () => `${tr(zoneTitles[zone])} · ${current ? groupLabel(current) : ''}`,
+          finish(() => commit(movePanel(layout, { panel: id, targetGroupId: groupId, zone }), id)),
+          !id || !current || lone,
+        );
+        item.dataset.dockMove = `${zone}:${groupId}`;
+        moveMenu.append(item);
+      }
+      placeSubmenu(moveMenu, moveMenuButton);
+      if (focus) moveMenu.querySelector('button:not(:disabled)')?.focus({ preventScroll: true });
     };
     addMenuButton = menuItem(
       () => tr('docking.add_tab'),
@@ -465,27 +610,26 @@ export function createDocking({
         openAdd();
       }
     };
-    const create = menuItem(
-      () => tr('docking.new_conversation'),
-      finish(() => addConversation(groupId)),
-      !onChooseConversation,
+    moveMenuButton = menuItem(
+      () => tr('docking.move_to'),
+      () => openMove(),
+      !id,
     );
-    create.dataset.dockAdd = 'new-conversation';
-    addMenu.append(create);
-    const separator = el('hr');
-    separator.setAttribute('role', 'separator');
-    addMenu.append(separator);
-    const ids = panelIds().filter((id) => !isConversationPanel(id));
-    for (const panel of ids) {
-      const item = menuItem(
-        () => label(panel),
-        finish(() => openPanel(panel, groupId)),
-        !canOpenPanel(panel),
-      );
-      item.dataset.dockAdd = panel;
-      bindAttribute(item, 'title', () => label(panel));
-      addMenu.append(item);
-    }
+    moveMenuButton.classList.add('dock-menu-submenu');
+    moveMenuButton.setAttribute('aria-haspopup', 'menu');
+    moveMenuButton.setAttribute('aria-expanded', 'false');
+    moveMenuButton.setAttribute('aria-controls', moveMenu.id);
+    moveMenuButton.onpointerenter = () => {
+      if (!moveMenuButton.disabled) openMove(false);
+    };
+    moveMenuButton.onkeydown = (key) => {
+      if (key.key === 'ArrowRight') {
+        key.preventDefault();
+        key.stopPropagation();
+        openMove();
+      }
+    };
+    buildAddMenu();
     const group = groupsOf(layout).find((group) => group.id === groupId);
     const closeOthers = menuItem(
       () => tr('docking.close_others'),
@@ -495,6 +639,7 @@ export function createDocking({
     closeOthers.dataset.dockCloseOthers = groupId;
     menu.append(
       addMenuButton,
+      moveMenuButton,
       menuItem(
         () => tr('ui.fermer'),
         finish(() => removePanel(id)),
@@ -503,12 +648,12 @@ export function createDocking({
       closeOthers,
       menuItem(
         () => tr('docking.title'),
-        finish(() => showSettings(groupId)),
+        finish(() => showSettings()),
       ),
       menuItem(
         () => tr('docking.save_layout'),
         finish(() => {
-          showSettings(groupId);
+          showSettings();
           presetName.focus();
         }),
       ),
@@ -522,33 +667,39 @@ export function createDocking({
     );
     addMenuButton.focus({ preventScroll: true });
   }
-  for (const popup of [menu, addMenu])
-    popup.addEventListener('keydown', (event) => {
-      if (event.key === 'ArrowLeft' && popup === addMenu) {
-        event.preventDefault();
-        addMenu.hidden = true;
-        addMenuButton.setAttribute('aria-expanded', 'false');
-        addMenuButton.focus();
-        return;
-      }
-      if (event.key === 'Tab') {
-        closeMenu(true);
-        return;
-      }
-      if (!['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return;
+  function popupKeys(event, popup) {
+    const submenuOf = new Map([
+      [addMenu, addMenuButton],
+      [moveMenu, moveMenuButton],
+    ]);
+    if (event.key === 'ArrowLeft' && submenuOf.has(popup)) {
       event.preventDefault();
-      const items = [...popup.querySelectorAll('button:not(:disabled)')];
-      const current = items.indexOf(document.activeElement);
-      const index =
-        event.key === 'Home'
-          ? 0
-          : event.key === 'End'
-            ? items.length - 1
-            : (current + (event.key === 'ArrowUp' ? -1 : 1) + items.length) % items.length;
-      items[index]?.focus({ preventScroll: true });
-    });
+      popup.hidden = true;
+      submenuOf.get(popup)?.setAttribute('aria-expanded', 'false');
+      submenuOf.get(popup)?.focus();
+      return;
+    }
+    if (event.key === 'Tab') {
+      closeMenu(true);
+      return;
+    }
+    if (!['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    const items = [...popup.querySelectorAll('button:not(:disabled)')];
+    const current = items.indexOf(document.activeElement);
+    const index =
+      event.key === 'Home'
+        ? 0
+        : event.key === 'End'
+          ? items.length - 1
+          : (current + (event.key === 'ArrowUp' ? -1 : 1) + items.length) % items.length;
+    items[index]?.focus({ preventScroll: true });
+  }
+  for (const popup of [menu, addMenu]) popup.addEventListener('keydown', (event) => popupKeys(event, popup));
+  moveMenu.addEventListener('keydown', (event) => popupKeys(event, moveMenu));
   document.addEventListener('pointerdown', (event) => {
-    if (!menu.hidden && !menu.contains(event.target) && !addMenu.contains(event.target)) closeMenu();
+    if (!menu.hidden && ![menu, addMenu, moveMenu].some((popup) => popup.contains(event.target)))
+      closeMenu();
   });
   window.addEventListener('resize', () => closeMenu());
 
@@ -557,26 +708,58 @@ export function createDocking({
       .flatMap((group) => group.panels)
       .filter(isConversationPanel).length;
   }
+  // Open tool tabs (singleton primaries plus dynamic tool: instances),
+  // the five primaries included in the cap.
+  function toolCount() {
+    return groupsOf(layout)
+      .flatMap((group) => group.panels)
+      .filter((id) => TOOL_KINDS.includes(id) || isToolPanel(id)).length;
+  }
   function canOpenPanel(id) {
-    return (
-      !isConversationPanel(id) ||
-      groupsOf(layout).some((group) => group.panels.includes(id)) ||
-      conversationCount() < MAX_CONVERSATIONS
-    );
+    if (isConversationPanel(id))
+      return (
+        groupsOf(layout).some((group) => group.panels.includes(id)) ||
+        conversationCount() < MAX_CONVERSATIONS
+      );
+    if (TOOL_KINDS.includes(id) || isToolPanel(id))
+      return (
+        groupsOf(layout).some((group) => group.panels.includes(id)) || toolCount() < MAX_TOOL_PANELS
+      );
+    return false;
   }
   async function addConversation(groupId) {
     if (!active || !onChooseConversation) return;
     const id = await onChooseConversation();
     if (active && id && panels[id]) openPanel(id, groupId);
   }
-  function showSettings(groupId) {
+  // AddTab for a tool kind always mints a NEW lockable instance through the
+  // parent (which registers its DOM synchronously); it never reactivates a
+  // singleton. Reopening a closed primary goes through openPanel instead.
+  function addTool(kind, groupId) {
+    if (!active || !TOOL_KINDS.includes(kind)) return;
+    if (!onCreateTool) {
+      openPanel(kind, groupId);
+      return;
+    }
+    if (toolCount() >= MAX_TOOL_PANELS) {
+      toast?.(() => tr('docking.tool_limit', { count: MAX_TOOL_PANELS }), true);
+      return;
+    }
+    let id = null;
+    try {
+      id = onCreateTool(kind);
+    } catch {
+      id = null;
+    }
+    const attach = (fresh) => {
+      if (active && fresh && panels[fresh]) openPanel(fresh, groupId);
+    };
+    if (id && typeof id.then === 'function') id.then(attach, () => {});
+    else attach(id);
+  }
+  function showSettings() {
     closeMenu();
     refreshDialog();
-    if (groupId) {
-      targetChoice.value = groupId;
-      const group = groupsOf(layout).find((group) => group.id === groupId);
-      if (group?.active) panelChoice.value = group.active;
-    }
     if (!dialog.open) dialog.showModal();
     opener.setAttribute('aria-expanded', 'true');
   }
@@ -584,38 +767,6 @@ export function createDocking({
     toggle.checked = enabled;
     toggle.disabled = !viewport.matches;
     fields.disabled = !active;
-    const chosen = [panelChoice.value, targetChoice.value, zoneChoice.value];
-    openers.replaceChildren(
-      newConversation,
-      ...panelIds().map((id) => {
-        const item = button(
-          () => label(id),
-          () => openPanel(id),
-          'secondary-button',
-        );
-        item.dataset.dockOpen = id;
-        bindAttribute(item, 'aria-label', () => tr('docking.show', { panel: label(id) }));
-        item.disabled = !canOpenPanel(id);
-        return item;
-      }),
-    );
-    newConversation.disabled = !onChooseConversation;
-    bindAttribute(newConversation, 'title', () =>
-      tr(newConversation.disabled ? 'docking.conversation_limit' : 'docking.new_conversation'),
-    );
-    panelChoice.replaceChildren(...panelIds().map((id) => new Option(label(id), id)));
-    targetChoice.replaceChildren(
-      ...groupsOf(layout).map(
-        (group) => new Option(group.panels.map(label).join(' · ') || tr('docking.empty'), group.id),
-      ),
-    );
-    zoneChoice.replaceChildren(...zones.map((zone) => new Option(tr(zoneTitles[zone]), zone)));
-    for (const [input, value] of [
-      [panelChoice, chosen[0]],
-      [targetChoice, chosen[1]],
-      [zoneChoice, chosen[2]],
-    ])
-      if ([...input.options].some((option) => option.value === value)) input.value = value;
     opener.classList.toggle('is-active', active);
     refreshPresets();
   }
@@ -823,7 +974,29 @@ export function createDocking({
         const panel = model.panels[index];
         commit(activatePanel(layout, panel), panel);
       };
+      let lockState = null;
+      try {
+        lockState = toolStateOf?.(id) || null;
+      } catch {
+        lockState = null;
+      }
+      tab.classList.toggle('is-locked', !!lockState?.locked);
       tabs.append(tab);
+      // The lock is a SIBLING of the tab button, never nested inside it:
+      // dock owns this chrome and its CSS, the parent owns lock state.
+      if (lockState) {
+        const lock = button('', () => {
+          try {
+            onToggleToolLock?.(id);
+          } finally {
+            refreshToolStates();
+          }
+        }, 'dock-lock');
+        lock.dataset.dockLock = id;
+        lock.append(lockIcon(!!lockState.locked));
+        paintLock(lock, id, lockState);
+        tabs.append(lock);
+      }
     }
     bar.append(tabs);
     const options = button(
@@ -947,7 +1120,14 @@ export function createDocking({
   }
   function schedulePreview(group, clientX, clientY, sourceId) {
     pendingPreview = { group, clientX, clientY, sourceId };
-    if (!previewRaf) previewRaf = requestAnimationFrame(runPendingPreview);
+    if (previewRaf) return;
+    previewRaf = requestAnimationFrame(runPendingPreview);
+    // Deterministic entry: when nothing is shown, paint this point now so a
+    // preview never depends on a quiet frame (fast/throttled drags starve
+    // rAF between crossings). In-group moves stay coalesced: repeats hit the
+    // same-target early return inside showDropPreview. The queued rAF then
+    // finds no pending point and no-ops.
+    if (preview.hidden && tabInsertion.hidden) runPendingPreview();
   }
   function runPendingPreview() {
     previewRaf = 0;
@@ -1059,7 +1239,8 @@ export function createDocking({
   function openPanel(id, groupId) {
     if (!active || !isPanelId(id) || !panels[id]) return;
     if (!canOpenPanel(id)) {
-      toast?.(() => tr('docking.conversation_limit'), true);
+      if (isConversationPanel(id)) toast?.(() => tr('docking.conversation_limit'), true);
+      else toast?.(() => tr('docking.tool_limit', { count: MAX_TOOL_PANELS }), true);
       return;
     }
     const group = groupsOf(layout).find((group) => group.panels.includes(id));
@@ -1081,7 +1262,73 @@ export function createDocking({
     rememberHome(id, node);
     if (isConversationPanel(id)) resizeObserver.observe(node);
     refreshDialog();
+    refreshToolStates();
     return true;
+  }
+  // Release a dynamic instance back to the parent: close it from the
+  // geometry, restore its node to its classic home, and drop the registry
+  // entry. Returns false when the id was never registered.
+  function unregisterPanel(id) {
+    const node = panels[id];
+    if (!node) return false;
+    const home = homes.get(id);
+    if (home) {
+      try {
+        onBeforeMove?.(id, node);
+        if (node.matches('dialog:modal')) node.close();
+        home.marker.after(node);
+        node.classList.remove('dock-panel');
+        node.hidden = home.hidden;
+        home.marker.remove();
+      } catch {}
+      homes.delete(id);
+    }
+    delete panels[id];
+    try {
+      resizeObserver.unobserve(node);
+    } catch {}
+    if (groupsOf(layout).some((group) => group.panels.includes(id))) {
+      layout = closePanel(layout, id);
+      persist();
+      render();
+    }
+    refreshDialog();
+    refreshToolStates();
+    return true;
+  }
+  // Paint one lock button from parent state (labels come from the parent
+  // via toolStateOf; lock/unlock wording via translations).
+  function paintLock(lock, id, state) {
+    const tab = host.querySelector(`[data-dock-tab="${id}"]`);
+    if (!state) {
+      lock.remove();
+      tab?.classList.remove('is-locked');
+      return;
+    }
+    const locked = !!state.locked;
+    const name = state.label || `${label(id)} · ${tr(locked ? 'docking.unlock' : 'docking.lock')}`;
+    lock.setAttribute('aria-pressed', String(locked));
+    lock.setAttribute('aria-label', name);
+    lock.title = state.unavailable ? `${name} · ${tr('docking.unavailable')}` : name;
+    lock.disabled = !!state.unavailable && !locked;
+    lock.classList.toggle('is-locked', locked);
+    const glyph = lock.querySelector('.dock-lock-icon');
+    if (glyph) glyph.replaceWith(lockIcon(locked));
+    tab?.classList.toggle('is-locked', locked);
+  }
+  // Re-read parent lock state into the tab chrome.
+  function refreshToolStates() {
+    if (!host.isConnected) return;
+    for (const lock of host.querySelectorAll('[data-dock-lock]')) {
+      const id = lock.dataset.dockLock;
+      let state = null;
+      try {
+        state = toolStateOf?.(id) || null;
+      } catch {
+        state = null;
+      }
+      paintLock(lock, id, state);
+    }
   }
   function refreshTitles() {
     for (const tab of host.querySelectorAll('[data-dock-tab]')) {
@@ -1095,13 +1342,21 @@ export function createDocking({
         isConversationPanel(tab.dataset.dockTab) && !!isFocusedPanel?.(tab.dataset.dockTab),
       );
     }
+    refreshToolStates();
     if (dialog.open) refreshDialog();
   }
   function applyLayout(value) {
     let next = validateLayout(value);
     if (!next) return false;
-    for (const id of groupsOf(next).flatMap((group) => group.panels))
+    for (const id of groupsOf(next).flatMap((group) => group.panels)) {
+      if (!panels[id] && isToolPanel(id)) {
+        try {
+          const node = onRestoreTool?.(id);
+          if (node instanceof Element) registerPanel(id, node);
+        } catch {}
+      }
       if (!panels[id]) next = closePanel(next, id);
+    }
     commit(next);
     return true;
   }
@@ -1190,14 +1445,37 @@ export function createDocking({
     refreshDialog();
     refreshTitles();
   });
+  // Synchronous prune-time restore: the parent hands back the already-built
+  // root for a persisted tool: ref (or nothing, and only that ref closes).
+  // Successful registration keeps the validated tree byte-identical: no
+  // relocation, no reordering, no ratio or active changes here. No network
+  // waits, no async reconciliation: factories build roots plus registry
+  // entries immediately.
+  for (const id of restoredToolRefs) {
+    if (panels[id]) continue;
+    try {
+      const node = onRestoreTool?.(id);
+      if (node instanceof Element) registerPanel(id, node);
+    } catch {}
+  }
+  let prunedRestore = false;
+  for (const id of groupsOf(layout).flatMap((group) => group.panels))
+    if (!panels[id]) {
+      layout = closePanel(layout, id);
+      prunedRestore = true;
+    }
+  if (prunedRestore) persist();
   refreshDialog();
+  refreshToolStates();
   return {
     get active() {
       return active;
     },
     openPanel,
     registerPanel,
+    unregisterPanel,
     refreshTitles,
+    refreshToolStates,
     getLayout: () => layout,
     applyLayout,
     closePanel: removePanel,

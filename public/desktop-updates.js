@@ -5,8 +5,19 @@ import { createDesktopComponentsPanel, componentsErrorKey, describeProgress } fr
 import { openUpdatesPane } from './desktop-components-action.js';
 import { updateView, operationActive, progressNumbers } from './desktop-update-state.js';
 
-export function createDesktopUpdates({ api, getContext }) {
-  const $ = (id) => document.getElementById('studio-update-' + id);
+export function createDesktopUpdates({ api, getContext, getElement = null, domId = null, instanceId = '', isPrimary = true } = {}) {
+  void domId;
+  void instanceId;
+  const primary = isPrimary !== false;
+  const $ = (id) =>
+    typeof getElement === 'function'
+      ? getElement('studio-update-' + id)
+      : document.getElementById('studio-update-' + id);
+  // Owned settings dialog for visibility checks (never the global primary).
+  const ownedDialog = () =>
+    typeof getElement === 'function'
+      ? getElement('settings-dialog')
+      : document.getElementById('settings-dialog');
   const core = window.__PRIME_STUDIO_DESKTOP__ === true && window.__TAURI__?.core;
   const PRERELEASE_KEY = 'prime-studio.updates.includePrereleases';
   const readPrereleases = () => {
@@ -416,7 +427,7 @@ export function createDesktopUpdates({ api, getContext }) {
     if (pollTimer) return;
     pollTimer = setTimeout(async () => {
       pollTimer = null;
-      const visible = document.getElementById('settings-dialog')?.open && !$('native').hidden;
+      const visible = ownedDialog()?.open && !$('native')?.hidden;
       if (!visible && !localKind && !operationActive(operation)) return;
       try {
         await readOperation();
@@ -622,7 +633,9 @@ export function createDesktopUpdates({ api, getContext }) {
     actionFlight = gate;
     let epoch;
     try {
-      openUpdatesPane();
+      // Global opener routes to the primary surface; clones already own their
+      // updates tab, so only the primary may invoke it.
+      if (primary) openUpdatesPane();
       errorCode = '';
       notice = '';
       await refresh();
@@ -673,8 +686,13 @@ export function createDesktopUpdates({ api, getContext }) {
     }
   }
   $('restart').onclick = () => void control('restart');
-  window.addEventListener('studio:quit-request', () => void control('quit'));
-  window.__PRIME_STUDIO_QUIT_READY__ = true;
+  // Exactly one global quit path: the primary instance only. Clones expose
+  // restart/quit through their own buttons but never register global hooks.
+  const onQuitRequest = () => void control('quit');
+  if (primary) {
+    window.addEventListener('studio:quit-request', onQuitRequest);
+    window.__PRIME_STUDIO_QUIT_READY__ = true;
+  }
   $('stop-operation').onclick = async () => {
     try {
       if (['components', 'prepare'].includes(operation?.kind)) await core.invoke('desktop_components_cancel');
@@ -688,9 +706,9 @@ export function createDesktopUpdates({ api, getContext }) {
   };
   $('remote-request').onclick = () => void requestRemote();
   $('remote-check').onclick = () => void refreshRemote({ force: true });
-  onLanguageChange(() => {
+  const offLanguage = onLanguageChange(() => {
     render();
-    if (!$('remote').hidden) void refreshRemote();
+    if ($('remote') && !$('remote').hidden) void refreshRemote();
   });
   render();
   return {
@@ -698,5 +716,21 @@ export function createDesktopUpdates({ api, getContext }) {
       void refresh().catch(failure);
     },
     components: componentsPanel,
+    get root() {
+      return ownedDialog();
+    },
+    dispose: () => {
+      // Stale-guard every in-flight read/action below.
+      localEpoch++;
+      if (pollTimer) clearTimeout(pollTimer);
+      pollTimer = null;
+      clearRemoteTimer();
+      try {
+        if (primary) window.removeEventListener('studio:quit-request', onQuitRequest);
+      } catch {}
+      try {
+        offLanguage?.();
+      } catch {}
+    },
   };
 }

@@ -78,37 +78,67 @@ export function createCommands({
   attachControls,
   text,
   chipFactory,
+  // Standalone project-bound resource picker (e.g. one lazily per locked
+  // Preferences): own detached textarea namespace, dialog-only public UI, no
+  // global composer/chip bindings, no input listeners, no inline prefetch.
+  // The caller pins getContext (frozen origin cwd/session, live permissions)
+  // and passes onInsert(command) to handle an explicit user pick. Defaults
+  // keep every ordinary conversation/primary path byte-identical.
+  resourceOnly = false,
+  onInsert,
 }) {
-  const input = inputOverride || document.getElementById('composer');
-  const scoped = Boolean(inputOverride);
+  // Own detached namespace in resource mode: never the global `#composer` and
+  // never a live toolbar group. The textarea stays detached (no document
+  // insertion) and only carries local text fns; the controls group only
+  // namespaces a launcher that resource mode never creates.
+  const detachedInput = resourceOnly ? document.createElement('textarea') : null;
+  if (detachedInput) detachedInput.setAttribute('data-cmd', 'resource-input');
+  const detachedControls = resourceOnly ? document.createElement('div') : null;
+  if (detachedControls) detachedControls.setAttribute('data-cmd', 'resource-controls');
+  const input = resourceOnly ? detachedInput : inputOverride || document.getElementById('composer');
+  const scoped = Boolean(resourceOnly || inputOverride);
   const ns = scoped ? `cmd${(paletteCounter += 1)}` : '';
   const popupId = scoped ? `${ns}-suggestions` : 'command-suggestions';
   const dialogId = scoped ? `${ns}-dialog` : 'commands-dialog';
   const titleId = scoped ? `${ns}-title` : 'commands-title';
-  const chip = chipFactory ? chipFactory() : createCommandChip();
-  const getText = text?.get || composerText;
-  const setText = text?.set || setComposerText;
-  const getCommand = text?.command || composerCommand;
-  const selectCommand = text?.select || selectComposerCommand;
-  const button = node('button', 'attach-image-button command-launcher');
-  button.innerHTML =
-    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M15 4 9 20"/></svg>';
-  if (!scoped) button.id = 'open-commands';
-  else button.setAttribute('data-cvw', 'commands-launcher');
-  button.type = 'button';
-  bindAttribute(button, 'title', () => tr('ui.commandes_et_skills'));
-  bindAttribute(button, 'aria-label', () => button.title);
-  button.setAttribute('aria-haspopup', 'dialog');
-  (attachControls || document.querySelector('.attachment-controls'))?.prepend(button);
-  const popup = node('div', 'command-suggestions');
-  popup.id = popupId;
-  if (scoped) popup.setAttribute('data-cvw', 'suggestions');
-  popup.hidden = true;
-  popup.setAttribute('role', 'listbox');
-  bindAttribute(popup, 'aria-label', () => tr('ui.commandes_proposees'));
-  input.setAttribute('aria-controls', popup.id);
-  input.setAttribute('aria-autocomplete', 'list');
-  input.setAttribute('aria-expanded', 'false');
+  const chip = resourceOnly ? null : chipFactory ? chipFactory() : createCommandChip();
+  // Resource mode binds text fns to the detached textarea so restoreDraft /
+  // intercept (and any future core path) can never read or write the global
+  // composer. insert() in resource mode returns before any text/chip mutation.
+  const getText = resourceOnly ? () => detachedInput.value : text?.get || composerText;
+  const setText = resourceOnly
+    ? (value) => {
+        detachedInput.value = value;
+      }
+    : text?.set || setComposerText;
+  const getCommand = resourceOnly ? () => null : text?.command || composerCommand;
+  const selectCommand = resourceOnly ? () => {} : text?.select || selectComposerCommand;
+  // Resource mode exposes only the dialog as public UI: no launcher button in
+  // any toolbar and no inline suggestion popup (the parent wires its own owner
+  // button to open() and tracks the returned dialog).
+  const button = resourceOnly ? null : node('button', 'attach-image-button command-launcher');
+  if (button) {
+    button.innerHTML =
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M15 4 9 20"/></svg>';
+    if (!scoped) button.id = 'open-commands';
+    else button.setAttribute('data-cvw', 'commands-launcher');
+    button.type = 'button';
+    bindAttribute(button, 'title', () => tr('ui.commandes_et_skills'));
+    bindAttribute(button, 'aria-label', () => button.title);
+    button.setAttribute('aria-haspopup', 'dialog');
+    (attachControls || document.querySelector('.attachment-controls'))?.prepend(button);
+  }
+  const popup = resourceOnly ? null : node('div', 'command-suggestions');
+  if (popup) {
+    popup.id = popupId;
+    if (scoped) popup.setAttribute('data-cvw', 'suggestions');
+    popup.hidden = true;
+    popup.setAttribute('role', 'listbox');
+    bindAttribute(popup, 'aria-label', () => tr('ui.commandes_proposees'));
+    input.setAttribute('aria-controls', popup.id);
+    input.setAttribute('aria-autocomplete', 'list');
+    input.setAttribute('aria-expanded', 'false');
+  }
   const dialog = node('dialog', 'modal command-dialog');
   dialog.id = dialogId;
   dialog.setAttribute('aria-labelledby', titleId);
@@ -163,7 +193,9 @@ export function createCommands({
     node('p', '', () => tr('ui.un_skill_regroupe_des_instructions_et_parfois_des_scripts_skill_n')),
   );
   dialog.append(header, intro, search, filters, folders, note, list, help);
-  document.body.append(popup, dialog);
+  // Resource mode mounts only the dialog; the popup/launcher never exist.
+  if (popup) document.body.append(popup, dialog);
+  else document.body.append(dialog);
   const cache = {
     get: (key) => sharedCacheGet(key),
   };
@@ -189,14 +221,15 @@ export function createCommands({
     return `${c.cwd || ''}\0${c.sessionId || ''}\0${!!c.running}`;
   };
   function hide() {
+    if (!popup) return;
     popup.hidden = true;
     input.setAttribute('aria-expanded', 'false');
     input.removeAttribute('aria-activedescendant');
   }
   function update() {
     const context = getContext();
-    chip.update();
-    button.disabled = context.readOnly || !context.cwd || context.loading;
+    chip?.update();
+    if (button) button.disabled = context.readOnly || !context.cwd || context.loading;
     if (catalogKey && catalogKey !== key()) {
       generation++;
       controller?.abort();
@@ -206,7 +239,9 @@ export function createCommands({
       hide();
       if (dialog.open) dialog.close();
     }
-    if (context.cwd && !context.readOnly && !context.loading && prefetchKey !== key()) {
+    // No inline prefetch in resource mode: the catalog loads on open() (or the
+    // refresh button), never from composer typing or background polling.
+    if (!resourceOnly && context.cwd && !context.readOnly && !context.loading && prefetchKey !== key()) {
       prefetchKey = key();
       clearTimeout(prefetchTimer);
       prefetchTimer = setTimeout(() => void load().catch(() => {}), 100);
@@ -249,13 +284,38 @@ export function createCommands({
         if (token === generation) {
           pending = null;
           if (dialog.open) renderList();
-          if (!popup.hidden) renderSuggestions();
+          if (popup && !popup.hidden) renderSuggestions();
         }
       });
     return pending;
   }
   function insert(command) {
+    // Standard canUse guards in every mode.
     if (!command.supported || input.disabled || getContext().readOnly || getContext().loading) return;
+    if (resourceOnly) {
+      // The caller handles an explicit user pick against its own conversation.
+      // onInsert runs BEFORE any text/chip mutation; `false` keeps the dialog
+      // open, anything else closes this picker's own dialog. The global
+      // composer is never read or written here.
+      const verdict = onInsert?.(command);
+      if (verdict && typeof verdict.then === 'function') {
+        verdict.then(
+          (resolved) => {
+            if (resolved !== false) {
+              try {
+                dialog.close();
+              } catch {}
+            }
+          },
+          () => {},
+        );
+      } else if (verdict !== false) {
+        try {
+          dialog.close();
+        } catch {}
+      }
+      return;
+    }
     const range = commandAtCaret(input.value, input.selectionStart, input.selectionEnd);
     const inline = range && (range.start > 0 || getCommand());
     if (inline && command.source !== 'skill') return;
@@ -554,19 +614,25 @@ export function createCommands({
     dismissed = false;
     void suggest();
   };
-  input.addEventListener('keydown', onKeyDown, true);
-  input.addEventListener('input', onInput);
-  input.addEventListener('focus', onFocus);
-  input.addEventListener('blur', hide);
-  input.addEventListener('click', onCaret);
-  input.addEventListener('keyup', onCaret);
-  input.addEventListener('compositionend', onInput);
-  const positionObserver = new ResizeObserver(position);
-  positionObserver.observe(input.closest('form') || input);
-  window.addEventListener('resize', position);
-  window.visualViewport?.addEventListener('resize', position);
-  window.visualViewport?.addEventListener('scroll', position);
-  button.onclick = () => void open();
+  // Resource mode binds nothing to any composer: no keydown/input/focus/blur
+  // suggestion listeners on the detached textarea, no popup positioning.
+  // removeEventListener calls in destroy() stay safe (they simply match nothing).
+  let positionObserver = null;
+  if (!resourceOnly) {
+    input.addEventListener('keydown', onKeyDown, true);
+    input.addEventListener('input', onInput);
+    input.addEventListener('focus', onFocus);
+    input.addEventListener('blur', hide);
+    input.addEventListener('click', onCaret);
+    input.addEventListener('keyup', onCaret);
+    input.addEventListener('compositionend', onInput);
+    positionObserver = new ResizeObserver(position);
+    positionObserver.observe(input.closest('form') || input);
+    window.addEventListener('resize', position);
+    window.visualViewport?.addEventListener('resize', position);
+    window.visualViewport?.addEventListener('scroll', position);
+  }
+  if (button) button.onclick = () => void open();
   search.oninput = renderList;
   // Teardown removes listeners + instance DOM (launcher, popup, dialog, chip)
   // so a rebuilt unit on the same nodes never double-handles. Dialog close
@@ -575,7 +641,7 @@ export function createCommands({
     generation++;
     controller?.abort();
     clearTimeout(prefetchTimer);
-    positionObserver.disconnect();
+    positionObserver?.disconnect();
     try {
       if (dialog.open) dialog.close();
     } catch {}
@@ -593,26 +659,34 @@ export function createCommands({
     try {
       window.visualViewport?.removeEventListener('scroll', position);
     } catch {}
-    button.onclick = null;
+    if (button) button.onclick = null;
     search.oninput = null;
     try {
-      chip.destroy?.();
+      chip?.destroy?.();
     } catch {}
-    if (!chip.destroy) {
+    if (chip && !chip.destroy) {
       try {
         chip.root?.remove();
       } catch {}
     }
     for (const node of [button, popup, dialog]) {
+      if (!node) continue;
       try {
         node.remove();
       } catch {}
     }
   }
+  // Integration API (resource picker for locked Preferences):
+  //   const picker = createCommands({ api, getContext, onInsert, resourceOnly: true });
+  // - getContext is parent-pinned (frozen origin cwd/session, live permissions).
+  // - onInsert(command): explicit user pick; return false to keep the dialog
+  //   open, anything else closes this picker's own dialog. Never touches text.
+  // - picker.dialog is the owned <dialog> for settings child-manager tracking.
   return {
     open,
     update,
     destroy,
+    dialog,
     restoreDraft() {
       if (getCommand()) return;
       const text = getText(),

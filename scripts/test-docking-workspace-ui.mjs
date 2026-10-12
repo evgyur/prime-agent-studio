@@ -11,8 +11,9 @@
 // for visuals. Reading refs/storage through page.evaluate for comparison is
 // allowed and is NOT UI forcing (same rule as scripts/test-docking-ui.mjs).
 //
-// CONTRACT (round-2 docking, v3 model): at most 8 conversation panels; panel
-// ids conversation/roadmap/session/agents/files/preferences plus conv:<id> refs.
+// CONTRACT (round-2 docking, V4 geometry): at most 8 conversation panels;
+// panel ids conversation/roadmap/session/agents/files/preferences plus
+// conv:<id> refs plus tool:<kind>:<nonce> instances.
 // Session/Agents/Files are INDEPENDENT dock tabs (no monolithic inspector tab):
 // the inspector registers live unit roots (#inspector-session/agents/files).
 // Exactly one focused conversation carries .dock-tab.is-conversation.is-focused
@@ -55,6 +56,7 @@ import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { createApp } from '../server.mjs';
 import { createLanGateway, hashAccessCode } from '../lib/lan.mjs';
+import { createDefaultLayout } from '../public/docking-layout.js';
 
 const STUDIO_VERSION = JSON.parse(readFileSync(resolve('package.json'), 'utf8')).version;
 // Source fence: hashes + timestamps at start/end prove the tree did not move
@@ -70,6 +72,14 @@ const SOURCE_SURFACE = [
   'public/docking.js',
   'public/docking-layout.js',
   'public/docking-presets.js',
+  'public/tool-views.js',
+  'public/panel-scope.js',
+  'public/desktop-updates.js',
+  'public/interaction-settings.js',
+  'public/engine-settings.js',
+  'public/computer-preferences.js',
+  'public/sync-settings.js',
+  'public/api-settings.js',
   'public/conversation-picker.js',
   'public/session-sorting.js',
   'public/inspector.js',
@@ -108,11 +118,6 @@ const DOCK = {
   toggle: '#docking-toggle',
   closeSettings: '#docking-close-settings',
   reset: '#docking-reset',
-  panelSelect: '#docking-panel',
-  targetSelect: '#docking-target',
-  zoneSelect: '#docking-zone',
-  moveButton: '#docking-move',
-  newConversation: '#docking-new-conversation',
   workspace: '#dock-workspace',
   dropPreview: '.dock-drop-preview',
   bar: '.dock-bar',
@@ -122,6 +127,8 @@ const DOCK = {
   contextMenu: '#docking-context-menu',
   addMenu: '#docking-add-menu',
   addOption: '#docking-add-menu [data-dock-add]',
+  moveMenu: '#docking-move-menu',
+  moveOption: '#docking-move-menu [data-dock-move]',
   presetName: '#docking-preset-name',
   presetSave: '#docking-save-layout',
   presetChoice: '#docking-preset-choice',
@@ -149,6 +156,10 @@ const CONV_KEY = 'prime-studio.docking.conversations';
 const DRAFTS_KEY = 'prime-studio.drafts';
 const MAX_CONVERSATIONS = 8;
 const ZONES = ['center', 'left', 'right', 'top', 'bottom'];
+// Canonical V4 default used ONLY to seed an explicit classic opt-out
+// (enabled:false) for scenarios that specifically start undocked. Fresh
+// profiles seed nothing and exercise the default-ON path.
+const layoutDefault = createDefaultLayout();
 // Full M2+DEEP is the DEFAULT: every core scenario runs on a normal
 // invocation. DOCKR2_DEEP=0 explicitly opts out to the historical smoke-only
 // preparatory mode (recorded as deferred, never silent).
@@ -457,11 +468,19 @@ function note(text) {
   notes.push(text);
   console.log(`note - ${text}`);
 }
-async function seedSelection(context, selection) {
-  await context.addInitScript((sel) => {
-    if (!localStorage.getItem('prime-studio.selection'))
-      localStorage.setItem('prime-studio.selection', JSON.stringify(sel));
-  }, selection);
+async function seedSelection(context, selection, { docked = true } = {}) {
+  await context.addInitScript(
+    ({ sel, dockedMode, layout }) => {
+      if (!localStorage.getItem('prime-studio.selection'))
+        localStorage.setItem('prime-studio.selection', JSON.stringify(sel));
+      // Deterministic dock preference without touching the DOM: an explicit
+      // opt-out (enabled:false) keeps the classic baseline undocked, while a
+      // missing envelope exercises the default-ON path for fresh profiles.
+      if (!dockedMode && !localStorage.getItem('prime-studio.docking.layout'))
+        localStorage.setItem('prime-studio.docking.layout', JSON.stringify(layout));
+    },
+    { sel: selection, dockedMode: docked, layout: { ...layoutDefault, enabled: false } },
+  );
 }
 async function probeGaps(page, probes) {
   const missing = [];
@@ -671,6 +690,73 @@ async function openLayoutDialogViaEllipsis(page, groupId = 'conversation-group')
     .getByRole('menuitem', { name: /Agencement|Layout/ })
     .click();
   await expect(page.locator(DOCK.dialog)).toBeVisible({ timeout: 10000 });
+}
+// Real Move/Add pathways (the manual-move form #docking-panel/target/zone/move
+// and the red-section data-dock-open buttons are removed; creation and moves
+// live in the tab context menu). Selectors use quoted attributes: conv:/tool:
+// ids carry colons and never use #id selectors.
+async function menuMoveToGroup(page, tabId, targetGroupId) {
+  // Center move: the tab joins the target group as its active tab.
+  await page.locator(`button[data-dock-tab="${tabId}"]`).click({ button: 'right' });
+  await expect(page.locator(DOCK.contextMenu)).toBeVisible({ timeout: 10000 });
+  await page.locator(`${DOCK.contextMenu} .dock-menu-submenu`).nth(1).hover();
+  await expect(page.locator(DOCK.moveMenu)).toBeVisible({ timeout: 10000 });
+  // Keyboard criterion: the menu opens with the Add entry focused; arrows
+  // reach the Move entry and ArrowRight enters the submenu with keyboard
+  // focus on a real [data-dock-move] item (full product keyboard path).
+  let onMoveButton = false;
+  for (let n = 0; n < 10 && !onMoveButton; n++) {
+    const controls = await page.evaluate(
+      () => document.activeElement?.getAttribute?.('aria-controls') ?? null,
+    );
+    if (controls === 'docking-move-menu') onMoveButton = true;
+    else await page.keyboard.press('ArrowDown');
+  }
+  assert.ok(onMoveButton, 'Arrow keys must reach the Move submenu button');
+  await page.keyboard.press('ArrowRight');
+  const moveFocused = await page.evaluate(() => document.activeElement?.dataset?.dockMove ?? null);
+  assert.ok(moveFocused, 'ArrowRight must enter the Move submenu with keyboard focus');
+  await page.locator(`${DOCK.moveMenu} button[data-dock-move="center:${targetGroupId}"]`).click();
+}
+async function menuSplitZone(page, tabId, zone) {
+  // Edge split: the Move submenu offers <zone>:<originGroup> for the tab's
+  // own group. The caller guarantees a multi-tab origin group (a lone tab
+  // legitimately disables edge splits).
+  const origin = (await layoutSignature(page)).groups.find((group) => group.tabs.includes(tabId));
+  assert.ok(origin, `A live group holding ${tabId} must exist for the ${zone} split`);
+  await page.locator(`button[data-dock-tab="${tabId}"]`).click({ button: 'right' });
+  await expect(page.locator(DOCK.contextMenu)).toBeVisible({ timeout: 10000 });
+  await page.locator(`${DOCK.contextMenu} .dock-menu-submenu`).nth(1).hover();
+  await expect(page.locator(DOCK.moveMenu)).toBeVisible({ timeout: 10000 });
+  let onMoveButton = false;
+  for (let n = 0; n < 10 && !onMoveButton; n++) {
+    const controls = await page.evaluate(
+      () => document.activeElement?.getAttribute?.('aria-controls') ?? null,
+    );
+    if (controls === 'docking-move-menu') onMoveButton = true;
+    else await page.keyboard.press('ArrowDown');
+  }
+  assert.ok(onMoveButton, 'Arrow keys must reach the Move submenu button');
+  await page.keyboard.press('ArrowRight');
+  const moveFocused = await page.evaluate(() => document.activeElement?.dataset?.dockMove ?? null);
+  assert.ok(moveFocused, 'ArrowRight must enter the Move submenu with keyboard focus');
+  const item = page.locator(`${DOCK.moveMenu} button[data-dock-move="${zone}:${origin.id}"]`);
+  assert.equal(
+    await item.isDisabled().catch(() => true),
+    false,
+    `${zone} split of ${origin.id} must be enabled`,
+  );
+  await item.click();
+}
+async function menuAdd(page, groupId, addValue) {
+  // Real Add pathway: group ellipsis opens the context menu, the Add submenu
+  // entry creates (tool kinds mint instances via the parent) or reopens the
+  // closed primary (never the removed dialog controls).
+  await page.locator(`[data-dock-group="${groupId}"]`).locator(DOCK.ellipsis).click();
+  await expect(page.locator(DOCK.contextMenu)).toBeVisible({ timeout: 10000 });
+  await page.locator(`${DOCK.contextMenu} .dock-menu-submenu`).first().hover();
+  await expect(page.locator(DOCK.addMenu)).toBeVisible({ timeout: 10000 });
+  await page.locator(`${DOCK.addMenu} button[data-dock-add="${addValue}"]`).click();
 }
 async function convTabIds(page) {
   return page.evaluate(() =>
@@ -993,7 +1079,13 @@ try {
     viewport: { width: 1600, height: 1000 },
     reducedMotion: 'reduce',
   });
-  await seedSelection(context, { cwd: cwdA, sessionId: 'ws-alpha', projectOverview: false });
+  // Explicit classic start (enabled:false pre-navigation): the opt-in below
+  // goes through the real toggle. No DOM is forced, only fixture storage.
+  await seedSelection(
+    context,
+    { cwd: cwdA, sessionId: 'ws-alpha', projectOverview: false },
+    { docked: false },
+  );
   page = await context.newPage();
   page.setDefaultTimeout(15000);
   page.on('pageerror', (error) =>
@@ -1072,7 +1164,7 @@ try {
       const groups = await layoutSignature(page);
       await page.locator(`[data-dock-group="${groups.groups[0].id}"]`).locator(DOCK.ellipsis).click();
       await expect(page.locator(DOCK.contextMenu)).toBeVisible({ timeout: 10000 });
-      await page.locator(DOCK.contextMenu).locator('[aria-haspopup="menu"]').click();
+      await page.locator(DOCK.contextMenu).locator('[aria-controls="docking-add-menu"]').click();
       await page.locator(`${DOCK.addOption}[data-dock-add="new-conversation"]`).click();
       await expect(page.locator(DOCK.picker)).toBeVisible({ timeout: 10000 });
       const rows = page.locator(`${DOCK.picker} .conv-pick-row`);
@@ -1108,12 +1200,7 @@ try {
     const m2fGA = m2fSig.groups.find((group) => group.tabs.includes('conversation'));
     const m2fGB = m2fSig.groups.find((group) => group.tabs.includes(m2fDyn));
     if (m2fGA && m2fGB && m2fGA.id === m2fGB.id) {
-      await openLayoutDialog(page);
-      await page.locator(DOCK.panelSelect).selectOption(m2fDyn);
-      await page.locator(DOCK.targetSelect).selectOption(m2fGA.id);
-      await page.locator(DOCK.zoneSelect).selectOption('right');
-      await page.locator(DOCK.moveButton).click();
-      await page.locator(DOCK.closeSettings).click();
+      await menuSplitZone(page, m2fDyn, 'right');
     }
     await page.locator(`button[data-dock-tab="${m2fDyn}"]`).click();
     await page.locator('button[data-dock-tab="conversation"]').click();
@@ -1387,11 +1474,6 @@ try {
     ['toggle', DOCK.toggle],
     ['closeSettings', DOCK.closeSettings],
     ['reset', DOCK.reset],
-    ['panelSelect', DOCK.panelSelect],
-    ['targetSelect', DOCK.targetSelect],
-    ['zoneSelect', DOCK.zoneSelect],
-    ['moveButton', DOCK.moveButton],
-    ['newConversation', DOCK.newConversation],
     ['contextMenu', DOCK.contextMenu],
     ['addMenu', DOCK.addMenu],
     ['presetName', DOCK.presetName],
@@ -1409,7 +1491,7 @@ try {
   }
   step('Parent contract present: dialog, toggle, ellipsis menus, presets controls, storage keys.');
 
-  // ------------------------------------------------ Phase 2: opt-in + V3 default envelope.
+  // ------------------------------------------------ Phase 2: opt-in + V4 default envelope.
   proofPhase = 'optin-v3';
   await openLayoutDialog(page);
   await page.locator(DOCK.toggle).check();
@@ -1423,8 +1505,8 @@ try {
   let signature = await layoutSignature(page);
   assert.equal(signature.workspaceActive, true, 'workspace must be active after opt-in');
   const envelope = await storageEnvelope(page, LAYOUT_KEY);
-  assert.ok(envelope?.parsed, 'V3 layout envelope must be stored');
-  assert.equal(envelope.parsed.version, 3, 'Saved layout envelope must be canonical version 3');
+  assert.ok(envelope?.parsed, 'V4 layout envelope must be stored');
+  assert.equal(envelope.parsed.version, 4, 'Saved layout envelope must be canonical version 4');
   assert.equal(envelope.parsed.enabled, true, 'Envelope must record enabled:true');
   assert.ok(envelope.parsed.root, 'Envelope must carry the layout root');
   const envelopeRaw = envelope.raw;
@@ -1432,7 +1514,7 @@ try {
     !envelopeRaw.includes('sessionId') &&
       !envelopeRaw.includes('conv:') &&
       !envelopeRaw.includes('inspector'),
-    'Default V3 envelope carries geometry only (no session ids, no conv refs, no monolithic inspector)',
+    'Default V4 envelope carries geometry only (no session ids, no conv refs, no monolithic inspector)',
   );
   signature = await layoutSignature(page);
   assert.deepEqual(
@@ -1441,17 +1523,17 @@ try {
       ['conversation-group', ['conversation']],
       ['tools-group', ['roadmap', 'session', 'agents', 'files']],
     ],
-    'V3 default mounts conversation plus the 4 independent tool tabs',
+    'V4 default mounts conversation plus the 4 independent tool tabs',
   );
   assert.equal(
     signature.groups.find((group) => group.id === 'tools-group').active,
     'roadmap',
-    'V3 default tools group activates roadmap',
+    'V4 default tools group activates roadmap',
   );
   await page.locator(DOCK.closeSettings).click();
   await expect(page.locator(DOCK.dialog)).not.toBeVisible();
   await page.screenshot({ path: await freshShot(SHOTS.desktopDefault), animations: 'disabled' });
-  step('Opt-in enables dock with V3 envelope (version 3, 5-tab default); same host nodes.');
+  step('Opt-in enables dock with V4 envelope (version 4, 5-tab default); same host nodes.');
   await assertHostMount(page, 'opt-in');
 
   // ------------------------------------------------ Phase 3: ellipsis opens the context menu, Agencement opens settings.
@@ -1535,7 +1617,7 @@ try {
     'V1 migration keeps the tools active tab',
   );
   assert.equal(starts.length, 0, 'Migration/reload must not start a model run');
-  step('Valid V1 envelope migrates to V3 (inspector expanded in place) with zero model runs.');
+  step('Valid V1 envelope migrates to V4 (inspector expanded in place) with zero model runs.');
   // V2 with an ACTIVE inspector: active inspector becomes session.
   const v2Envelope = {
     version: 2,
@@ -1567,8 +1649,8 @@ try {
     'session',
     'Active inspector becomes session after migration',
   );
-  step('Valid V2 envelope migrates to V3 with active inspector -> session.');
-  // Saved layout is V3 after the migrated doc is next persisted (toggle off/on
+  step('Valid V2 envelope migrates to V4 with active inspector -> session.');
+  // Saved layout is V4 after the migrated doc is next persisted (toggle off/on
   // is a real save trigger; the envelope on disk is lazy until then).
   await openLayoutDialog(page);
   await page.locator(DOCK.toggle).uncheck();
@@ -1577,10 +1659,10 @@ try {
   await expect(page.locator(DOCK.workspace)).toBeVisible({ timeout: 10000 });
   await page.locator(DOCK.closeSettings).click();
   const migrated = await storageEnvelope(page, LAYOUT_KEY);
-  assert.equal(migrated?.parsed?.version, 3, 'Saved layout after legacy migration must be version 3');
+  assert.equal(migrated?.parsed?.version, 4, 'Saved layout after legacy migration must be version 4');
   assert.equal(migrated?.parsed?.enabled, true, 'Re-enabled envelope records enabled:true');
   await dumpOwnedStorage(page, 'post-legacy-resave');
-  step('Re-save after migration writes the V3 envelope (version 3, enabled).');
+  step('Re-save after migration writes the V4 envelope (version 4, enabled).');
   const refStateMigrated = await snapshotRefs(page);
 
   // ------------------------------------------------ Phase 5: presets (geometry only, inline confirm).
@@ -1618,22 +1700,31 @@ try {
       false,
       `Preset layout must not carry ${forbidden}`,
     );
-  assert.equal(presetsEnv.parsed.items[0].layout.version, 3, 'Preset layout is canonical V3 geometry');
+  assert.equal(presetsEnv.parsed.items[0].layout.version, 4, 'Preset layout is canonical V4 geometry');
   assert.ok(
     !storedLayoutRaw.includes('"inspector"'),
     'Preset layout carries the split tool tabs, never the monolithic inspector',
   );
   step('Preset save stores V3 geometry only (no session/draft/content/history keys).');
-  // Panel select offers exactly the 6 singletons (primary conversation mounted, no conv: views yet).
-  const panelValues = await page
-    .locator(DOCK.panelSelect)
-    .evaluate((el) => [...el.options].map((o) => o.value));
-  assert.deepEqual(
-    [...panelValues].sort(),
-    ['conversation', ...SINGLETONS].sort(),
-    'Panel select offers exactly conversation plus the 5 singletons',
-  );
-  step('Panel select lists exactly the v3 singleton set.');
+  // The manual-move form and red-section openers are removed: the dialog
+  // exposes no panel/target/zone/move controls and no data-dock-open
+  // buttons. Opening and moving live in the tab context menu (T1/T2 pin the
+  // real Add/Move pathways with full acceptance, not this probe).
+  for (const removed of [
+    '#docking-panel',
+    '#docking-target',
+    '#docking-zone',
+    '#docking-move',
+    '#docking-new-conversation',
+    '[data-dock-open]',
+  ]) {
+    assert.equal(
+      await page.locator(`${DOCK.dialog} ${removed}`).count(),
+      0,
+      `Removed Layout control must be absent from the dialog: ${removed}`,
+    );
+  }
+  step('Removed manual-move form and data-dock-open buttons are absent from the dialog.');
   // Overwrite with the same name: inline confirmation appears (never a native dialog).
   await page.locator(DOCK.presetName).fill('R2-Essai');
   await page.locator(DOCK.presetSave).click();
@@ -1652,12 +1743,15 @@ try {
   step('Preset overwrite confirm replaces the preset inline.');
   // Rearrange, then load: geometry restored, no runs touched.
   const startsBeforeLoad = starts.length;
-  await page.locator(DOCK.panelSelect).selectOption('session');
   const liveGroups = (await layoutSignature(page)).groups;
   const moveTarget = liveGroups.find((group) => !group.tabs.includes('session')) || liveGroups[0];
-  await page.locator(DOCK.targetSelect).selectOption(moveTarget.id);
-  await page.locator(DOCK.zoneSelect).selectOption('center');
-  await page.locator(DOCK.moveButton).click();
+  // The menu Move pathway needs the modal dialog closed (it intercepts tab
+  // pointer events); reopen it afterwards for the preset load. Same moves,
+  // same assertions, only the sequencing changes.
+  await page.locator(DOCK.closeSettings).click();
+  await expect(page.locator(DOCK.dialog)).not.toBeVisible({ timeout: 10000 });
+  await menuMoveToGroup(page, 'session', moveTarget.id);
+  await openLayoutDialog(page);
   await page.locator(DOCK.presetChoice).selectOption('R2-Essai');
   await page.locator(DOCK.presetLoad).click();
   await expect(page.locator(DOCK.presetStatus)).not.toBeEmpty({ timeout: 10000 });
@@ -1887,21 +1981,19 @@ try {
       [...document.querySelectorAll('.dock-tab.is-conversation.is-focused')].map((el) => el.dataset.dockTab),
     );
   }
-  await openLayoutDialog(page);
-  await page.locator(DOCK.newConversation).click();
+  // The dialog new-conversation opener is removed with the red section:
+  // creation flows through the real Add Tab menu, then the native picker.
+  const phase7Group = (await layoutSignature(page)).groups[0].id;
+  await menuAdd(page, phase7Group, 'new-conversation');
   const gapsB = [];
   try {
     await expectPickerOpen(page);
   } catch {
-    gapsB.push('chooser (native #conversation-picker after #docking-new-conversation)');
+    gapsB.push('chooser (native #conversation-picker after Add Tab new-conversation)');
   }
   if (gapsB.length === 0) {
     await pickProject(page, 'Atelier');
     await pickNewEmpty(page);
-    await page
-      .locator(DOCK.closeSettings)
-      .click()
-      .catch(() => {});
   }
   let newTabs = await convTabIds(page);
   if (!newTabs.some((tab) => tab.startsWith('conv:')))
@@ -1968,7 +2060,7 @@ try {
   const agentsGroup = signature.groups[0].id;
   await page.locator(`[data-dock-group="${agentsGroup}"]`).locator(DOCK.ellipsis).click();
   await expect(page.locator(DOCK.contextMenu)).toBeVisible({ timeout: 10000 });
-  await page.locator(DOCK.contextMenu).locator('[aria-haspopup="menu"]').click();
+  await page.locator(DOCK.contextMenu).locator('[aria-controls="docking-add-menu"]').click();
   await expect(page.locator(DOCK.addMenu)).toBeVisible({ timeout: 10000 });
   await page.locator(`${DOCK.addOption}[data-dock-add="agents"]`).click();
   await expect(page.locator('button[data-dock-tab="agents"]')).toBeAttached({ timeout: 10000 });
@@ -1987,7 +2079,7 @@ try {
   const chooserGroup = (await layoutSignature(page)).groups[0].id;
   await page.locator(`[data-dock-group="${chooserGroup}"]`).locator(DOCK.ellipsis).click();
   await expect(page.locator(DOCK.contextMenu)).toBeVisible({ timeout: 10000 });
-  await page.locator(DOCK.contextMenu).locator('[aria-haspopup="menu"]').click();
+  await page.locator(DOCK.contextMenu).locator('[aria-controls="docking-add-menu"]').click();
   await expect(page.locator(DOCK.addMenu)).toBeVisible({ timeout: 10000 });
   const addValues = await page
     .locator(DOCK.addMenu)
@@ -2060,7 +2152,7 @@ try {
   const shellsBeforeDedupe = await shellIds(page);
   await page.locator(`[data-dock-group="${chooserGroup}"]`).locator(DOCK.ellipsis).click();
   await expect(page.locator(DOCK.contextMenu)).toBeVisible({ timeout: 10000 });
-  await page.locator(DOCK.contextMenu).locator('[aria-haspopup="menu"]').click();
+  await page.locator(DOCK.contextMenu).locator('[aria-controls="docking-add-menu"]').click();
   await page.locator(`${DOCK.addOption}[data-dock-add="new-conversation"]`).click();
   await expectPickerOpen(page);
   await pickProject(page, 'Atelier');
@@ -2081,7 +2173,7 @@ try {
   // New-empty + Escape (null resolves to no tab).
   await page.locator(`[data-dock-group="${chooserGroup}"]`).locator(DOCK.ellipsis).click();
   await expect(page.locator(DOCK.contextMenu)).toBeVisible({ timeout: 10000 });
-  await page.locator(DOCK.contextMenu).locator('[aria-haspopup="menu"]').click();
+  await page.locator(DOCK.contextMenu).locator('[aria-controls="docking-add-menu"]').click();
   await page.locator(`${DOCK.addOption}[data-dock-add="new-conversation"]`).click();
   await expectPickerOpen(page);
   await pickProject(page, 'Atelier');
@@ -2092,7 +2184,7 @@ try {
   assert.deepEqual(await focusedMarker(page), [emptyTab], 'New-empty tab takes focus');
   await page.locator(`[data-dock-group="${chooserGroup}"]`).locator(DOCK.ellipsis).click();
   await expect(page.locator(DOCK.contextMenu)).toBeVisible({ timeout: 10000 });
-  await page.locator(DOCK.contextMenu).locator('[aria-haspopup="menu"]').click();
+  await page.locator(DOCK.contextMenu).locator('[aria-controls="docking-add-menu"]').click();
   await page.locator(`${DOCK.addOption}[data-dock-add="new-conversation"]`).click();
   await expectPickerOpen(page);
   await page.keyboard.press('Escape');
@@ -2250,12 +2342,12 @@ try {
     );
   }
   step('Close-others keeps the right-clicked (inactive) tab; other groups unchanged.');
-  // Reopen every parked singleton through the Layout dialog (same nodes).
-  await openLayoutDialog(page);
+  // Reopen every parked singleton through the real Add menu (same nodes).
   for (const tab of parkedTools) {
-    await page.locator(`button[data-dock-open="${tab}"]`).first().click();
+    const liveGroup = (await layoutSignature(page)).groups[0].id;
+    await menuAdd(page, liveGroup, tab);
+    await expect(page.locator(`button[data-dock-tab="${tab}"]`)).toBeAttached({ timeout: 10000 });
   }
-  await page.locator(DOCK.closeSettings).click();
   signature = await layoutSignature(page);
   assert.ok(
     parkedTools.every((tab) => signature.groups.some((group) => group.tabs.includes(tab))),
@@ -2284,14 +2376,9 @@ try {
   const convPark = pickedTab;
   assert.ok(convKeep && convKeep.startsWith('conv:'), 'emptyTab must exist for the kept tab');
   assert.ok(convPark && convPark.startsWith('conv:'), 'pickedTab must exist for the parked tab');
-  await openLayoutDialog(page);
-  await page.locator(DOCK.panelSelect).selectOption(convKeep);
   const convHost = (await layoutSignature(page)).groups.find((group) => group.tabs.includes(convPark));
   assert.ok(convHost, 'A live group holding the parked candidate must exist');
-  await page.locator(DOCK.targetSelect).selectOption(convHost.id);
-  await page.locator(DOCK.zoneSelect).selectOption('center');
-  await page.locator(DOCK.moveButton).click();
-  await page.locator(DOCK.closeSettings).click();
+  await menuMoveToGroup(page, convKeep, convHost.id);
   async function t3bSend(page, viewId) {
     // Era-robust send: per-pane button when wired, else the host button that
     // mirrors the focused view. Caller must have the view focused.
@@ -2340,9 +2427,17 @@ try {
   }
   step('Conversation close-others parks siblings with the run live; others unchanged.');
   await markShell(page, convPark);
-  await openLayoutDialog(page);
-  await page.locator(`button[data-dock-open="${convPark}"]`).first().click();
-  await page.locator(DOCK.closeSettings).click();
+  // Parked conversation views remount through the real Add Tab -> picker
+  // path: re-picking the bound session dedupes onto the parked view (same
+  // conv id, same shell node, draft/attachment/run retained). An integration
+  // that mints a fresh id here instead must fail explicitly, never rebind.
+  const convKeepGroup = (await layoutSignature(page)).groups.find((group) =>
+    group.tabs.includes(convKeep),
+  ).id;
+  await menuAdd(page, convKeepGroup, 'new-conversation');
+  await expectPickerOpen(page);
+  await pickProject(page, 'Atelier');
+  await pickSession(page, 'Préparer la distribution');
   await expect
     .poll(() => convTabIds(page).then((tabs) => tabs.includes(convPark)), { timeout: 10000 })
     .toBe(true);
@@ -2404,12 +2499,7 @@ try {
   if (!signature.groups.some((group) => group.tabs.length >= 2)) {
     const [firstGroup, secondGroup] = signature.groups;
     assert.ok(firstGroup && secondGroup, 'Two groups must exist to merge for the blank-bar path');
-    await openLayoutDialog(page);
-    await page.locator(DOCK.panelSelect).selectOption(secondGroup.tabs[0]);
-    await page.locator(DOCK.targetSelect).selectOption(firstGroup.id);
-    await page.locator(DOCK.zoneSelect).selectOption('center');
-    await page.locator(DOCK.moveButton).click();
-    await page.locator(DOCK.closeSettings).click();
+    await menuMoveToGroup(page, secondGroup.tabs[0], firstGroup.id);
     signature = await layoutSignature(page);
   }
   const blankGroup = signature.groups.find((group) => group.tabs.length >= 2);
@@ -2438,12 +2528,7 @@ try {
   if (!singleGroup) {
     const donor = signature.groups.find((group) => group.tabs.length >= 2);
     assert.ok(donor, 'A donor group must exist to carve a single-tab group');
-    await openLayoutDialog(page);
-    await page.locator(DOCK.panelSelect).selectOption(donor.tabs[0]);
-    await page.locator(DOCK.targetSelect).selectOption(donor.id);
-    await page.locator(DOCK.zoneSelect).selectOption('right');
-    await page.locator(DOCK.moveButton).click();
-    await page.locator(DOCK.closeSettings).click();
+    await menuSplitZone(page, donor.tabs[0], 'right');
     signature = await layoutSignature(page);
     singleGroup = signature.groups.find((group) => group.tabs.length === 1);
   }
@@ -2457,18 +2542,48 @@ try {
   step('Close-others disabled for one-tab groups; zero runs started or cancelled.');
   // Restore every parked view so later phases start from a mounted baseline
   // (singletons idempotent, conv views remounted from the sidecar registry).
-  await openLayoutDialog(page);
+  // Singletons remount idempotently through the real Add menu (a kind already
+  // open in any form is skipped, never duplicated: AddTab mints instances).
+  // The session-bound conversation view remounts through Add Tab -> picker
+  // (same conv id). New-empty parked views stay parked in the sidecar
+  // registry (nothing deleted); later phases resolve live state dynamically.
   for (const tab of ['roadmap', 'session', 'agents', 'files', 'preferences']) {
-    await page.locator(`button[data-dock-open="${tab}"]`).first().click();
+    const present = (await layoutSignature(page)).groups.some((group) =>
+      group.tabs.some((open) => open === tab || open.startsWith(`tool:${tab}:`)),
+    );
+    if (present) continue;
+    const liveGroup = (await layoutSignature(page)).groups[0].id;
+    await menuAdd(page, liveGroup, tab);
+    await expect(page.locator(`button[data-dock-tab="${tab}"]`)).toBeAttached({ timeout: 10000 });
   }
-  await page.locator(DOCK.closeSettings).click();
+  // Remount every parked BASELINE tab (close-others siblings can park the
+  // primary too, not just pickedTab): resolve the sidecar session binding
+  // and re-pick it through Add Tab -> picker (same conv id, same node).
+  // New-empty parked views have no session to re-pick and stay parked.
+  const TITLE_OF = {
+    'ws-alpha': ['Atelier', 'Calibrer la sortie'],
+    'ws-beta': ['Atelier', 'Préparer la distribution'],
+    'ws-gamma': ['Vtrott', 'migration du volant'],
+    'ws-delta': ['Atelier', 'sauvegardes'],
+  };
   const sidecarEnd = await storageEnvelope(page, CONV_KEY);
-  for (const entry of sidecarEnd?.parsed?.entries || []) {
-    if ((await convTabIds(page)).includes(entry.id)) continue;
-    await openLayoutDialog(page);
-    await page.locator(`button[data-dock-open="${entry.id}"]`).first().click();
-    await page.locator(DOCK.closeSettings).click();
+  const entriesEnd = sidecarEnd?.parsed?.entries || [];
+  async function remountIfParked(tabId) {
+    if ((await convTabIds(page)).includes(tabId)) return;
+    const entry = entriesEnd.find((item) => item.id === tabId);
+    const title = entry?.sessionId ? TITLE_OF[entry.sessionId] : null;
+    assert.ok(
+      title,
+      `Parked view ${tabId} must keep a known session binding to remount (nothing deleted)`,
+    );
+    const liveGroup = (await layoutSignature(page)).groups[0].id;
+    await menuAdd(page, liveGroup, 'new-conversation');
+    await expectPickerOpen(page);
+    await pickProject(page, title[0]);
+    await pickSession(page, title[1]);
   }
+  await remountIfParked('conversation');
+  await remountIfParked(pickedTab);
   // NOTE: droppedTab is created later (T4 sidebar drop); only views existing
   // now are restored here. Later phases resolve live state dynamically.
   await expect
@@ -2476,7 +2591,7 @@ try {
       timeout: 15000,
     })
     .toBe(true);
-  step('T3b restore: all parked singletons and conversation views remounted.');
+  step('T3b restore: parked singletons and the session-bound view remounted (new-empty parked views stay parked, nothing deleted).');
 
   // ------------------------------------------------ T4: sidebar pointer drag (drop, dedupe, reorder, Escape).
   proofPhase = 'sidebar-pointer-drag';
@@ -2556,12 +2671,7 @@ try {
   if ((await layoutSignature(page)).groups.length < 2) {
     const soloGroup = (await layoutSignature(page)).groups[0];
     const donor = soloGroup.tabs.find((tab) => tab !== pickedTab) || soloGroup.tabs[0];
-    await openLayoutDialog(page);
-    await page.locator(DOCK.panelSelect).selectOption(donor);
-    await page.locator(DOCK.targetSelect).selectOption(soloGroup.id);
-    await page.locator(DOCK.zoneSelect).selectOption('right');
-    await page.locator(DOCK.moveButton).click();
-    await page.locator(DOCK.closeSettings).click();
+    await menuSplitZone(page, donor, 'right');
   }
   const betaOtherGroup = (await layoutSignature(page)).groups.find((group) => group.id !== betaOrigGroup).id;
   assert.ok(betaOtherGroup, 'A second group must exist for cross-group dedupe');
@@ -2839,12 +2949,7 @@ try {
       let gB = sig.groups.find((group) => group.tabs.includes(tabB));
       assert.ok(gA && gB, 'Both views must be mounted for side-by-side');
       if (gA.id === gB.id) {
-        await openLayoutDialog(page);
-        await page.locator(DOCK.panelSelect).selectOption(tabB);
-        await page.locator(DOCK.targetSelect).selectOption(gA.id);
-        await page.locator(DOCK.zoneSelect).selectOption('right');
-        await page.locator(DOCK.moveButton).click();
-        await page.locator(DOCK.closeSettings).click();
+        await menuSplitZone(page, tabB, 'right');
       }
     }
     // Deterministic bindings through real UI (no sends): primary -> ws-alpha,
@@ -3255,12 +3360,7 @@ try {
       const gX = sig8.groups.find((group) => group.tabs.includes(viewX));
       assert.ok(gX, 'A live group holding viewX must exist');
       if (gX.tabs.includes(viewY)) {
-        await openLayoutDialog(page);
-        await page.locator(DOCK.panelSelect).selectOption(viewY);
-        await page.locator(DOCK.targetSelect).selectOption(gX.id);
-        await page.locator(DOCK.zoneSelect).selectOption('right');
-        await page.locator(DOCK.moveButton).click();
-        await page.locator(DOCK.closeSettings).click();
+        await menuSplitZone(page, viewY, 'right');
       }
     }
     await focusConvTab(page, viewX);
@@ -3430,9 +3530,13 @@ try {
     );
     assert.equal(starts.length, p10starts, 'Closing a tab must not start a run');
     step('Closing a conversation tab parks it (sidecar retains the entry, zero runs).');
-    await openLayoutDialog(page);
-    await page.locator(`button[data-dock-open="${viewY}"]`).first().click();
-    await page.locator(DOCK.closeSettings).click();
+    // Parked view remounts through Add Tab -> picker (same conv id, same
+    // shell node, parked draft intact).
+    const reopenGroup = (await layoutSignature(page)).groups[0].id;
+    await menuAdd(page, reopenGroup, 'new-conversation');
+    await expectPickerOpen(page);
+    await pickProject(page, 'Atelier');
+    await pickSession(page, 'Préparer la distribution');
     await expect
       .poll(() => convTabIds(page).then((tabs) => tabs.includes(viewY)), { timeout: 10000 })
       .toBe(true);
@@ -3474,14 +3578,16 @@ try {
     await page.locator('#session-list .session-select').filter({ hasText: 'migration du volant' }).click();
     await expect(page.locator('#detail-session-id')).toContainText('ws-gamma', { timeout: 10000 });
     // Split A left / B right through the real dialog selects for the side-by-side capture.
-    await openLayoutDialog(page);
-    await page.locator(DOCK.panelSelect).selectOption(concB);
     const groupsForSplit = (await layoutSignature(page)).groups;
     const leftGroup = groupsForSplit.find((group) => group.tabs.includes(concA)) || groupsForSplit[0];
-    await page.locator(DOCK.targetSelect).selectOption(leftGroup.id);
-    await page.locator(DOCK.zoneSelect).selectOption('right');
-    await page.locator(DOCK.moveButton).click();
-    await page.locator(DOCK.closeSettings).click();
+    // Same end state as the old target+zone move: concB alone in a group
+    // right of concA's group, through the real Move submenu.
+    const concBGroup = (await layoutSignature(page)).groups.find((group) =>
+      group.tabs.includes(concB),
+    );
+    if (concBGroup && concBGroup.id !== leftGroup.id)
+      await menuMoveToGroup(page, concB, leftGroup.id);
+    await menuSplitZone(page, concB, 'right');
     signature = await layoutSignature(page);
     assert.ok(signature.groups.length >= 2, 'Side-by-side split needs two live groups');
     // Submit MA in A (held), edit B, submit MB in B (held): two live runs.
@@ -3694,36 +3800,35 @@ try {
   // attempts on both paths create no ghost tab (chooser resolves, view null).
   let guard = 0;
   while ((await convTabIds(page)).length < MAX_CONVERSATIONS && guard < 12) {
-    await openLayoutDialog(page);
-    await page.locator(DOCK.newConversation).click();
+    const growGroup = (await layoutSignature(page)).groups[0].id;
+    await menuAdd(page, growGroup, 'new-conversation');
     await expectPickerOpen(page);
     await pickProject(page, 'Atelier');
     await pickNewEmpty(page);
-    await page.locator(DOCK.closeSettings).click();
     guard++;
   }
   const cappedTabs = await convTabIds(page);
   assert.equal(cappedTabs.length, MAX_CONVERSATIONS, `Must reach the ${MAX_CONVERSATIONS}-conversation cap`);
   const shellsBeforeCap = await shellIds(page);
   const runsBeforeCap = starts.length;
-  // Dialog path at cap: control stays enabled (chooser exists); the resolve is
-  // null, so nothing mounts. Await picker close resolution before counting.
-  await openLayoutDialog(page);
-  assert.equal(
-    await page.locator(DOCK.newConversation).isDisabled(),
-    false,
-    'Dialog create stays enabled (chooser path)',
-  );
-  await page.locator(DOCK.newConversation).click();
+  // At-cap Add path: the entry stays enabled (chooser exists); the resolve
+  // is null, so nothing mounts. Await picker close resolution before counting.
+  const capGroup = (await layoutSignature(page)).groups[0].id;
+  await page.locator(`[data-dock-group="${capGroup}"]`).locator(DOCK.ellipsis).click();
+  await expect(page.locator(DOCK.contextMenu)).toBeVisible({ timeout: 10000 });
+  await page.locator(`${DOCK.contextMenu} [aria-controls="docking-add-menu"]`).click();
+  await expect(page.locator(DOCK.addMenu)).toBeVisible({ timeout: 10000 });
+  const capEntry = page.locator(`${DOCK.addOption}[data-dock-add="new-conversation"]`);
+  assert.equal(await capEntry.isDisabled(), false, 'Add entry stays enabled at cap (chooser path)');
+  await capEntry.click();
   await expectPickerOpen(page);
   await pickProject(page, 'Atelier');
   await pickNewEmpty(page);
-  await page.locator(DOCK.closeSettings).click();
   // Menu path at cap: same resolve-null outcome.
   const anyGroup = (await layoutSignature(page)).groups[0].id;
   await page.locator(`[data-dock-group="${anyGroup}"]`).locator(DOCK.ellipsis).click();
   await expect(page.locator(DOCK.contextMenu)).toBeVisible({ timeout: 10000 });
-  await page.locator(DOCK.contextMenu).locator('[aria-haspopup="menu"]').click();
+  await page.locator(DOCK.contextMenu).locator('[aria-controls="docking-add-menu"]').click();
   await expect(page.locator(DOCK.addMenu)).toBeVisible({ timeout: 10000 });
   await page.locator(`${DOCK.addOption}[data-dock-add="new-conversation"]`).click();
   await expectPickerOpen(page);
@@ -3738,7 +3843,7 @@ try {
   assert.deepEqual(await shellIds(page), shellsBeforeCap, 'Over-cap attempts must not create shells');
   assert.equal(starts.length, runsBeforeCap, 'Over-cap attempts start zero runs');
   assert.deepEqual(errors, [], `Cap enforcement keeps zero page errors, got ${JSON.stringify(errors)}`);
-  step('Conversation cap of 8 enforced on dialog+menu paths with no ghost tab and zero runs.');
+  step('Conversation cap of 8 enforced on Add-menu paths with no ghost tab and zero runs.');
 
   // ------------------------------------------------ Phase 14: roadmap work request binds the focused session.
   proofPhase = 'roadmap-focus';
@@ -3828,11 +3933,31 @@ try {
       };
     });
   }
-  // Open Preferences through AddTab (real menu path).
+  // Open Preferences through AddTab (real menu path). Precondition: NO
+  // preferences-kind tab mounted. An earlier phase (T3b restore) mounts the
+  // primary, and AddTab with a kind already open mints a NEW clone instead
+  // of activating the primary — the primary would stay parked (open=false)
+  // while the clone shows. Close every preferences-kind tab through the
+  // real UI first, assert none mounted, then AddTab reopens the primary
+  // itself (same node): full lifecycle, nothing weakened.
+  async function prefsKindTabs(page) {
+    return (await layoutSignature(page)).groups
+      .flatMap((group) => group.tabs)
+      .filter((tab) => tab === 'preferences' || tab.startsWith('tool:preferences:'));
+  }
+  for (const tab of await prefsKindTabs(page)) {
+    await page.locator(`button[data-dock-tab="${tab}"]`).click();
+    await page.locator(`[data-dock-close="${tab}"]`).first().click();
+    await expect
+      .poll(() => prefsKindTabs(page).then((tabs) => tabs.includes(tab)), { timeout: 10000 })
+      .toBe(false);
+  }
+  assert.deepEqual(await prefsKindTabs(page), [], 'No preferences-kind tab may stay mounted before the AddTab reopen');
+  step('Preferences precondition: all prefs-kind tabs closed through the real UI, none mounted.');
   const prefsGroup = (await layoutSignature(page)).groups[0].id;
   await page.locator(`[data-dock-group="${prefsGroup}"]`).locator(DOCK.ellipsis).click();
   await expect(page.locator(DOCK.contextMenu)).toBeVisible({ timeout: 10000 });
-  await page.locator(DOCK.contextMenu).locator('[aria-haspopup="menu"]').click();
+  await page.locator(DOCK.contextMenu).locator('[aria-controls="docking-add-menu"]').click();
   await expect(page.locator(DOCK.addMenu)).toBeVisible({ timeout: 10000 });
   const prefsOption = page.locator(`${DOCK.addOption}[data-dock-add="preferences"]`);
   assert.equal(
@@ -3863,14 +3988,9 @@ try {
     window.__prefsNode = document.getElementById('settings-dialog');
   });
   // Force same-group: move preferences into viewP's group, then switch to viewP's tab.
-  await openLayoutDialog(page);
-  await page.locator(DOCK.panelSelect).selectOption('preferences');
   const pGroup = (await layoutSignature(page)).groups.find((group) => group.tabs.includes(viewP));
   assert.ok(pGroup, 'A live group holding viewP must exist');
-  await page.locator(DOCK.targetSelect).selectOption(pGroup.id);
-  await page.locator(DOCK.zoneSelect).selectOption('center');
-  await page.locator(DOCK.moveButton).click();
-  await page.locator(DOCK.closeSettings).click();
+  await menuMoveToGroup(page, 'preferences', pGroup.id);
   await page.locator(`button[data-dock-tab="${viewP}"]`).click();
   await expect
     .poll(
@@ -4257,7 +4377,7 @@ try {
   const prefsGroup2 = (await layoutSignature(page)).groups[0].id;
   await page.locator(`[data-dock-group="${prefsGroup2}"]`).locator(DOCK.ellipsis).click();
   await expect(page.locator(DOCK.contextMenu)).toBeVisible({ timeout: 10000 });
-  await page.locator(DOCK.contextMenu).locator('[aria-haspopup="menu"]').click();
+  await page.locator(DOCK.contextMenu).locator('[aria-controls="docking-add-menu"]').click();
   await page.locator(`${DOCK.addOption}[data-dock-add="preferences"]`).click();
   await expect(page.locator('button[data-dock-tab="preferences"]')).toBeAttached({ timeout: 10000 });
   await page.setViewportSize({ width: 800, height: 900 });
@@ -4361,7 +4481,11 @@ try {
     await roContext.addInitScript(() => {
       localStorage.setItem('prime-studio.drafts', JSON.stringify({ 'conv:pinned': 'NE-PAS-EFFACER' }));
     });
-    await seedSelection(roContext, { cwd: cwdA, sessionId: 'ws-alpha', projectOverview: false });
+    await seedSelection(
+      roContext,
+      { cwd: cwdA, sessionId: 'ws-alpha', projectOverview: false },
+      { docked: false },
+    );
     const roPage = await roContext.newPage();
     roPage.setDefaultTimeout(15000);
     roPage.on('pageerror', (error) =>
@@ -4403,7 +4527,7 @@ try {
     const roGroup = (await layoutSignature(roPage)).groups[0].id;
     await roPage.locator(`[data-dock-group="${roGroup}"]`).locator(DOCK.ellipsis).click();
     await expect(roPage.locator(DOCK.contextMenu)).toBeVisible({ timeout: 10000 });
-    await roPage.locator(DOCK.contextMenu).locator('[aria-haspopup="menu"]').click();
+    await roPage.locator(DOCK.contextMenu).locator('[aria-controls="docking-add-menu"]').click();
     await roPage.locator(`${DOCK.addOption}[data-dock-add="new-conversation"]`).click();
     await expect(roPage.locator(DOCK.picker)).toBeVisible({ timeout: 10000 });
     await pickProject(roPage, 'Atelier');

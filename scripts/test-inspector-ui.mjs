@@ -257,6 +257,11 @@ try {
       hasTouch: mobile,
       acceptDownloads: true,
     });
+    // Fixture-only: keep the classic inspector home (opt out of the default-on
+    // modular dock; honored via stored enabled:false). No production change.
+    await context.addInitScript(() => {
+      localStorage.setItem('prime-studio.docking.layout', JSON.stringify({ enabled: false }));
+    });
     page = await context.newPage();
     page.setDefaultTimeout(10000);
     page.on('pageerror', (error) => errors.push(error.message));
@@ -300,12 +305,15 @@ try {
     );
     await bounds('#details-panel', viewport.width, viewport.height);
     await page.screenshot({ path: `test-results/inspector-agents-${viewport.width}.png` });
+    // Fixture-only: agent details open in the agents-unit viewer (scoped ids per
+    // multi-instance contract). Same visible dialog/content, no production change.
+    const agentViewer = page.locator('.inspector-viewer[data-inspector-unit="agents"]');
     await page.locator(`[data-agent-id="${grandId}"]`).click();
-    await expect(page.locator('#inspector-view-body')).toContainText('Audit terminé.');
+    await expect(agentViewer.locator('.inspector-view-body')).toContainText('Audit terminé.');
     assert.equal(await page.evaluate(() => window.__xss), undefined);
-    await bounds('#inspector-viewer', viewport.width, viewport.height);
+    await bounds('.inspector-viewer[data-inspector-unit="agents"]', viewport.width, viewport.height);
     await page.keyboard.press('Escape');
-    await expect(page.locator('#inspector-viewer')).not.toBeVisible();
+    await expect(agentViewer).not.toBeVisible();
     await expect(page.locator('#details-panel')).toBeVisible();
     await expect(page.locator(`[data-agent-id="${grandId}"]`)).toBeFocused();
     await page.getByRole('tab', { name: 'Fichiers', exact: true }).click();
@@ -313,7 +321,8 @@ try {
     await page.locator('[data-file-path="src/app.js"]').click();
     await expect(page.locator('.diff-add')).toContainText('Après');
     await expect(page.locator('.diff-remove')).toContainText('Avant');
-    await bounds('#inspector-viewer', viewport.width, viewport.height);
+    const fileViewer = page.locator('.inspector-viewer[data-inspector-unit="files"]');
+    await bounds('.inspector-viewer[data-inspector-unit="files"]', viewport.width, viewport.height);
     await page.screenshot({ path: `test-results/inspector-diff-${viewport.width}.png` });
     if (mobile) {
       await page.evaluate(() => {
@@ -325,7 +334,7 @@ try {
         }))
           document.documentElement.style.setProperty(name, value);
       });
-      const short = await page.locator('#inspector-viewer').boundingBox();
+      const short = await page.locator('.inspector-viewer[data-inspector-unit="files"]').boundingBox();
       assert.ok(
         short.y >= 54 && short.y + short.height <= 452,
         'Preview must respect a panned viewport and system insets',
@@ -348,14 +357,14 @@ try {
     );
     assert.equal(await rawFile.text(), 'const title = "Après";\n');
     assert.match(rawFile.headers()['content-disposition'], /^attachment;/);
-    await page.getByRole('button', { name: 'Fermer', exact: true }).click();
+    await page.locator('.inspector-viewer[data-inspector-unit="files"]').getByRole('button', { name: 'Fermer', exact: true }).click();
     await page.locator('[data-file-path="obsolete.txt"]').click();
     await expect(page.getByRole('link', { name: 'Ouvrir', exact: true })).toHaveCount(0);
     await expect(page.locator('.diff-remove')).toContainText('ancien fichier');
     await page.keyboard.press('Escape');
     await page.getByRole('button', { name: 'Parcourir', exact: true }).click();
     await page.getByRole('button', { name: 'Consulter document.bin', exact: true }).click();
-    await expect(page.locator('#inspector-view-body')).toContainText('Aperçu indisponible');
+    await expect(page.locator('.inspector-viewer[data-inspector-unit="files"] .inspector-view-body')).toContainText('Aperçu indisponible');
     await page.keyboard.press('Escape');
     await page.getByRole('button', { name: 'Consulter image.png', exact: true }).click();
     await expect(page.locator('.inspector-preview-image')).toBeVisible();
@@ -386,7 +395,7 @@ try {
     assert.equal(await page.locator('.inspector-code').textContent(), markdownSource);
     await page.getByRole('button', { name: 'Aperçu', exact: true }).click();
     await expect(page.locator('.inspector-document h1')).toBeVisible();
-    await bounds('#inspector-viewer', viewport.width, viewport.height);
+    await bounds('.inspector-viewer[data-inspector-unit="files"]', viewport.width, viewport.height);
     assert.equal(await page.evaluate(() => window.__xss), undefined);
     await page.keyboard.press('Escape');
     await page.getByRole('button', { name: 'Consulter config.json', exact: true }).click();
@@ -444,7 +453,15 @@ try {
     await context.close();
   }
   // Editable local chat keeps its unsent draft while opening and closing both kinds of details.
-  page = await browser.newPage({ locale: 'fr-FR', viewport: { width: 1440, height: 960 } });
+  // Fixture-only: same classic-home opt-out as the viewport loop (this page owns
+  // its context, so it needs its own seed). No production change.
+  {
+    const seeded = await browser.newContext({ locale: 'fr-FR', viewport: { width: 1440, height: 960 } });
+    await seeded.addInitScript(() => {
+      localStorage.setItem('prime-studio.docking.layout', JSON.stringify({ enabled: false }));
+    });
+    page = await seeded.newPage();
+  }
   await page.goto(local);
   await page.locator('#session-list .session-select').first().click();
   await page.locator('#composer').fill('Brouillon à conserver');

@@ -16,7 +16,8 @@
   font-size: 13px;
   font-weight: 600;
 }
-#close-inspector {
+#close-inspector,
+[data-panel-id='close-inspector'] {
   width: 36px;
   height: 36px;
   font-size: 24px;
@@ -43,7 +44,8 @@
   background: var(--accent-bg);
   color: var(--text);
 }
-#inspector-agent-count {
+#inspector-agent-count,
+[data-panel-id='inspector-agent-count'] {
   border-radius: 10px;
   padding: 1px 5px;
   font-size: 10px;
@@ -56,7 +58,8 @@
   overflow-y: auto;
   overscroll-behavior: contain;
 }
-#inspector-session {
+#inspector-session,
+[data-panel-id='inspector-session'] {
   display: flex;
   flex-direction: column;
 }
@@ -95,19 +98,22 @@
   margin-left: auto;
   max-width: 100%;
 }
-#open-project-folder {
+#open-project-folder,
+[data-panel-id='open-project-folder'] {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   max-width: 100%;
   text-align: left;
 }
-#open-project-folder svg {
+#open-project-folder svg,
+[data-panel-id='open-project-folder'] svg {
   width: 14px;
   height: 14px;
   flex-shrink: 0;
 }
-#open-project-folder:disabled {
+#open-project-folder:disabled,
+[data-panel-id='open-project-folder']:disabled {
   opacity: 0.5;
 }
 .project-subagent-settings {
@@ -184,7 +190,9 @@
   overflow-wrap: anywhere;
 }
 #inspector-quota,
-#inspector-context {
+#inspector-context,
+[data-panel-id='inspector-quota'],
+[data-panel-id='inspector-context'] {
   display: grid;
   gap: 8px;
 }
@@ -216,10 +224,13 @@
   font-size: 11px;
 }
 #inspector-quota .quota-bars,
-#inspector-context .quota-bar {
+#inspector-context .quota-bar,
+[data-panel-id='inspector-quota'] .quota-bars,
+[data-panel-id='inspector-context'] .quota-bar {
   margin: 2px 0;
 }
-#inspector-quota .quota-bars {
+#inspector-quota .quota-bars,
+[data-panel-id='inspector-quota'] .quota-bars {
   display: grid;
   gap: 8px;
 }
@@ -603,17 +614,20 @@
   background: #fce9e9;
 }
 @media (min-width: 1600px) {
-  #details-panel {
+  #details-panel,
+  [data-panel-id='details-panel'] {
     width: 350px;
   }
 }
 @media (max-width: 1250px) and (min-width: 1081px) {
-  #details-panel {
+  #details-panel,
+  [data-panel-id='details-panel'] {
     width: 270px;
   }
 }
 @media (max-width: 1080px) {
-  #details-panel.mobile-open {
+  #details-panel.mobile-open,
+  [data-panel-id='details-panel'].mobile-open {
     position: fixed;
     inset: var(--studio-top, 0px) 0 auto auto;
     width: min(480px, 100vw);
@@ -631,7 +645,8 @@
   .inspector-heading {
     min-height: 58px;
   }
-  #close-inspector {
+  #close-inspector,
+  [data-panel-id='close-inspector'] {
     width: 44px;
     height: 44px;
   }
@@ -689,4 +704,15 @@
 }
 .inspector-agent-activity {
   display: block;
+}
+
+/* Multi-instance scoped aliases (tool tabs). Clones carry unique element IDs
+ * plus data-panel-id='<original-id>' (parent clonePanelScope). The aliases
+ * below keep prefixed clones visually identical to the primary without
+ * touching primary selectors above. #details-panel itself stays primary-only
+ * for layout; clones live in dock panels and style via .inspector-content. */
+[data-panel-id='details-panel'] {
+  padding: 0;
+  min-width: 0;
+  overflow: hidden;
 }

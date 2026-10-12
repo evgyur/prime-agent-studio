@@ -7,6 +7,8 @@ import {
   validatePresets,
   createPresetLayout,
   presetConversationCount,
+  presetToolCount,
+  presetToolNeeds,
   applyPresetLayout,
 } from '../public/docking-presets.js';
 import { createDefaultLayout, validateLayout, groupsOf } from '../public/docking-layout.js';
@@ -37,7 +39,7 @@ test('validatePresets normalizes entries: trims names, canonicalizes v1 layouts'
   assert.equal(clean.version, 1);
   assert.equal(clean.items.length, 1);
   assert.equal(clean.items[0].name, 'Review', 'trimmed, display case preserved');
-  assert.equal(clean.items[0].layout.version, 3, 'layout normalized to v3');
+  assert.equal(clean.items[0].layout.version, 4, 'layout normalized to v4');
   assert.ok(!('title' in clean.items[0].layout), 'layout extras stripped');
   assert.deepEqual(validatePresets(clean), clean, 'revalidates identically');
 });
@@ -163,7 +165,7 @@ test('validatePresets anonymizes live conv refs and strips layout extras', () =>
   const clean = validatePresets({ version: 1, items: [{ name: 'Imported', layout: live }] });
   assert.ok(clean, 'imported layout accepted');
   const stored = clean.items[0].layout;
-  assert.equal(stored.version, 3, 'normalized to v3');
+  assert.equal(stored.version, 4, 'normalized to v4');
   assert.deepEqual(
     groupsOf(stored).flatMap((g) => g.panels),
     ['conversation', 'roadmap'],
@@ -191,7 +193,7 @@ test('createPresetLayout anonymizes in position order', () => {
   const preset = createPresetLayout(live);
   // Position order: conv:zzz (first group) then conv:aaa.
   assert.deepEqual(openPanels(preset), ['conversation', 'roadmap', 'conv:slot-1', 'session']);
-  assert.equal(preset.version, 3);
+  assert.equal(preset.version, 4);
   assert.ok(Object.isFrozen(preset), 'frozen');
   assert.equal(createPresetLayout(null), null, 'invalid input');
   assert.equal(createPresetLayout({ version: 9, root: {} }), null, 'unknown version');
@@ -239,7 +241,7 @@ test('applyPresetLayout binds matching ids in position order', () => {
   const bound = applyPresetLayout(preset, ['conv:live-1', 'conv:live-2']);
   assert.ok(bound, 'matching ids bind');
   assert.deepEqual(openPanels(bound), ['conv:live-1', 'roadmap', 'conv:live-2']);
-  assert.equal(bound.version, 3);
+  assert.equal(bound.version, 4);
   assert.ok(Object.isFrozen(bound), 'frozen');
 });
 
@@ -268,7 +270,7 @@ test('applyPresetLayout ignores spare ids and rejects deficits or bad ids', () =
   assert.deepEqual(applyPresetLayout(slotless, []), slotless, 'slot-free layout passes through');
 });
 
-test('validatePresets migrates legacy inner layouts to canonical v3', () => {
+test('validatePresets migrates legacy inner layouts to canonical v4', () => {
   const v1 = validatePresets({
     version: 1,
     items: [
@@ -289,7 +291,7 @@ test('validatePresets migrates legacy inner layouts to canonical v3', () => {
     ],
   });
   assert.ok(v1, 'legacy inner v1 accepted');
-  assert.equal(v1.items[0].layout.version, 3, 'stored as canonical v3');
+  assert.equal(v1.items[0].layout.version, 4, 'stored as canonical v4');
   assert.deepEqual(openPanels(v1.items[0].layout), ['conversation', 'roadmap', 'session', 'agents', 'files']);
   assert.deepEqual(validatePresets(v1), v1, 'stored form is a fixed point');
 
@@ -312,7 +314,7 @@ test('validatePresets migrates legacy inner layouts to canonical v3', () => {
   });
   assert.ok(v2, 'legacy inner v2 accepted');
   const stored = v2.items[0].layout;
-  assert.equal(stored.version, 3, 'stored as canonical v3');
+  assert.equal(stored.version, 4, 'stored as canonical v4');
   // Anonymized in position order, inspector expanded in place, active follows.
   assert.deepEqual(openPanels(stored), [
     'conversation',
@@ -334,5 +336,85 @@ test('validatePresets migrates legacy inner layouts to canonical v3', () => {
     'files',
     'preferences',
   ]);
-  assert.equal(bound.version, 3);
+  assert.equal(bound.version, 4);
+});
+
+test('fixed primaries persist while dynamic tool refs anonymize per kind', () => {
+  const live = validateLayout({
+    version: 4,
+    root: {
+      kind: 'split',
+      id: 'main',
+      dir: 'row',
+      ratio: 0.5,
+      first: { kind: 'group', id: 'a', panels: ['roadmap', 'tool:roadmap:live1'], active: 'roadmap' },
+      second: {
+        kind: 'group',
+        id: 'b',
+        panels: ['tool:roadmap:live2', 'tool:files:live3', 'session'],
+        active: 'tool:files:live3',
+      },
+    },
+  });
+  const preset = createPresetLayout(live);
+  assert.deepEqual(openPanels(preset), [
+    'roadmap',
+    'tool:roadmap:slot-1',
+    'tool:roadmap:slot-2',
+    'tool:files:slot-1',
+    'session',
+  ]);
+  assert.equal(preset.version, 4);
+  assert.deepEqual(presetToolNeeds(preset), ['roadmap', 'roadmap', 'files']);
+  assert.equal(presetToolCount(preset), 3);
+  assert.equal(presetConversationCount(preset), 0);
+  assert.ok(!payloadOf(preset).includes('live'), 'no live nonce persists');
+  // Fixed primaries need no live ids: the legacy 2-arg call still binds.
+  const fixedOnly = createPresetLayout(createDefaultLayout());
+  assert.deepEqual(presetToolNeeds(fixedOnly), []);
+  const rebound = applyPresetLayout(fixedOnly, ['conv:fresh']);
+  assert.ok(rebound, 'fixed-tool preset binds without a third arg');
+  assert.ok(openPanels(rebound).includes('conv:fresh'));
+});
+
+test('applyPresetLayout binds tool slots with kind match, rejects deficits and mismatches', () => {
+  const preset = createPresetLayout(
+    validateLayout({
+      version: 4,
+      root: {
+        kind: 'group',
+        id: 'r',
+        panels: ['conversation', 'tool:roadmap:a', 'tool:files:b'],
+        active: 'conversation',
+      },
+    }),
+  );
+  assert.deepEqual(presetToolNeeds(preset), ['roadmap', 'files']);
+  const bound = applyPresetLayout(preset, ['conv:x'], ['tool:roadmap:n1', 'tool:files:n2']);
+  assert.ok(bound, 'matching kinds bind');
+  assert.deepEqual(openPanels(bound), ['conv:x', 'tool:roadmap:n1', 'tool:files:n2']);
+  assert.ok(Object.isFrozen(bound), 'frozen');
+  // Surplus tool ids are stripped, never stored.
+  const spare = applyPresetLayout(preset, ['conv:x'], ['tool:roadmap:n1', 'tool:files:n2', 'tool:files:n9']);
+  assert.ok(spare, 'spare tool ids ignored');
+  assert.ok(!payloadOf(spare).includes('n9'), 'unused tool ids stripped');
+  // Every load remaps: no captured association between saves.
+  assert.deepEqual(openPanels(createPresetLayout(bound)), openPanels(preset), 're-anonymizes to slots');
+  assert.equal(applyPresetLayout(preset, ['conv:x'], ['tool:roadmap:n1']), null, 'tool deficit rejected');
+  assert.equal(applyPresetLayout(preset, ['conv:x']), null, 'missing tool ids rejected when slots exist');
+  assert.equal(
+    applyPresetLayout(preset, ['conv:x'], ['tool:files:n1', 'tool:roadmap:n2']),
+    null,
+    'kind mismatch rejected',
+  );
+  assert.equal(
+    applyPresetLayout(preset, ['conv:x'], ['tool:roadmap:n1', 'tool:roadmap:n1']),
+    null,
+    'duplicate tool ids rejected',
+  );
+  assert.equal(
+    applyPresetLayout(preset, ['conv:x'], ['roadmap', 'tool:files:n2']),
+    null,
+    'fixed primary never binds a dynamic slot',
+  );
 });

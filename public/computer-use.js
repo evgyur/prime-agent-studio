@@ -132,7 +132,7 @@ export function normalizeComputerStatus(raw) {
   };
 }
 
-export function createComputerUse({ api, getContext, toast }) {
+export function createComputerUse({ api, getContext, toast, getDetailTargets = null }) {
   const $ = (id) => document.getElementById(id);
   let draftEnabled = false;
   // The desktop engine is a single global preference (Preferences > Tools,
@@ -163,8 +163,7 @@ export function createComputerUse({ api, getContext, toast }) {
     return `${ctx.sessionId || ''}|${ctx.runId || ''}`;
   };
 
-  function isMine() {
-    const ctx = context();
+  function isMine(ctx = context()) {
     const owner = lastStatus?.owner;
     if (!owner) return false;
     if (ctx.sessionId && owner.sessionId) return owner.sessionId === ctx.sessionId;
@@ -198,10 +197,15 @@ export function createComputerUse({ api, getContext, toast }) {
     return draftEnabled;
   }
 
-  function isVisible() {
-    const ctx = context();
-    return Boolean(ctx.projectCwd) && ctx.projectOverview !== true;
+  function isVisible(ctx = context()) {
+    return Boolean(ctx.projectCwd) && ctx.projectOverview !== true && !ctx.unavailable;
   }
+
+  // One desktop status/poller, rendered into the currently visible Session
+  // surfaces. Their target changes the owner label, never the acting controls.
+  const detailTargets = () =>
+    getDetailTargets ? getDetailTargets() : [{ getElement: $, getContext: context }];
+  const shouldRefresh = () => isVisible() || detailTargets().some((target) => isVisible(target.getContext()));
 
   function statusText() {
     const ctx = context();
@@ -218,12 +222,11 @@ export function createComputerUse({ api, getContext, toast }) {
     return tr('computer.off');
   }
 
-  function ownerText() {
+  function ownerText(ctx = context()) {
     if (lastStatus == null) return '-';
     if (lastStatus.supported === false) return tr('computer.ownerNone');
-    if (isMine()) return tr('computer.ownerMine');
-    if (isOther()) return ownerDisplayName(lastStatus.owner) || tr('computer.ownerNone');
-    return tr('computer.ownerNone');
+    if (isMine(ctx)) return tr('computer.ownerMine');
+    return ownerDisplayName(lastStatus.owner) || tr('computer.ownerNone');
   }
 
   function actionText() {
@@ -232,14 +235,47 @@ export function createComputerUse({ api, getContext, toast }) {
     return summary || tr('computer.noAction');
   }
 
+  function renderDetails(own, ctx) {
+    const $ = own;
+    const details = $('computer-use-details');
+    if (!details) return;
+    details.hidden = !isVisible(ctx);
+    if (details.hidden) return;
+    const known = lastStatus != null;
+    const supported = known ? lastStatus.supported !== false : true;
+    const readOnly = ctx.readOnly === true;
+    const warning = $('computer-use-warning');
+    if (warning) {
+      if (!known)
+        bindText(warning, () => (lastFetchError ? tr('computer.statusError') : tr('computer.loading')));
+      else if (!supported) bindText(warning, () => tr('computer.unsupported'));
+      else if (lastStatus.cleanupFailed === true) bindText(warning, () => tr('computer.cleanupFailed'));
+      else if (lastStatus.cleanupPending === true) bindText(warning, () => tr('computer.cleanupPending'));
+      else if (readOnly) bindText(warning, () => tr('computer.readonlyNote'));
+      else bindText(warning, () => tr('computer.warning'));
+    }
+    const ownerEl = $('computer-use-owner');
+    if (ownerEl) bindText(ownerEl, () => ownerText(ctx));
+    const actionEl = $('computer-use-action');
+    if (actionEl) bindText(actionEl, () => actionText());
+    const hotkeyEl = $('computer-use-hotkey');
+    if (hotkeyEl)
+      bindText(hotkeyEl, () =>
+        lastStatus == null
+          ? '-'
+          : lastStatus.hotkeyError
+            ? tr('computer.hotkeyUnavailable')
+            : lastStatus.hotkey || '-',
+      );
+  }
+
   function update() {
     const root = $('computer-use');
     if (!root) return;
     const ctx = context();
     const visible = isVisible();
     root.hidden = !visible;
-    const details = $('computer-use-details');
-    if (details) details.hidden = !visible;
+    for (const target of detailTargets()) renderDetails(target.getElement, target.getContext());
     if (!visible) return;
     const known = lastStatus != null;
     const supported = known ? lastStatus.supported !== false : true;
@@ -296,29 +332,6 @@ export function createComputerUse({ api, getContext, toast }) {
       bindAttribute(stopBtn, 'title', () => tr('computer.stopHint'));
       bindAttribute(stopBtn, 'aria-label', () => tr('computer.stopHint'));
     }
-    const warning = $('computer-use-warning');
-    if (warning) {
-      if (!known)
-        bindText(warning, () => (lastFetchError ? tr('computer.statusError') : tr('computer.loading')));
-      else if (!supported) bindText(warning, () => tr('computer.unsupported'));
-      else if (lastStatus.cleanupFailed === true) bindText(warning, () => tr('computer.cleanupFailed'));
-      else if (lastStatus.cleanupPending === true) bindText(warning, () => tr('computer.cleanupPending'));
-      else if (readOnly) bindText(warning, () => tr('computer.readonlyNote'));
-      else bindText(warning, () => tr('computer.warning'));
-    }
-    const ownerEl = $('computer-use-owner');
-    if (ownerEl) bindText(ownerEl, () => ownerText());
-    const actionEl = $('computer-use-action');
-    if (actionEl) bindText(actionEl, () => actionText());
-    const hotkeyEl = $('computer-use-hotkey');
-    if (hotkeyEl)
-      bindText(hotkeyEl, () =>
-        lastStatus == null
-          ? '-'
-          : lastStatus.hotkeyError
-            ? tr('computer.hotkeyUnavailable')
-            : lastStatus.hotkey || '-',
-      );
   }
 
   function queryUrl() {
@@ -461,23 +474,23 @@ export function createComputerUse({ api, getContext, toast }) {
     inFlight?.abort();
     inFlight = null;
     update();
-    if (isVisible() && context().online !== false) void refresh({ silent: true });
+    if (shouldRefresh() && context().online !== false) void refresh({ silent: true });
   }
 
   function notifyRunCreated() {
     if (draftEnabled) draftEnabled = false;
     update();
-    if (isVisible()) void refresh({ silent: true });
+    if (shouldRefresh()) void refresh({ silent: true });
   }
 
   function notifyRunFinished() {
-    if (isVisible()) void refresh({ silent: true });
+    if (shouldRefresh()) void refresh({ silent: true });
     else update();
   }
 
   function tick() {
     if (document.hidden) return;
-    if (!isVisible()) return;
+    if (!shouldRefresh()) return;
     if (context().online === false) {
       update();
       return;

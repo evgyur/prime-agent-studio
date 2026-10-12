@@ -137,6 +137,36 @@ const report = [];
 try {
   browser = await launchStudioBrowser({ headless: true });
   const context = await browser.newContext({ locale: 'fr-FR', viewport: { width: 1512, height: 982 } });
+  // Classic-UI acceptance: force the modular workspace off via saved state
+  // (not DOM hiding). Default dock opens Roadmap and parks the primary
+  // Session, leaving #computer-use-owner legitimately '-' while hidden.
+  await context.addInitScript(() => {
+    localStorage.setItem(
+      'prime-studio.docking.layout',
+      JSON.stringify({
+        version: 4,
+        enabled: false,
+        root: {
+          kind: 'split',
+          id: 'main',
+          dir: 'row',
+          ratio: 0.68,
+          first: {
+            kind: 'group',
+            id: 'conversation-group',
+            panels: ['conversation'],
+            active: 'conversation',
+          },
+          second: {
+            kind: 'group',
+            id: 'tools-group',
+            panels: ['roadmap', 'session', 'agents', 'files'],
+            active: 'roadmap',
+          },
+        },
+      }),
+    );
+  });
   const page = await context.newPage();
   page.setDefaultTimeout(15000);
   const errors = [];
@@ -313,6 +343,35 @@ try {
   });
   await new Promise((done) => gateway.listen(0, '127.0.0.1', done));
   const roContext = await browser.newContext({ locale: 'fr-FR', viewport: { width: 1280, height: 800 } });
+  // Same classic profile as the main context: consultation assertions read
+  // the classic computer-use surface, not a parked dock panel.
+  await roContext.addInitScript(() => {
+    localStorage.setItem(
+      'prime-studio.docking.layout',
+      JSON.stringify({
+        version: 4,
+        enabled: false,
+        root: {
+          kind: 'split',
+          id: 'main',
+          dir: 'row',
+          ratio: 0.68,
+          first: {
+            kind: 'group',
+            id: 'conversation-group',
+            panels: ['conversation'],
+            active: 'conversation',
+          },
+          second: {
+            kind: 'group',
+            id: 'tools-group',
+            panels: ['roadmap', 'session', 'agents', 'files'],
+            active: 'roadmap',
+          },
+        },
+      }),
+    );
+  });
   const roPage = await roContext.newPage();
   roPage.setDefaultTimeout(15000);
   await roPage.goto(`http://127.0.0.1:${gateway.address().port}`);
@@ -521,6 +580,10 @@ try {
   await expect(page.locator('#allow-computer-use')).toBeVisible();
   await expect(page.locator('#computer-use-backend')).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+  // Scoped to the visible primary form's own controls: document-wide queries
+  // also match parked hidden modular composer clones (zero rects) and compare
+  // them against the primary box, producing false negative offsets.
+  await expect(page.locator('#composer-form')).toBeVisible();
   const gutterCheck = () =>
     page.evaluate(() => {
       const form = document.getElementById('composer-form');
@@ -528,10 +591,12 @@ try {
       const style = getComputedStyle(form);
       const contentL = formRect.left + (parseFloat(style.paddingLeft) || 0);
       const contentR = formRect.right - (parseFloat(style.paddingRight) || 0);
-      return [...document.querySelectorAll('.model-controls .questions-toggle')].map((el) => {
-        const r = el.getBoundingClientRect();
-        return { left: r.left - contentL, right: contentR - r.right };
-      });
+      return [...form.querySelectorAll('.model-controls .questions-toggle')]
+        .filter((el) => el.getClientRects().length)
+        .map((el) => {
+          const r = el.getBoundingClientRect();
+          return { left: r.left - contentL, right: contentR - r.right };
+        });
     });
   for (const g of await gutterCheck()) {
     if (g.left < -1 || g.right < -1) throw new Error(`checkbox crosses composer gutter ${JSON.stringify(g)}`);

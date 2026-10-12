@@ -65,17 +65,7 @@ async function api(path, { method = 'GET', body, keepalive } = {}) {
   return data;
 }
 
-function showError(key) {
-  const box = document.getElementById('push-error');
-  if (!box) return;
-  box.hidden = false;
-  bindText(box, () => tr(key));
-}
 
-function clearError() {
-  const box = document.getElementById('push-error');
-  if (box) box.hidden = true;
-}
 
 function errorKey(error) {
   const message = String(error?.message || '');
@@ -84,12 +74,59 @@ function errorKey(error) {
   return 'push.failed';
 }
 
-export function createPushSettings({ getContext } = {}) {
-  const $ = (id) => document.getElementById(id);
+// Module-shared confirmed device state (one browser subscription per device,
+// not per Preferences clone): whichever instance confirms enable/disable/prefs
+// publishes here, so every other visible owner form re-renders immediately.
+// Per-instance busy/beat timers stay local; only confirmed values are shared.
+let sharedPushSubscription = null;
+let sharedPushPrefs = null;
+const sharedPushListeners = new Set();
+function publishPush(patch) {
+  if ('subscription' in patch) sharedPushSubscription = patch.subscription;
+  if ('prefs' in patch) sharedPushPrefs = patch.prefs;
+  for (const fn of [...sharedPushListeners]) {
+    try {
+      fn({ subscription: sharedPushSubscription, prefs: sharedPushPrefs });
+    } catch {}
+  }
+}
+export function getSharedPushState() {
+  return {
+    subscription: sharedPushSubscription,
+    prefs: sharedPushPrefs ? { ...sharedPushPrefs } : null,
+  };
+}
+
+export function createPushSettings({
+  getContext,
+  getElement = null,
+  domId = null,
+  instanceId = '',
+  isPrimary = true,
+} = {}) {
+  void domId;
+  void instanceId;
+  const primary = isPrimary !== false;
+  const scoped = typeof getElement === 'function';
+  const $ = (id) => (scoped ? getElement(id) : document.getElementById(id));
   let supported = 'serviceWorker' in navigator && 'PushManager' in window && window.isSecureContext;
-  let subscription = null;
+  let subscription = sharedPushSubscription;
   let busy = false;
   let focusTimer = 0;
+  let generation = 0;
+  let disposed = false;
+
+  function showError(key) {
+    const box = $('push-error');
+    if (!box) return;
+    box.hidden = false;
+    bindText(box, () => tr(key));
+  }
+
+  function clearError() {
+    const box = $('push-error');
+    if (box) box.hidden = true;
+  }
 
   function render(state = {}) {
     const section = $('push-options');
@@ -119,18 +156,34 @@ export function createPushSettings({ getContext } = {}) {
     return reg.pushManager.getSubscription();
   }
 
+  const onShared = (snapshot) => {
+    if (disposed) return;
+    subscription = snapshot.subscription;
+    render(snapshot.prefs || {});
+  };
+  sharedPushListeners.add(onShared);
+
   async function refresh() {
+    if (disposed) return;
+    const turn = generation;
     render();
     if (!supported || window.__PRIME_STUDIO_DESKTOP__ === true) return;
     try {
       subscription = await current();
-      if (!subscription) return render();
+      if (disposed || turn !== generation) return;
+      if (!subscription) {
+        publishPush({ subscription, prefs: null });
+        return render();
+      }
       const prefs = await api(
         `/api/push/subscriptions?endpoint=${encodeURIComponent(subscription.endpoint)}`,
       );
+      if (disposed || turn !== generation) return;
+      publishPush({ subscription, prefs });
       render(prefs);
       beat(true);
     } catch {
+      if (disposed || turn !== generation) return;
       render();
     }
   }
@@ -192,6 +245,7 @@ export function createPushSettings({ getContext } = {}) {
       const payload = subscription.toJSON();
       storeToken(payload.endpoint, result.token);
       const prefs = await api(`/api/push/subscriptions?endpoint=${encodeURIComponent(payload.endpoint)}`);
+      publishPush({ subscription, prefs });
       render(prefs);
       beat(true);
     } catch (error) {
@@ -226,6 +280,7 @@ export function createPushSettings({ getContext } = {}) {
         await subscription.unsubscribe().catch(() => {});
       }
       subscription = null;
+      publishPush({ subscription, prefs: null });
       stopBeat();
       render();
     } catch (error) {
@@ -256,6 +311,7 @@ export function createPushSettings({ getContext } = {}) {
         subscription = null;
         stopBeat();
       }
+      publishPush(result.removed ? { subscription, prefs: null } : { subscription, prefs: result });
       render(result.removed ? {} : result);
     } catch (error) {
       showError(errorKey(error));
@@ -302,15 +358,22 @@ export function createPushSettings({ getContext } = {}) {
     } catch {}
   }
 
-  document.addEventListener('visibilitychange', () => {
+  // Primary-only browser registrations: clones scope their forms to the owned
+  // root and never add duplicate SW/visibility/pagehide listeners. The parent
+  // calls consumeDeepLink/listenMessages on the primary instance only.
+  const onVisibility = () => {
     if (!subscription) return;
     // Clear the lease as soon as the PWA hides, so background pushes resume at once.
     if (!document.hidden) beat(true);
     else void clearFocus();
-  });
-  window.addEventListener('pagehide', () => {
+  };
+  const onPageHide = () => {
     void clearFocus();
-  });
+  };
+  if (primary) {
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('pagehide', onPageHide);
+  }
 
   function bind() {
     if ($('push-enable'))
@@ -324,7 +387,9 @@ export function createPushSettings({ getContext } = {}) {
   bind();
 
   // Deep link from service-worker notificationclick: ?push-session=<id>&push-run=<id>
+  // Primary only: clones return false without touching location/history.
   async function consumeDeepLink(select) {
+    if (!primary || disposed) return false;
     try {
       const params = new URLSearchParams(location.search);
       const sessionId = params.get('push-session') || '';
@@ -343,7 +408,9 @@ export function createPushSettings({ getContext } = {}) {
   }
 
   // Notificationclick focus path: SW posts {type:'prime-push-open', sessionId, runId}.
+  // Primary only: clones register nothing.
   function listenMessages(select) {
+    if (!primary || disposed) return;
     navigator.serviceWorker?.addEventListener?.('message', (event) => {
       const data = event.data;
       if (!data || data.type !== 'prime-push-open') return;
@@ -353,5 +420,35 @@ export function createPushSettings({ getContext } = {}) {
     });
   }
 
-  return { refresh, enable, disable, updatePrefs, consumeDeepLink, listenMessages, render };
+  return {
+    refresh,
+    enable,
+    disable,
+    updatePrefs,
+    consumeDeepLink,
+    listenMessages,
+    render,
+    get root() {
+      return scoped ? getElement('settings-dialog') : document.getElementById('settings-dialog');
+    },
+    dispose: () => {
+      disposed = true;
+      generation++;
+      sharedPushListeners.delete(onShared);
+      stopBeat();
+      if (primary) {
+        try {
+          document.removeEventListener('visibilitychange', onVisibility);
+        } catch {}
+        try {
+          window.removeEventListener('pagehide', onPageHide);
+        } catch {}
+      }
+      for (const id of ['push-enable', 'push-questions', 'push-turn-complete'])
+        try {
+          const control = $(id);
+          if (control) control.onchange = null;
+        } catch {}
+    },
+  };
 }

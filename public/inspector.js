@@ -91,6 +91,44 @@ function inspectorUnitAria(key, docked) {
   if (docked) return { role: null, labelledby: null };
   return { role: 'tabpanel', labelledby: `inspector-tab-${key}` };
 }
+export { inspectorFetchPlan, inspectorUnitAria, INSPECTOR_UNIT_IDS };
+/**
+ * Pure unit-visibility decision (geometry-aware, DOM-free inputs).
+ * Locked != visible: hidden/parked units keep their target but must not poll.
+ * - disconnected/hidden -> false always
+ * - docked -> visible only with dock membership AND nonempty rects
+ * - classic -> visible only when selected AND nonempty rects
+ */
+export function inspectorUnitVisible(
+  { connected = false, hidden = false, rects = 0, docked = false, dockMember = false, classicSelected = false } = {},
+) {
+  if (!connected || hidden) return false;
+  if (docked) return !!dockMember && rects > 0;
+  return !!classicSelected && rects > 0;
+}
+function isInspectorUnit(value) {
+  return value === 'session' || value === 'agents' || value === 'files';
+}
+// Physical IDs created at runtime must go through domId() so clones stay
+// unique. Static template IDs resolve through getElement() (parent scope).
+// Primary-facade children share the original host for sections but still need
+// unique viewer/git-dialog IDs; section IDs stay identical.
+const SCOPED_DYNAMIC_IDS = Object.freeze([
+  'inspector-viewer',
+  'inspector-view-title',
+  'inspector-view-body',
+  'git-branch-dialog',
+  'git-branch-name',
+]);
+function primaryUnitDomId(unit) {
+  return (id) => (SCOPED_DYNAMIC_IDS.includes(id) ? `${id}--${unit}` : id);
+}
+function resolveUnitContext(getContext, unit) {
+  if (typeof getContext === 'function') return getContext;
+  if (getContext && typeof getContext === 'object' && typeof getContext[unit] === 'function')
+    return getContext[unit];
+  return () => ({});
+}
 const count = (number) =>
   new Intl.NumberFormat('fr-FR', {
     notation: number >= 10000 ? 'compact' : 'standard',
@@ -108,7 +146,239 @@ export function createInspector({
   openModelPicker,
   icon,
   toast,
+  getElement,
+  domId,
+  unit,
+  instanceId,
+  root,
 }) {
+  // Multi-instance scope (parent clonePanelScope). Primary legacy omits all
+  // three and keeps original IDs/behavior. Clones pass unit + scoped
+  // getElement/domId; dynamic IDs always go through mapId().
+  const isSingle = isInspectorUnit(unit);
+  const owned = isSingle ? unit : null;
+  const owns = (key) => !isSingle || unit === key;
+  const getEl =
+    typeof getElement === 'function' ? getElement : (id) => document.getElementById(id);
+  const mapId = typeof domId === 'function' ? domId : (id) => id;
+  const instance = instanceId || (isSingle ? `tool:${unit}` : 'primary');
+  void root;
+  // Scoped `$` shadows the module helper so every existing lookup below stays
+  // scoped with zero body churn (vm-sliced quota/agent flows keep working).
+  const $ = (id) => getEl(id);
+  // Primary facade with per-unit context map: true per-unit state through the
+  // async chain, no shared-current swaps. Delegates sections to three isolated
+  // single-unit children sharing the original host; facade keeps chrome only.
+  if (!isSingle && getContext && typeof getContext === 'object' && !Array.isArray(getContext)) {
+    const hasMap = ['session', 'agents', 'files'].some(
+      (key) => typeof getContext[key] === 'function',
+    );
+    if (hasMap) return createMappedPrimaryFacade();
+  }
+  function createMappedPrimaryFacade() {
+    const children = {};
+    for (const key of INSPECTOR_UNIT_IDS) {
+      const childDomId = primaryUnitDomId(key);
+      const childGet = (id) => document.getElementById(childDomId(id));
+      children[key] = createInspector({
+        api,
+        getContext: resolveUnitContext(getContext, key),
+        markdown,
+        onClose,
+        getModels,
+        openModelPicker,
+        icon,
+        toast,
+        getElement: childGet,
+        domId: childDomId,
+        unit: key,
+        instanceId: `primary-${key}`,
+      });
+    }
+    const tabButtons = {
+      session: document.getElementById('inspector-tab-session'),
+      agents: document.getElementById('inspector-tab-agents'),
+      files: document.getElementById('inspector-tab-files'),
+    };
+    let currentTab = 'session';
+    function facadeSetTab(value, focus = false) {
+      if (!isInspectorUnit(value)) return;
+      currentTab = value;
+      for (const key of INSPECTOR_UNIT_IDS) {
+        const button = tabButtons[key];
+        if (button) {
+          button.setAttribute('aria-selected', String(key === currentTab));
+          button.tabIndex = key === currentTab ? 0 : -1;
+        }
+        const section = document.getElementById(`inspector-${key}`);
+        if (section) section.hidden = key !== currentTab;
+      }
+      if (focus) tabButtons[currentTab]?.focus();
+      if (value === 'files') children.files?.update?.();
+      else children[value]?.update?.();
+    }
+    for (const key of INSPECTOR_UNIT_IDS) {
+      const button = tabButtons[key];
+      if (!button || button.dataset.inspectorBound) continue;
+      button.dataset.inspectorBound = 'true';
+      button.onclick = () => facadeSetTab(key);
+      button.onkeydown = (event) => {
+        const keys = INSPECTOR_UNIT_IDS.filter((item) => !tabButtons[item]?.disabled);
+        if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+        event.preventDefault();
+        facadeSetTab(
+          event.key === 'Home'
+            ? keys[0]
+            : event.key === 'End'
+              ? keys.at(-1)
+              : keys[(keys.indexOf(currentTab) + (event.key === 'ArrowRight' ? 1 : keys.length - 1)) % keys.length],
+          true,
+        );
+      };
+    }
+    const closeButton = document.getElementById('close-inspector');
+    if (closeButton && !closeButton.dataset.inspectorBound) {
+      closeButton.dataset.inspectorBound = 'true';
+      closeButton.onclick = onClose;
+    }
+    // Facade-owned mobile shell (exactly once; children never do this).
+    // Mirrors the legacy classic contract: role=dialog + aria-modal, inert
+    // background, focus trap, Escape->onClose, return focus.
+    const facadeBackground = [
+      ...document.querySelectorAll('#sidebar, .workspace-header, .conversation-column'),
+    ];
+    const facadeInert = new Map();
+    let facadeMobileModal = false;
+    const facadePanelOf = () => document.getElementById('details-panel');
+    const facadeViewerOpen = () => !!document.querySelector('.inspector-viewer[open]');
+    function syncFacadeMobile() {
+      const panel = facadePanelOf();
+      if (!panel) return;
+      const open = innerWidth <= 1080 && panel.classList.contains('mobile-open') && !panel.hidden;
+      if (open === facadeMobileModal) return;
+      facadeMobileModal = open;
+      if (open) {
+        panel.setAttribute('role', 'dialog');
+        panel.setAttribute('aria-modal', 'true');
+        for (const element of facadeBackground) {
+          if (!facadeInert.has(element)) facadeInert.set(element, element.inert);
+          element.inert = true;
+        }
+        if (!facadeViewerOpen()) document.getElementById('close-inspector')?.focus({ preventScroll: true });
+      } else {
+        panel.removeAttribute('role');
+        panel.removeAttribute('aria-modal');
+        for (const [element, value] of facadeInert) {
+          try {
+            element.inert = value;
+          } catch {}
+        }
+        facadeInert.clear();
+        if (innerWidth <= 1080)
+          document.getElementById('toggle-details')?.focus({ preventScroll: true });
+      }
+    }
+    function onFacadePanelKey(event) {
+      const panel = facadePanelOf();
+      if (!facadeMobileModal || !panel) return;
+      if (facadeViewerOpen() || document.querySelector('#model-dialog[open]')) return;
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        onClose();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const focusable = [...panel.querySelectorAll('button, select, input, a[href], [tabindex="0"]')].filter(
+        (element) => !element.matches(':disabled') && element.tabIndex >= 0 && element.getClientRects().length,
+      );
+      const first = focusable[0],
+        last = focusable.at(-1);
+      if (
+        (event.shiftKey && document.activeElement === first) ||
+        (!event.shiftKey && document.activeElement === last)
+      ) {
+        event.preventDefault();
+        (event.shiftKey ? last : first)?.focus();
+      }
+    }
+    {
+      const panel = facadePanelOf();
+      if (panel && !panel.dataset.inspectorMobileBound) {
+        panel.dataset.inspectorMobileBound = 'true';
+        panel.addEventListener('keydown', onFacadePanelKey);
+      }
+    }
+    // Facade-owned tab gating: per-unit enabled (legacy disabled agents/files
+    // tabs when the context is not enabled; children skip tab buttons).
+    function syncFacadeTabs() {
+      for (const key of ['agents', 'files']) {
+        const button = tabButtons[key];
+        if (!button) continue;
+        let enabled = false;
+        try {
+          enabled = resolveUnitContext(getContext, key)()?.enabled === true;
+        } catch {
+          enabled = false;
+        }
+        button.disabled = !enabled;
+      }
+    }
+    function facadeUpdate() {
+      syncFacadeMobile();
+      syncFacadeTabs();
+      for (const key of INSPECTOR_UNIT_IDS) children[key]?.update?.();
+    }
+    const facadeTimer = setInterval(facadeUpdate, 2500);
+    const onFacadeVisible = () => facadeUpdate();
+    const onFacadeResize = () => syncFacadeMobile();
+    document.addEventListener('visibilitychange', onFacadeVisible);
+    window.addEventListener('resize', onFacadeResize);
+    syncFacadeMobile();
+    syncFacadeTabs();
+    return {
+      instanceId: 'primary',
+      unit: null,
+      update: facadeUpdate,
+      setTab: facadeSetTab,
+      roots() {
+        const out = {};
+        for (const key of INSPECTOR_UNIT_IDS) Object.assign(out, children[key]?.roots?.() || {});
+        return out;
+      },
+      setDocked(active, visiblePanels, showPanel) {
+        for (const key of INSPECTOR_UNIT_IDS) children[key]?.setDocked?.(active, visiblePanels, showPanel);
+      },
+      // Explicit-cwd document route: never retargets the Files pin. Uses the
+      // files child's viewer with the passed cwd, not the pinned context.
+      openDocument(reference, { cwd, basePath = '' } = {}) {
+        return children.files?.openDocument?.(reference, { cwd, basePath });
+      },
+      openAgent(agent) {
+        return children.agents?.openAgent?.(agent);
+      },
+      openAgentById(id) {
+        return children.agents?.openAgentById?.(id);
+      },
+      destroy() {
+        try {
+          clearInterval(facadeTimer);
+        } catch {}
+        document.removeEventListener('visibilitychange', onFacadeVisible);
+        window.removeEventListener('resize', onFacadeResize);
+        try {
+          facadePanelOf()?.removeEventListener('keydown', onFacadePanelKey);
+          delete facadePanelOf()?.dataset.inspectorMobileBound;
+        } catch {}
+        try {
+          for (const [element, value] of facadeInert) element.inert = value;
+          facadeInert.clear();
+        } catch {}
+        facadeMobileModal = false;
+        for (const key of INSPECTOR_UNIT_IDS) children[key]?.destroy?.();
+      },
+    };
+  }
   let tab = 'session',
     fileMode = 'changes',
     directory = '',
@@ -129,20 +399,39 @@ export function createInspector({
     gitAction = null,
     suggestBusy = false;
   const pending = new Map();
-  const panel = $('details-panel');
-  const subagentSettings = createSubagentSettings({
-    api,
-    root: $('project-subagent-settings'),
-    getModels,
-    openModelPicker,
-    icon,
-    toast,
-    project: true,
-  });
+  // Normalize single-unit map contexts: clones normally pass a function, but
+  // accept a map for uniformity (pick owned resolver, never a shared swap).
+  if (isSingle && getContext && typeof getContext !== 'function') {
+    getContext = resolveUnitContext(getContext, unit);
+  }
+  const panel = isSingle ? null : getEl('details-panel');
+  const subagentScopeRoot = getEl('project-subagent-settings');
+  const subagentSettings =
+    (!isSingle || unit === 'agents') && subagentScopeRoot
+      ? createSubagentSettings({
+          api,
+          root: subagentScopeRoot,
+          getModels,
+          openModelPicker,
+          icon,
+          toast,
+          project: true,
+          // Prefix derives from the mapped logical id: primaryUnitDomId keeps
+          // 'project-subagent' identity so original inner ids stay exact;
+          // clone domId maps it to the physical panel prefix (CSS.escape
+          // covers any panel-prefix colons at query time).
+          prefix: mapId('project-subagent'),
+          instanceId: instance,
+        })
+      : null;
   let mobileModal = false;
-  const background = [...document.querySelectorAll('#sidebar, .workspace-header, .conversation-column')];
+  const background = isSingle
+    ? []
+    : [...document.querySelectorAll('#sidebar, .workspace-header, .conversation-column')];
   const previousInert = new Map();
   function syncMobilePanel() {
+    // Single-unit dock tabs never drive the classic mobile panel.
+    if (isSingle || !panel) return;
     const open = innerWidth <= 1080 && panel.classList.contains('mobile-open') && !panel.hidden;
     if (open === mobileModal) return;
     mobileModal = open;
@@ -162,7 +451,8 @@ export function createInspector({
       if (innerWidth <= 1080) $('toggle-details').focus({ preventScroll: true });
     }
   }
-  panel.addEventListener('keydown', (event) => {
+  if (panel)
+    panel.addEventListener('keydown', (event) => {
     if (!mobileModal || viewer.open || document.querySelector('#model-dialog[open]')) return;
     if (event.key === 'Escape') {
       event.preventDefault();
@@ -185,33 +475,54 @@ export function createInspector({
     }
   });
   const viewer = node('dialog', 'modal inspector-viewer');
-  viewer.id = 'inspector-viewer';
-  viewer.setAttribute('aria-labelledby', 'inspector-view-title');
+  viewer.id = mapId('inspector-viewer');
+  viewer.setAttribute('aria-labelledby', mapId('inspector-view-title'));
+  viewer.dataset.inspectorInstance = instance;
+  if (isSingle) viewer.dataset.inspectorUnit = unit;
   const header = node('div', 'inspector-view-header'),
     title = node('h2');
-  title.id = 'inspector-view-title';
+  title.id = mapId('inspector-view-title');
   const close = node('button', 'secondary-button', () => tr('ui.fermer'));
   close.type = 'button';
   close.onclick = () => viewer.close();
   const controls = node('div', 'inspector-view-controls'),
     body = node('div', 'inspector-view-body');
-  body.id = 'inspector-view-body';
+  body.id = mapId('inspector-view-body');
   header.append(title, close);
   viewer.append(header, controls, body);
   document.body.append(viewer);
   let viewVersion = 0,
     opener;
-  const visible = () => !panel.hidden && (innerWidth > 1080 || panel.classList.contains('mobile-open'));
-  const unitNode = (key) => document.getElementById(`inspector-${key}`);
+  const visible = () =>
+    isSingle || !panel ? true : !panel.hidden && (innerWidth > 1080 || panel.classList.contains('mobile-open'));
+  const unitNode = (key) => getEl(`inspector-${key}`);
   function unitVisible(key) {
+    // Single-unit instances never poll/render sibling units, even when the
+    // parent supplies a full scoped host containing them. Locked != visible:
+    // hidden/parked units keep their target (contextKey preserved) but only
+    // poll while truly visible (nonempty rects + membership/selection).
+    if (isSingle && key !== unit) return false;
     const node = unitNode(key);
-    if (!node || !node.isConnected) return false;
-    if (docked) return docked.visible.has(key) && node.getClientRects().length > 0;
-    return visible() && tab === key;
+    if (!node) return false;
+    const vis = docked ? docked.visible : null;
+    return inspectorUnitVisible({
+      connected: node.isConnected === true,
+      hidden: node.hidden === true,
+      rects: node.getClientRects().length,
+      docked: !!docked,
+      dockMember:
+        vis instanceof Set ? vis.has(key) : Array.isArray(vis) ? vis.includes(key) : !!vis,
+      classicSelected: isSingle ? true : visible() && tab === key,
+    });
   }
   const query = (values) => new URLSearchParams({ cwd: current.cwd, ...values }).toString();
   const filesUrl = (action, values = {}) =>
     `/api/project-files${action ? '/' + action : ''}?${query(values)}`;
+  // Explicit-cwd routes (viewer/openDocument): fetch with the passed document
+  // cwd so a locked Files pin is never retargeted by cross-context links.
+  const queryFor = (cwd, values) => new URLSearchParams({ cwd, ...values }).toString();
+  const filesUrlFor = (cwd, action, values = {}) =>
+    `/api/project-files${action ? '/' + action : ''}?${queryFor(cwd, values)}`;
   const empty = (element, message) => element.replaceChildren(node('p', 'inspector-empty', () => message));
   const cancel = (key) => {
     pending.get(key)?.abort();
@@ -232,8 +543,10 @@ export function createInspector({
     }
   }
   function showUsage() {
+    if (!owns('session')) return;
     const usage = agentData?.session?.usage;
     const section = $('inspector-usage');
+    if (!section) return;
     section.hidden = !usage;
     if (!usage) return;
     section.replaceChildren(node('div', 'context-label', () => tr('ui.consommation_de_la_session')));
@@ -286,7 +599,8 @@ export function createInspector({
   // Quota refreshes on its own: on first display, then every 5 minutes while visible.
   const QUOTA_REFRESH_MS = 5 * 60_000;
   const quotaFetchedAt = {};
-  setInterval(() => {
+  const quotaTimer = setInterval(() => {
+    if (!owns('session')) return;
     if (document.hidden || !quotaSection || quotaSection.hidden || !unitVisible('session')) return;
     for (const button of quotaSection.querySelectorAll('.session-quota-refresh')) button.click();
   }, QUOTA_REFRESH_MS);
@@ -304,17 +618,21 @@ export function createInspector({
     void renderQuota();
   }
   function ensureSessionExtras() {
+    if (!owns('session')) return;
     if (quotaSection && contextSection) return;
     const host = $('inspector-session');
+    if (!host) return;
     const sessionBlock = $('detail-status')?.closest('.context-section');
     quotaSection = document.createElement('section');
-    quotaSection.id = 'inspector-quota';
+    quotaSection.id = mapId('inspector-quota');
     quotaSection.className = 'context-section';
     quotaSection.hidden = true;
+    if (!quotaSection.dataset.panelId) quotaSection.dataset.panelId = 'inspector-quota';
     contextSection = document.createElement('section');
-    contextSection.id = 'inspector-context';
+    contextSection.id = mapId('inspector-context');
     contextSection.className = 'context-section';
     contextSection.hidden = true;
+    if (!contextSection.dataset.panelId) contextSection.dataset.panelId = 'inspector-context';
     // Quota sits right under the session block; live context stays at the end.
     if (sessionBlock) sessionBlock.after(quotaSection);
     else host.append(quotaSection);
@@ -489,7 +807,9 @@ export function createInspector({
     return parts.join('\n');
   }
   function renderContext() {
+    if (!owns('session')) return;
     ensureSessionExtras();
+    if (!contextSection) return;
     if (!current.enabled) {
       contextSection.hidden = true;
       contextSection.replaceChildren();
@@ -594,7 +914,9 @@ export function createInspector({
     contextSection.append(label, line, track, note);
   }
   async function renderQuota() {
+    if (!owns('session')) return;
     ensureSessionExtras();
+    if (!quotaSection || !contextSection) return;
     const token = ++quotaGeneration;
     const mainId = mainModelId();
     const renderCwd = current.cwd;
@@ -704,29 +1026,44 @@ export function createInspector({
     quotaSection.hidden = false;
     quotaSection.replaceChildren(...nodes);
   }
+  function syncDetailStatus() {
+    if (!owns('session')) return;
+    const target = $('detail-status');
+    if (!target) return;
+    if (agentData?.session) target.replaceChildren(statusNode(agentData.session.status));
+  }
   function renderAgents() {
+    if (!owns('agents')) return;
     const data = agentData,
       list = $('inspector-agent-list');
+    if (!list) return;
     if (!data?.session) {
       empty(list, () => tr('ui.ouvrez_une_session_pour_retrouver_son_agent_et_ses_delegations'));
       return;
     }
     const total = data.agents.filter((agent) => !agent.root).length;
-    bindText($('inspector-agent-count'), () => total);
-    $('inspector-agent-count').hidden = !total;
+    const agentCount = $('inspector-agent-count');
+    if (agentCount) {
+      bindText(agentCount, () => total);
+      agentCount.hidden = !total;
+    }
     const running = data.agents.filter((agent) => busy.has(agent.status)).length;
-    bindText($('inspector-agent-summary'), () =>
-      tr('count.subagents', {
-        count: total,
-        activity: running ? tr('ui.en_activite', { value1: running }) : '',
-      }),
-    );
-    bindText(
-      $('inspector-agent-note'),
-      () =>
-        (data.notes || []).map(translateKnown).join(' ') ||
-        (data.live ? tr('ui.suivi_en_direct') : tr('ui.delegations_conservees_par_prime_agent')),
-    );
+    const agentSummary = $('inspector-agent-summary');
+    if (agentSummary)
+      bindText(agentSummary, () =>
+        tr('count.subagents', {
+          count: total,
+          activity: running ? tr('ui.en_activite', { value1: running }) : '',
+        }),
+      );
+    const agentNote = $('inspector-agent-note');
+    if (agentNote)
+      bindText(
+        agentNote,
+        () =>
+          (data.notes || []).map(translateKnown).join(' ') ||
+          (data.live ? tr('ui.suivi_en_direct') : tr('ui.delegations_conservees_par_prime_agent')),
+      );
     const fingerprint = JSON.stringify(data);
     if (fingerprint === lastAgents) return;
     lastAgents = fingerprint;
@@ -824,13 +1161,24 @@ export function createInspector({
       // Recheck expiring defaults/link metadata even with the same model/cwd.
       // The central visibility gate and renderQuota caches still apply.
       requestQuota(true);
-      if (agentData.session) $('detail-status').replaceChildren(statusNode(agentData.session.status));
+      if (agentData.session) syncDetailStatus();
     } catch (error) {
-      if (error.name !== 'AbortError')
-        bindText($('inspector-agent-note'), () => translateKnown(error.message));
+      if (error.name !== 'AbortError') {
+        const note = $('inspector-agent-note');
+        if (note && owns('agents')) bindText(note, () => translateKnown(error.message));
+      }
     }
   }
   function setTab(value, focus = false) {
+    if (isSingle) {
+      // Single-unit tabs are owned by the parent/dock. Only react when the
+      // request targets the owned unit; never hide sibling sections here.
+      if (value !== unit) return;
+      if (docked) docked.show?.(value);
+      else update();
+      if (focus) $(`inspector-tab-${unit}`)?.focus?.();
+      return;
+    }
     if (docked) {
       if (INSPECTOR_UNIT_IDS.includes(value)) docked.show?.(value);
       return;
@@ -846,8 +1194,10 @@ export function createInspector({
     if (value === 'files') void loadGit();
     update();
   }
-  for (const key of ['session', 'agents', 'files']) {
+  if (!isSingle)
+    for (const key of ['session', 'agents', 'files']) {
     const button = $(`inspector-tab-${key}`);
+    if (!button) continue;
     button.onclick = () => setTab(key);
     button.onkeydown = (event) => {
       const keys = ['session', 'agents', 'files'].filter((key) => !$(`inspector-tab-${key}`).disabled);
@@ -863,16 +1213,25 @@ export function createInspector({
       );
     };
   }
-  $('close-inspector').onclick = onClose;
-  $('refresh-agents').onclick = () => {
-    void loadAgents(true);
-    if (current.cwd) void subagentSettings.open();
-  };
+  if (!isSingle) {
+    const closeButton = $('close-inspector');
+    if (closeButton) closeButton.onclick = onClose;
+  }
+  if (owns('agents')) {
+    const refreshAgents = $('refresh-agents');
+    if (refreshAgents)
+      refreshAgents.onclick = () => {
+        void loadAgents(true);
+        if (current.cwd) void subagentSettings?.open();
+      };
+  }
 
   function renderFiles(append = false) {
+    if (!owns('files')) return;
     closeFileMenu();
     const list = $('inspector-file-list'),
       crumb = $('inspector-file-breadcrumb');
+    if (!list || !crumb) return;
     const focusedPath = document.activeElement?.closest('[data-file-path]')?.dataset.filePath;
     if (!append) list.replaceChildren();
     crumb.replaceChildren();
@@ -976,6 +1335,7 @@ export function createInspector({
     syncCommitBox();
   }
   async function loadFiles(force = false, offset = 0) {
+    if (!owns('files')) return;
     if (!current.enabled || !current.cwd || pending.has('files') || (!force && Date.now() - filesAt < 6000))
       return;
     filesAt = Date.now();
@@ -995,6 +1355,7 @@ export function createInspector({
     }
   }
   function browse(path) {
+    if (!owns('files')) return;
     cancel('files');
     directory = path;
     fileData = null;
@@ -1004,6 +1365,7 @@ export function createInspector({
     void loadFiles(true);
   }
   function changeFiles(mode) {
+    if (!owns('files')) return;
     cancel('files');
     fileMode = mode;
     fileData = null;
@@ -1016,23 +1378,32 @@ export function createInspector({
     void loadFiles(true);
     void loadGit();
   }
-  $('files-changes').onclick = () => changeFiles('changes');
-  $('files-all').onclick = () => changeFiles('all');
-  $('refresh-files').onclick = () => {
-    void loadFiles(true);
-    void loadGit(true);
-  };
+  if (owns('files')) {
+    const filesChanges = $('files-changes'),
+      filesAll = $('files-all'),
+      refreshFiles = $('refresh-files');
+    if (filesChanges) filesChanges.onclick = () => changeFiles('changes');
+    if (filesAll) filesAll.onclick = () => changeFiles('all');
+    if (refreshFiles)
+      refreshFiles.onclick = () => {
+        void loadFiles(true);
+        void loadGit(true);
+      };
+  }
   // Git controls in the Files tab: branch switcher, fetch/pull/push and commit.
   const gitBusy = () => Boolean(agentData?.session && busy.has(agentData.session.status));
   const gitShortHead = () =>
     typeof gitData?.head === 'string' && gitData.head ? gitData.head.slice(0, 7) : '';
   function gitSelectedPaths() {
-    return [...document.querySelectorAll('#inspector-file-list .git-file-check')]
+    const scopeList = $('inspector-file-list');
+    const boxes = scopeList ? scopeList.querySelectorAll('.git-file-check') : [];
+    return [...boxes]
       .filter((box) => box.checked)
       .map((box) => box.dataset.gitPath)
       .filter(Boolean);
   }
   function syncGitBar() {
+    if (!owns('files')) return;
     const bar = $('inspector-git-bar');
     if (!bar) return;
     const show = Boolean(current.cwd && gitData?.git);
@@ -1053,15 +1424,22 @@ export function createInspector({
       noRemote = !gitData.remote,
       noUpstream = !gitData.upstream,
       runBusy = gitBusy();
-    for (const id of ['git-fetch-button', 'git-pull-button', 'git-push-button']) $(id).hidden = readOnly;
+    for (const id of ['git-fetch-button', 'git-pull-button', 'git-push-button']) {
+      const actionButton = $(id);
+      if (actionButton) actionButton.hidden = readOnly;
+    }
     if (readOnly) return;
     const branchButton = $('git-branch-button');
+    if (!branchButton) return;
     branchButton.disabled = inFlight || runBusy;
     branchButton.setAttribute('title', runBusy ? tr('git.align_busy') : tr('git.panel_branches'));
     const fetchButton = $('git-fetch-button');
-    fetchButton.disabled = inFlight || noRemote || !current.online;
-    fetchButton.setAttribute('title', noRemote ? tr('git.panel_no_remote') : tr('git.panel_fetch'));
+    if (fetchButton) {
+      fetchButton.disabled = inFlight || noRemote || !current.online;
+      fetchButton.setAttribute('title', noRemote ? tr('git.panel_no_remote') : tr('git.panel_fetch'));
+    }
     const pullButton = $('git-pull-button');
+    if (!pullButton) return;
     pullButton.disabled = inFlight || runBusy || noUpstream || noRemote;
     pullButton.setAttribute(
       'title',
@@ -1074,6 +1452,7 @@ export function createInspector({
             : tr('git.panel_pull'),
     );
     const pushButton = $('git-push-button');
+    if (!pushButton) return;
     const nothingToPush = Boolean(gitData.upstream) && !ahead;
     pushButton.disabled = inFlight || noRemote || nothingToPush;
     pushButton.setAttribute(
@@ -1086,6 +1465,7 @@ export function createInspector({
     );
   }
   function syncCommitBox() {
+    if (!owns('files')) return;
     const box = $('inspector-git-commit');
     if (!box) return;
     const show = Boolean(
@@ -1093,9 +1473,11 @@ export function createInspector({
     );
     box.hidden = !show;
     if (!show) return;
-    const message = $('git-commit-message').value.trim(),
+    const messageField = $('git-commit-message'),
+      button = $('git-commit-button');
+    if (!messageField || !button) return;
+    const message = messageField.value.trim(),
       selected = gitSelectedPaths(),
-      button = $('git-commit-button'),
       suggest = $('git-suggest-button');
     button.disabled = gitAction !== null || suggestBusy || !message || !selected.length;
     if (!message) button.setAttribute('title', tr('git.panel_no_message'));
@@ -1109,6 +1491,7 @@ export function createInspector({
     }
   }
   async function loadGit(force = false) {
+    if (!owns('files')) return;
     if (!current.enabled || !current.cwd) {
       syncGitBar();
       return;
@@ -1138,7 +1521,8 @@ export function createInspector({
     return false;
   }
   async function gitRun(action, body, successKey, successParams, reloadFiles = true) {
-    if (!current.cwd || gitAction) return;
+    // Writes keep the originating cwd across await and never run read-only.
+    if (!owns('files') || !current.cwd || current.readOnly || gitAction) return;
     const cwd = current.cwd,
       token = generation;
     if (reloadFiles) cancel('files');
@@ -1168,13 +1552,15 @@ export function createInspector({
     }
   }
   async function gitSuggest() {
+    if (!owns('files')) return;
     const field = $('git-commit-message');
+    if (!field) return;
     const paths = gitSelectedPaths();
     if (!paths.length) {
       toast(() => tr('git.panel_no_selection'), true);
       return;
     }
-    if (!current.cwd || gitAction || suggestBusy) return;
+    if (!owns('files') || !current.cwd || current.readOnly || gitAction || suggestBusy) return;
     const cwd = current.cwd,
       token = generation;
     suggestBusy = true;
@@ -1204,8 +1590,10 @@ export function createInspector({
     }
   }
   async function gitCommit() {
-    const field = $('git-commit-message'),
-      message = field.value.trim();
+    if (!owns('files')) return;
+    const field = $('git-commit-message');
+    if (!field) return;
+    const message = field.value.trim();
     if (!message) {
       toast(() => tr('git.panel_no_message'), true);
       field.focus();
@@ -1216,7 +1604,7 @@ export function createInspector({
       toast(() => tr('git.panel_no_selection'), true);
       return;
     }
-    if (!current.cwd || gitAction) return;
+    if (!owns('files') || !current.cwd || current.readOnly || gitAction) return;
     const cwd = current.cwd,
       token = generation;
     cancel('files');
@@ -1251,6 +1639,7 @@ export function createInspector({
   gitMenu.className = 'popover-menu git-branch-menu';
   gitMenu.setAttribute('role', 'menu');
   gitMenu.hidden = true;
+  gitMenu.dataset.inspectorInstance = instance;
   document.body.append(gitMenu);
   let gitMenuAnchor = null;
   function closeGitMenu(focusAnchor = false) {
@@ -1351,16 +1740,17 @@ export function createInspector({
   document.addEventListener('keydown', closeGitMenuOnKey, true);
   // In-app dialog for branch creation (never window.confirm).
   const gitDialog = document.createElement('dialog');
-  gitDialog.id = 'git-branch-dialog';
+  gitDialog.id = mapId('git-branch-dialog');
   gitDialog.className = 'modal compact';
+  gitDialog.dataset.inspectorInstance = instance;
   const gitDialogTitle = node('h2', '', () => tr('git.panel_create_title')),
     gitDialogLabel = node('label', '', () => tr('git.panel_branch_name'));
   const gitDialogInput = document.createElement('input');
   gitDialogInput.type = 'text';
   gitDialogInput.autocomplete = 'off';
   gitDialogInput.maxLength = 200;
-  gitDialogInput.id = 'git-branch-name';
-  gitDialogLabel.setAttribute('for', 'git-branch-name');
+  gitDialogInput.id = mapId('git-branch-name');
+  gitDialogLabel.setAttribute('for', mapId('git-branch-name'));
   bindAttribute(gitDialogInput, 'aria-label', () => tr('git.panel_branch_name'));
   const gitDialogError = node('p', 'form-error', () => tr('git.panel_invalid_branch'));
   gitDialogError.setAttribute('role', 'alert');
@@ -1404,35 +1794,52 @@ export function createInspector({
     if ($('git-branch-button')?.isConnected && !$('inspector-git-bar').hidden)
       $('git-branch-button').focus({ preventScroll: true });
   };
-  $('git-branch-button').onclick = (event) => {
-    if (event.currentTarget.disabled) return;
-    if (gitMenu.hidden) openGitMenu(event.currentTarget);
-    else closeGitMenu();
-  };
-  $('git-fetch-button').onclick = (event) => {
-    if (event.currentTarget.disabled) return;
-    void gitRun('fetch', {}, 'git.panel_fetched', null, false);
-  };
-  $('git-pull-button').onclick = (event) => {
-    if (event.currentTarget.disabled) return;
-    void gitRun('pull', {}, 'git.panel_pulled');
-  };
-  $('git-push-button').onclick = (event) => {
-    if (event.currentTarget.disabled) return;
-    void gitRun('push', {}, 'git.panel_pushed', null, false);
-  };
-  $('git-commit-message').oninput = () => syncCommitBox();
+  if (owns('files')) {
+    const gitBranchButton = $('git-branch-button');
+    if (gitBranchButton)
+      gitBranchButton.onclick = (event) => {
+        if (event.currentTarget.disabled) return;
+        if (gitMenu.hidden) openGitMenu(event.currentTarget);
+        else closeGitMenu();
+      };
+    const gitFetchButton = $('git-fetch-button');
+    if (gitFetchButton)
+      gitFetchButton.onclick = (event) => {
+        if (event.currentTarget.disabled) return;
+        void gitRun('fetch', {}, 'git.panel_fetched', null, false);
+      };
+    const gitPullButton = $('git-pull-button');
+    if (gitPullButton)
+      gitPullButton.onclick = (event) => {
+        if (event.currentTarget.disabled) return;
+        void gitRun('pull', {}, 'git.panel_pulled');
+      };
+    const gitPushButton = $('git-push-button');
+    if (gitPushButton)
+      gitPushButton.onclick = (event) => {
+        if (event.currentTarget.disabled) return;
+        void gitRun('push', {}, 'git.panel_pushed', null, false);
+      };
+    const gitCommitMessage = $('git-commit-message');
+    if (gitCommitMessage) gitCommitMessage.oninput = () => syncCommitBox();
+  }
   // Ctrl+Enter commits from the multi-line message; Enter adds a line.
-  $('git-commit-message').onkeydown = (event) => {
-    if (event.key !== 'Enter' || !(event.ctrlKey || event.metaKey)) return;
-    event.preventDefault();
-    if (!$('git-commit-button').disabled) void gitCommit();
-  };
-  $('git-commit-button').onclick = (event) => {
-    if (event.currentTarget.disabled) return;
-    void gitCommit();
-  };
-  const suggestButton = $('git-suggest-button');
+  if (owns('files')) {
+    const gitCommitMessageBox = $('git-commit-message');
+    if (gitCommitMessageBox)
+      gitCommitMessageBox.onkeydown = (event) => {
+        if (event.key !== 'Enter' || !(event.ctrlKey || event.metaKey)) return;
+        event.preventDefault();
+        if (!$('git-commit-button')?.disabled) void gitCommit();
+      };
+    const gitCommitButton = $('git-commit-button');
+    if (gitCommitButton)
+      gitCommitButton.onclick = (event) => {
+        if (event.currentTarget.disabled) return;
+        void gitCommit();
+      };
+  }
+  const suggestButton = owns('files') ? $('git-suggest-button') : null;
   if (suggestButton)
     suggestButton.onclick = (event) => {
       if (event.currentTarget.disabled) return;
@@ -1443,16 +1850,20 @@ export function createInspector({
     syncCommitBox();
   });
   let openingProjectFolder = false;
-  const openProjectFolder = $('open-project-folder');
+  const openProjectFolder = owns('files') ? $('open-project-folder') : null;
   function syncProjectFolderButton() {
-    bindText($('open-project-folder-label'), () =>
-      current.remote ? tr('ui.ouvrir_le_dossier_sur_le_pc') : tr('ui.ouvrir_le_dossier'),
-    );
+    if (!owns('files') || !openProjectFolder) return;
+    const label = $('open-project-folder-label');
+    if (label)
+      bindText(label, () =>
+        current.remote ? tr('ui.ouvrir_le_dossier_sur_le_pc') : tr('ui.ouvrir_le_dossier'),
+      );
     openProjectFolder.hidden = !current.enabled || current.readOnly || !current.nativeFileOpen;
     openProjectFolder.disabled =
       openProjectFolder.hidden || !current.cwd || !current.online || openingProjectFolder;
   }
-  openProjectFolder.onclick = async () => {
+  if (openProjectFolder)
+    openProjectFolder.onclick = async () => {
     // Navigation may have changed the selected project since the last inspector refresh.
     update();
     if (openProjectFolder.disabled) return;
@@ -1477,6 +1888,7 @@ export function createInspector({
   fileMenu.className = 'popover-menu inspector-file-menu';
   fileMenu.setAttribute('role', 'menu');
   fileMenu.hidden = true;
+  fileMenu.dataset.inspectorInstance = instance;
   document.body.append(fileMenu);
   let menuFile = null,
     menuRow = null;
@@ -1679,7 +2091,8 @@ export function createInspector({
     }
     render();
   }
-  async function openFile(file, mode) {
+  async function openFile(file, mode, explicitCwd) {
+    const viewCwd = explicitCwd || current.cwd;
     beginView(file.path);
     const token = viewVersion;
     if (file.status) {
@@ -1691,12 +2104,12 @@ export function createInspector({
         const button = node('button', '', () => translateKnown(label));
         button.type = 'button';
         button.setAttribute('aria-pressed', String(value === mode));
-        button.onclick = () => openFile(file, value);
+        button.onclick = () => openFile(file, value, explicitCwd);
         controls.append(button);
       }
     }
     if (!file.deleted && !current.readOnly && current.nativeFileOpen) {
-      const cwd = current.cwd;
+      const cwd = viewCwd;
       // Folders have no file content: the file endpoint would only refuse
       // them, so directories keep the folder reveal action exclusively.
       if (!file.directory) {
@@ -1755,7 +2168,10 @@ export function createInspector({
       return;
     }
     try {
-      const data = await request('viewer', filesUrl(mode, { path: file.path }));
+      const data = await request(
+        'viewer',
+        explicitCwd ? filesUrlFor(explicitCwd, mode, { path: file.path }) : filesUrl(mode, { path: file.path }),
+      );
       if (token !== viewVersion) return;
       body.replaceChildren();
       if (data.image) {
@@ -1797,20 +2213,24 @@ export function createInspector({
     }
   }
   async function openDocument(reference, { cwd, basePath = '' } = {}) {
-    update();
-    if (cwd !== current.cwd) return;
+    const docCwd = cwd || current.cwd;
+    if (!docCwd) return;
     beginView(reference.split(/[\\/]/).at(-1));
     try {
-      const result = await request('viewer', filesUrl('resolve', { reference, basePath }));
+      const result = await request('viewer', filesUrlFor(docCwd, 'resolve', { reference, basePath }));
       if (result.path || result.directory) {
-        await openFile({ path: result.path, ...(result.directory ? { directory: true } : {}) }, 'preview');
+        await openFile(
+          { path: result.path, ...(result.directory ? { directory: true } : {}) },
+          'preview',
+          docCwd,
+        );
         return;
       }
       empty(body, () => tr('ui.plusieurs_documents_portent_ce_nom_choisissez_le_fichier_a_consul'));
       for (const match of result.matches || []) {
         const button = node('button', 'inspector-file', () => match.path);
         button.type = 'button';
-        button.onclick = () => openFile(match, 'preview');
+        button.onclick = () => openFile(match, 'preview', docCwd);
         body.append(button);
       }
     } catch (error) {
@@ -1889,6 +2309,7 @@ export function createInspector({
 
   function applyUnitAria() {
     for (const key of INSPECTOR_UNIT_IDS) {
+      if (!owns(key)) continue;
       const node = unitNode(key);
       if (!node) continue;
       const props = inspectorUnitAria(key, !!docked);
@@ -1901,6 +2322,8 @@ export function createInspector({
 
   /** Live unit roots for docking registration. Docking owns move/restore. */
   function roots() {
+    // No wrapper: parent registers the actual live unit roots directly.
+    if (isSingle) return { [unit]: unitNode(unit) };
     return { session: unitNode('session'), agents: unitNode('agents'), files: unitNode('files') };
   }
 
@@ -1911,16 +2334,21 @@ export function createInspector({
    * re-gates on the next update() immediately.
    */
   function setDocked(active, visiblePanels, showPanel) {
-    docked = active
-      ? { visible: new Set(Array.isArray(visiblePanels) ? visiblePanels : []), show: showPanel }
-      : null;
+    // visiblePanels: array/Set (legacy) or boolean (single-unit shorthand).
+    const visible =
+      visiblePanels instanceof Set
+        ? new Set(visiblePanels)
+        : Array.isArray(visiblePanels)
+          ? new Set(visiblePanels)
+          : visiblePanels;
+    docked = active ? { visible, show: showPanel } : null;
     applyUnitAria();
     update();
   }
 
   function update() {
     current = getContext();
-    syncProjectFolderButton();
+    if (owns('files')) syncProjectFolderButton();
     syncMobilePanel();
     const key = `${current.cwd || ''}\0${current.sessionId || ''}`;
     if (key !== contextKey) {
@@ -1934,57 +2362,86 @@ export function createInspector({
       gitAction = null;
       lastAgents = '';
       directory = '';
-      closeFileMenu();
-      closeGitMenu();
-      if ($('inspector-git-bar')) $('inspector-git-bar').hidden = true;
-      if ($('inspector-git-commit')) $('inspector-git-commit').hidden = true;
+      if (owns('files')) {
+        closeFileMenu();
+        closeGitMenu();
+      }
+      if (owns('files')) {
+        if ($('inspector-git-bar')) $('inspector-git-bar').hidden = true;
+        if ($('inspector-git-commit')) $('inspector-git-commit').hidden = true;
+      }
       if (viewer.open) viewer.close();
-      $('inspector-agent-count').hidden = true;
-      $('inspector-usage').hidden = true;
-      bindText($('inspector-agent-note'), () => '');
-      bindText($('inspector-agent-summary'), () =>
-        current.sessionId ? tr('ui.delegations_de_la_session') : tr('ui.prochaines_delegations'),
-      );
-      bindText($('inspector-file-note'), () => '');
-      $('inspector-file-breadcrumb').replaceChildren();
-      empty($('inspector-agent-list'), () =>
-        current.sessionId
-          ? tr('ui.chargement_des_agents')
-          : current.cwd
-            ? tr('ui.les_agents_apparaitront_apres_le_premier_message')
-            : tr('ui.choisissez_un_projet_pour_preparer_ses_sous_agents'),
-      );
-      empty($('inspector-file-list'), () =>
-        current.cwd
-          ? tr('ui.chargement_des_fichiers')
-          : tr('ui.choisissez_un_projet_pour_parcourir_ses_fichiers'),
-      );
+      if (owns('agents')) {
+        const agentCount = $('inspector-agent-count');
+        if (agentCount) agentCount.hidden = true;
+        const agentNote = $('inspector-agent-note');
+        if (agentNote) bindText(agentNote, () => '');
+        const agentSummary = $('inspector-agent-summary');
+        if (agentSummary)
+          bindText(agentSummary, () =>
+            current.sessionId ? tr('ui.delegations_de_la_session') : tr('ui.prochaines_delegations'),
+          );
+        const agentList = $('inspector-agent-list');
+        if (agentList)
+          empty(agentList, () =>
+            current.sessionId
+              ? tr('ui.chargement_des_agents')
+              : current.cwd
+                ? tr('ui.les_agents_apparaitront_apres_le_premier_message')
+                : tr('ui.choisissez_un_projet_pour_preparer_ses_sous_agents'),
+          );
+      }
+      if (owns('session')) {
+        const usage = $('inspector-usage');
+        if (usage) usage.hidden = true;
+      }
+      if (owns('files')) {
+        const fileNote = $('inspector-file-note');
+        if (fileNote) bindText(fileNote, () => '');
+        const crumb = $('inspector-file-breadcrumb');
+        if (crumb) crumb.replaceChildren();
+        const fileList = $('inspector-file-list');
+        if (fileList)
+          empty(fileList, () =>
+            current.cwd
+              ? tr('ui.chargement_des_fichiers')
+              : tr('ui.choisissez_un_projet_pour_parcourir_ses_fichiers'),
+          );
+      }
     }
-    if (agentData?.session) $('detail-status').replaceChildren(statusNode(agentData.session.status));
-    $('inspector-tab-agents').disabled = !current.enabled;
-    $('inspector-tab-files').disabled = !current.enabled;
+    syncDetailStatus();
+    if (!isSingle) {
+      const tabAgents = $('inspector-tab-agents'),
+        tabFiles = $('inspector-tab-files');
+      if (tabAgents) tabAgents.disabled = !current.enabled;
+      if (tabFiles) tabFiles.disabled = !current.enabled;
+    }
     const plan = inspectorFetchPlan({
       session: unitVisible('session'),
       agents: unitVisible('agents'),
       files: unitVisible('files'),
     });
-    subagentSettings.update({ ...current, active: unitVisible('agents') && !document.hidden });
+    if (owns('agents')) subagentSettings?.update({ ...current, active: unitVisible('agents') && !document.hidden });
     // Session quota depends on the selected main model even without an open session.
     // Refresh it on model/cwd change; context needs live agent data.
-    try {
-      ensureSessionExtras();
-      // Deferred async fetch; requestQuota dispatches only for a visible
-      // session unit and advances the probe key solely on dispatch.
-      requestQuota();
-      if (!current.enabled) {
-        quotaSection.hidden = true;
-        contextSection.hidden = true;
-      }
-      renderContext();
-    } catch {}
+    if (owns('session')) {
+      try {
+        ensureSessionExtras();
+        // Deferred async fetch; requestQuota dispatches only for a visible
+        // session unit and advances the probe key solely on dispatch.
+        requestQuota();
+        if (!current.enabled) {
+          if (quotaSection) quotaSection.hidden = true;
+          if (contextSection) contextSection.hidden = true;
+        }
+        renderContext();
+      } catch {}
+    }
     if (!current.enabled) {
-      if ($('inspector-git-bar')) $('inspector-git-bar').hidden = true;
-      if ($('inspector-git-commit')) $('inspector-git-commit').hidden = true;
+      if (owns('files')) {
+        if ($('inspector-git-bar')) $('inspector-git-bar').hidden = true;
+        if ($('inspector-git-commit')) $('inspector-git-commit').hidden = true;
+      }
       return;
     }
     if (!plan.any || document.hidden || !current.online) return;
@@ -2000,13 +2457,16 @@ export function createInspector({
   document.addEventListener('visibilitychange', update);
   window.addEventListener('resize', update);
   return {
+    instanceId: instance,
+    unit: owned,
     update,
     setTab,
     roots,
     setDocked,
     openDocument,
+    openAgent,
     async openAgentById(id) {
-      if (docked) docked.show?.('agents');
+      if (owns('agents') && docked) docked.show?.('agents');
       update();
       const expectedContext = contextKey;
       const expectedGeneration = generation;
@@ -2018,8 +2478,22 @@ export function createInspector({
     },
     destroy() {
       clearInterval(timer);
+      try {
+        clearInterval(quotaTimer);
+      } catch {}
       for (const key of [...pending.keys()]) cancel(key);
-      stopGitLanguage();
+      try {
+        stopGitLanguage?.();
+      } catch {}
+      try {
+        subagentSettings?.destroy?.();
+      } catch {}
+      if (viewer.open) {
+        try {
+          viewer.close();
+        } catch {}
+      }
+      viewer.remove();
       document.removeEventListener('click', closeGitMenuOnPointer);
       document.removeEventListener('keydown', closeGitMenuOnKey, true);
       gitMenu.remove();
@@ -2031,6 +2505,20 @@ export function createInspector({
       window.visualViewport?.removeEventListener('resize', closeFileMenuOnScroll);
       window.visualViewport?.removeEventListener('scroll', closeFileMenuOnScroll);
       fileMenu.remove();
+      try {
+        quotaSection?.remove?.();
+      } catch {}
+      try {
+        contextSection?.remove?.();
+      } catch {}
+      document.removeEventListener('visibilitychange', update);
+      window.removeEventListener('resize', update);
+      if (panel) {
+        try {
+          for (const [element, value] of previousInert) element.inert = value;
+          previousInert.clear();
+        } catch {}
+      }
     },
   };
 }

@@ -57,6 +57,9 @@ async function openPage({ width = 1440, url = local, preferences, noProject = fa
   });
   await context.addInitScript((cwd) => {
     localStorage.setItem('prime-studio.selection', JSON.stringify({ cwd }));
+    // Fixture-only: keep the classic inspector home (opt out of the default-on
+    // modular dock; honored via stored enabled:false). No production change.
+    localStorage.setItem('prime-studio.docking.layout', JSON.stringify({ enabled: false }));
   }, cwd);
   page = await context.newPage();
   page.setDefaultTimeout(10000);
@@ -76,8 +79,14 @@ async function openPage({ width = 1440, url = local, preferences, noProject = fa
   }
   await expect(page.locator('#connection-label')).toHaveText('Moteur connecté');
   if (width <= 1080) await page.locator('#toggle-details').click();
-  await page.locator('#inspector-tab-files').click();
-  await expect(page.locator('#inspector-files')).toBeVisible();
+  // Fixture-only: without a project the files context is disabled by design
+  // (per-unit map contexts), so the tab cannot be clicked; otherwise the
+  // classic assertions below are unchanged. No production change.
+  if (!noProject) {
+    await expect(page.locator('#inspector-tab-files')).toBeEnabled();
+    await page.locator('#inspector-tab-files').click();
+    await expect(page.locator('#inspector-files')).toBeVisible();
+  }
   return context;
 }
 

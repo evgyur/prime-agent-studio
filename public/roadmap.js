@@ -63,19 +63,40 @@ export function createRoadmap({
   onKnowledge,
   toast,
   onSummary = () => {},
+  // Multi-instance: parent coordinator supplies a stable per-tab id.
+  // Default keeps the legacy primary DOM untouched (exact ids, drafts, chrome).
+  instanceId = 'roadmap',
 }) {
-  const css = node('link');
-  css.rel = 'stylesheet';
-  css.href = '/public/roadmap.css';
-  document.head.append(css);
+  const rawInstanceId = typeof instanceId === 'string' && instanceId ? instanceId : 'roadmap';
+  const isPrimary = rawInstanceId === 'roadmap';
+  // Injective, truncation-free token: encodeURIComponent is 1:1 and never emits
+  // whitespace, so full `tool:<kind>:<nonce>` ids stay unique even when the nonce
+  // alone fills 64 chars (a sanitized 64-char slice would collide such endings).
+  const idToken = encodeURIComponent(rawInstanceId);
+  const idSuffix = isPrimary ? '' : `--${idToken}`;
+  // Scoped DOM ids: primary returns the base unchanged (legacy compat);
+  // clones append `--<instanceId>` so N panels never share an id/ARIA target.
+  const uid = (base) => `${base}${idSuffix}`;
+  const panelId = uid('roadmap-panel');
+  const titleId = uid('roadmap-title');
+  const editorTitleId = uid('rm-editor-title');
+  // Stylesheet is shared: link once, never once per instance.
+  if (!document.head.querySelector('link[href="/public/roadmap.css"]')) {
+    const css = node('link');
+    css.rel = 'stylesheet';
+    css.href = '/public/roadmap.css';
+    document.head.append(css);
+  }
   const panel = node('aside', 'roadmap-panel');
-  panel.id = 'roadmap-panel';
+  panel.id = panelId;
   panel.hidden = true;
-  panel.setAttribute('aria-labelledby', 'roadmap-title');
+  panel.dataset.instanceId = rawInstanceId;
+  if (!isPrimary) panel.dataset.panelId = 'roadmap-panel';
+  panel.setAttribute('aria-labelledby', titleId);
   const header = node('header', 'rm-header'),
     heading = node('div');
   heading.append(node('h2', '', rt('title')));
-  heading.firstChild.id = 'roadmap-title';
+  heading.firstChild.id = titleId;
   const projectName = node('p', 'rm-project-name');
   heading.append(projectName);
   const close = button('×', () => hide(), 'rm-close');
@@ -94,7 +115,13 @@ export function createRoadmap({
   panel.append(header, progress, tabs, status, content, footer);
   document.body.append(panel);
   const editor = node('dialog', 'rm-editor');
+  editor.dataset.instanceId = rawInstanceId;
+  if (!isPrimary) editor.id = uid('rm-editor');
   document.body.append(editor);
+  // Snapshot the OWN context once per action. The parent resolves getContext()
+  // per instance (locked target or live focus); after an await the global focus
+  // may have moved, so continuations must use this copy, never a fresh call.
+  const snapshotContext = () => ({ ...getContext() });
   let opened = false,
     cwd = '',
     doc = null,
@@ -176,6 +203,9 @@ export function createRoadmap({
     if (changed && (!pending || !hadDoc)) render();
   }
   async function refresh() {
+    // Only the primary feeds the toolbar summary: hidden secondaries never
+    // poll (N hidden clones must not each spend a GET per 10 s cadence).
+    if (!isPrimary && !opened) return;
     if (!cwd || getContext().online === false || document.hidden) return;
     // An initial load must proceed even during a stale edit POST; background
     // refreshes stay quiet while editing to keep requests bounded.
@@ -234,6 +264,8 @@ export function createRoadmap({
   }
   async function mutate(action, params = {}, revision = doc?.revision) {
     if (!canEdit()) return;
+    // Capture OWN context before the await; never re-read it afterwards.
+    const own = snapshotContext();
     const version = generation,
       sequence = ++requestSequence,
       targetCwd = cwd;
@@ -245,7 +277,7 @@ export function createRoadmap({
           cwd: targetCwd,
           action,
           expectedRevision: revision,
-          ...(action === 'step.check' && getContext().sessionId ? { sessionId: getContext().sessionId } : {}),
+          ...(action === 'step.check' && own.sessionId ? { sessionId: own.sessionId } : {}),
           ...params,
         },
       });
@@ -395,7 +427,7 @@ export function createRoadmap({
       );
     box.dataset.descriptionKey = key;
     toggle.dataset.rmFocus = `description:${key}`;
-    copy.id = `rm-description-${key}`;
+    copy.id = uid(`rm-description-${key}`);
     toggle.setAttribute('aria-controls', copy.id);
     function sync() {
       const visible = visibleDescriptions.has(key);
@@ -421,7 +453,7 @@ export function createRoadmap({
     toggle.setAttribute('aria-label', title);
     toggle.dataset.rmFocus = `group:${key}`;
     toggle.setAttribute('aria-expanded', String(!foldedGroups.has(key)));
-    toggle.setAttribute('aria-controls', `rm-group-${key}`);
+    toggle.setAttribute('aria-controls', uid(`rm-group-${key}`));
     heading.append(toggle);
     head.append(
       heading,
@@ -618,9 +650,11 @@ export function createRoadmap({
     return box;
   }
   async function openLink(link) {
+    // Captured OWN cwd: the continuation never re-resolves a global context.
+    const ownCwd = cwd;
     try {
       if (enlarged && innerWidth >= 900) setEnlarged(false);
-      await onOpenSession({ cwd, ...link });
+      await onOpenSession({ cwd: ownCwd, ...link });
       if (innerWidth < 900) hide();
     } catch (e) {
       error = failureMessage(e);
@@ -836,7 +870,7 @@ export function createRoadmap({
       );
       toggle.dataset.rmFocus = `step:${key}`;
       toggle.setAttribute('aria-expanded', String(!foldedSteps.has(key)));
-      toggle.setAttribute('aria-controls', `rm-step-children-${plan.id}-${step.id}`);
+      toggle.setAttribute('aria-controls', uid(`rm-step-children-${plan.id}-${step.id}`));
       main.append(toggle);
     } else main.append(title);
     const text = node('div', 'rm-step-copy');
@@ -883,7 +917,7 @@ export function createRoadmap({
     li.append(row);
     if (hasVisibleChildren) {
       const list = node('ul', 'rm-steps');
-      list.id = `rm-step-children-${plan.id}-${step.id}`;
+      list.id = uid(`rm-step-children-${plan.id}-${step.id}`);
       list.hidden = foldedSteps.has(key);
       (step.children || []).forEach((child, i) => {
         const el = renderStep(plan, child, depth + 1, i, step.children);
@@ -911,7 +945,7 @@ export function createRoadmap({
       );
     toggle.setAttribute('aria-label', plan.title);
     toggle.setAttribute('aria-expanded', expanded.has(plan.id) ? 'true' : 'false');
-    toggle.setAttribute('aria-controls', `rm-plan-${plan.id}`);
+    toggle.setAttribute('aria-controls', uid(`rm-plan-${plan.id}`));
     if (planColor && planColor !== 'transparent') {
       const dot = node('span', 'rm-plan-color-dot', '');
       dot.style.background = planColor;
@@ -948,7 +982,7 @@ export function createRoadmap({
     if (plan.archived) meta.append(node('span', '', rt('archivedBadge')));
     section.append(meta, activities('plan', plan.id));
     const body = node('div', 'rm-plan-body');
-    body.id = `rm-plan-${plan.id}`;
+    body.id = uid(`rm-plan-${plan.id}`);
     body.hidden = !expanded.has(plan.id);
     if (plan.summary) body.append(description(`plan:${plan.id}`, plan.summary));
     const parents = [];
@@ -1093,7 +1127,7 @@ export function createRoadmap({
       );
       toggle.setAttribute('aria-label', milestone.title);
       toggle.setAttribute('aria-expanded', foldedMilestones.has(milestone.id) ? 'false' : 'true');
-      toggle.setAttribute('aria-controls', `rm-milestone-${milestone.id}`);
+      toggle.setAttribute('aria-controls', uid(`rm-milestone-${milestone.id}`));
       heading.append(toggle);
       head.append(bindDrag(head, 'milestone', milestone.id), heading, inlineCount(milestone.progress));
       if (canEdit())
@@ -1126,7 +1160,7 @@ export function createRoadmap({
         );
       group.append(head, activities('milestone', milestone.id));
       const body = node('div');
-      body.id = `rm-milestone-${milestone.id}`;
+      body.id = uid(`rm-milestone-${milestone.id}`);
       body.hidden = foldedMilestones.has(milestone.id);
       if (milestone.summary) body.append(description(`milestone:${milestone.id}`, milestone.summary));
       for (const plan of doc.plans.filter((p) => !p.archived && p.milestone === milestone.id))
@@ -1138,7 +1172,7 @@ export function createRoadmap({
     if (ungrouped.length && doc.overview.milestones.length) {
       const group = node('section', 'rm-ungrouped-group'),
         body = node('div');
-      body.id = 'rm-group-ungrouped';
+      body.id = uid('rm-group-ungrouped');
       body.hidden = foldedGroups.has('ungrouped');
       for (const plan of ungrouped) body.append(renderPlan(plan));
       group.append(groupHead('ungrouped', rt('ungrouped'), plansProgress(ungrouped)), body);
@@ -1188,7 +1222,7 @@ export function createRoadmap({
         list = node('div', 'rm-backlog-items'),
         groupKey = `backlog-${kind}`;
       section.dataset.backlogKind = kind;
-      list.id = `rm-group-${groupKey}`;
+      list.id = uid(`rm-group-${groupKey}`);
       list.hidden = foldedGroups.has(groupKey);
       section.append(
         groupHead(
@@ -1344,7 +1378,8 @@ export function createRoadmap({
         rt('knowledge'),
         () => {
           if (enlarged && innerWidth >= 900) setEnlarged(false);
-          onKnowledge();
+          // Explicit OWN snapshot; legacy no-arg handlers ignore the extra arg.
+          onKnowledge(snapshotContext());
         },
         'rm-text-button',
       ),
@@ -1406,7 +1441,9 @@ export function createRoadmap({
   function form(spec) {
     if (!canEdit()) return;
     const trigger = document.activeElement,
-      draftKey = `studio.roadmap.draft:${cwd}:${spec.key}`;
+      draftKey = isPrimary
+        ? `studio.roadmap.draft:${cwd}:${spec.key}`
+        : `studio.roadmap.draft:${idToken}:${cwd}:${spec.key}`;
     let revision = doc.revision,
       draft;
     try {
@@ -1416,10 +1453,10 @@ export function createRoadmap({
     const staleDraft = !!draft && draft.revision !== doc.revision;
     if (Number.isSafeInteger(draft?.revision)) revision = draft.revision;
     editor.replaceChildren();
-    editor.setAttribute('aria-labelledby', 'rm-editor-title');
+    editor.setAttribute('aria-labelledby', editorTitleId);
     const form = node('form'),
       title = node('h2', '', spec.title);
-    title.id = 'rm-editor-title';
+    title.id = editorTitleId;
     form.append(title);
     if (spec.hint) form.append(node('p', 'rm-note', spec.hint));
     const fields = new Map();
@@ -1563,7 +1600,10 @@ export function createRoadmap({
   function work(targets) {
     if (!targets.length) return;
     workRequest = crypto.randomUUID();
-    const context = getContext();
+    // Captured OWN context: post-await continuation uses this copy only.
+    const context = snapshotContext();
+    const workCwd = cwd;
+    const workTargets = targets.map((entry) => ({ ...entry }));
     form({
       key: 'work',
       title: rt('workTitle'),
@@ -1593,21 +1633,25 @@ export function createRoadmap({
       ],
       save: async (values, revision) => {
         const instructions = String(values.instructions ?? '').trim();
+        const request = workRequest;
         const result = await api('/api/roadmap/work', {
           method: 'POST',
           body: {
-            cwd,
-            targets,
+            cwd: workCwd,
+            targets: workTargets,
             expectedRevision: revision,
             sessionId: values.sessionId || undefined,
             model: context.model,
             thinking: context.thinking,
-            requestId: workRequest,
+            requestId: request,
             ...(instructions ? { instructions } : {}),
           },
         });
         selected.clear();
-        await onWork(result);
+        // 2nd arg is the captured OWN context: after the POST delay the global
+        // focus may have moved, so the parent learns the origin cwd/session from
+        // this snapshot (extra arg is ignored by legacy single-arg handlers).
+        await onWork(result, context);
         toast?.(rt('sent'));
         await refresh();
       },
@@ -1616,6 +1660,14 @@ export function createRoadmap({
   let inertShell = null,
     previousInert = false;
   function updatePresentation() {
+    // Secondary instances never own page chrome: touching body classes here
+    // would close/reopen the primary backdrop while it stays open.
+    if (!isPrimary) {
+      enlarge.hidden = true;
+      panel.removeAttribute('role');
+      panel.removeAttribute('aria-modal');
+      return;
+    }
     if (isDocked()) {
       // Docked: parent CSS owns sizing; never take over the page.
       document.body.classList.remove('roadmap-open');
@@ -1747,7 +1799,7 @@ export function createRoadmap({
     }
     opened = true;
     panel.hidden = false;
-    document.body.classList.add('roadmap-open');
+    if (isPrimary) document.body.classList.add('roadmap-open');
     updatePresentation();
     render();
     close.focus();
@@ -1776,7 +1828,7 @@ export function createRoadmap({
     panel.hidden = true;
     generation++;
     abortInflightRefresh();
-    document.body.classList.remove('roadmap-open');
+    if (isPrimary) document.body.classList.remove('roadmap-open');
     enlarged = false;
     updatePresentation();
     opener?.isConnected && opener.focus({ preventScroll: true });
@@ -1812,10 +1864,13 @@ export function createRoadmap({
       }
     }
   });
-  document.addEventListener('pointerdown', (event) => {
+  // Document-level listeners are per-instance and removed in destroy/dispose,
+  // so N mounted roadmaps never leak handlers or close each other's menus.
+  const onPointerDown = (event) => {
     for (const menu of panel.querySelectorAll('.rm-menu[open]'))
       if (!menu.contains(event.target)) menu.open = false;
-  });
+  };
+  document.addEventListener('pointerdown', onPointerDown);
   panel.addEventListener('contextmenu', (event) => {
     if (event.target.closest('textarea, select, a, [contenteditable="true"]')) return;
     if (event.target.closest('input:not([type="checkbox"])')) return;
@@ -1894,13 +1949,18 @@ export function createRoadmap({
     }
     void refresh();
   }
+  // Polling stays per instance but gated: refresh() no-ops when document.hidden,
+  // offline, without cwd, or while a POST is pending; hidden docked/classic
+  // instances only wake for the throttled summary cadence. The parent may later
+  // share GET data across instances; no framework is invented here.
   const timer = setInterval(update, 2200);
   document.addEventListener('visibilitychange', update);
-  window.addEventListener('resize', () => {
+  const onResize = () => {
     if (!opened) return;
     updatePresentation();
-  });
-  onLanguageChange(() => {
+  };
+  window.addEventListener('resize', onResize);
+  const offLanguage = onLanguageChange(() => {
     if (opened) render();
   });
   // Narrow docking API. The parent controller reparents the SAME panel node
@@ -1933,8 +1993,10 @@ export function createRoadmap({
       if (editor?.isConnected && panel.parentElement !== document.body)
         document.body.insertBefore(panel, editor);
       else if (panel.parentElement !== document.body) document.body.append(panel);
-      document.body.classList.remove('roadmap-open');
-      document.body.classList.remove('roadmap-expanded');
+      if (isPrimary) {
+        document.body.classList.remove('roadmap-open');
+        document.body.classList.remove('roadmap-expanded');
+      }
       updatePresentation();
       return;
     }
@@ -1958,8 +2020,10 @@ export function createRoadmap({
     opener = null;
     if (entering) {
       enlarged = false;
-      document.body.classList.remove('roadmap-open');
-      document.body.classList.remove('roadmap-expanded');
+      if (isPrimary) {
+        document.body.classList.remove('roadmap-open');
+        document.body.classList.remove('roadmap-expanded');
+      }
     }
     if (flipping) {
       generation++;
@@ -1973,22 +2037,60 @@ export function createRoadmap({
       void refresh();
     }
   }
+  function destroy() {
+    clearInterval(timer);
+    document.removeEventListener('pointerdown', onPointerDown);
+    document.removeEventListener('visibilitychange', update);
+    window.removeEventListener('resize', onResize);
+    try {
+      offLanguage?.();
+    } catch {}
+    queuedRefresh = false;
+    abortInflightRefresh();
+    generation++;
+    dock = null;
+    opened = false;
+    // Only the primary ever owned page chrome; secondaries leave it alone.
+    if (isPrimary) {
+      document.body.classList.remove('roadmap-open');
+      document.body.classList.remove('roadmap-expanded');
+    }
+    updatePresentation();
+    if (editor.open) editor.close();
+    panel.remove();
+    editor.remove();
+  }
+  // Integration API for the parent coordinator (exact):
+  //   const view = createRoadmap({ api, getContext, onOpenSession, onWork,
+  //     onKnowledge, toast, onSummary, instanceId });
+  // - instanceId defaults to 'roadmap' (legacy primary: exact ids/drafts/chrome).
+  // - clones pass instanceId 'tool:roadmap:<nonce>' (or any unique string):
+  //   unique panel/title ids (full idToken, never truncated) + data-instance-id,
+  //   own editor/requests/drafts.
+  // - parent reparents view.panel/view.root via setDocked({ visible, onOpen,
+  //   onClose }); view.update() follows the supplied getContext (locked target
+  //   or live focus); view.destroy()/view.dispose() removes only its own nodes
+  //   and listeners. Roadmap stays one document per project; the session tab
+  //   filters by getContext().sessionId; same-project writes use
+  //   expectedRevision and surface a 409 conflict with the draft kept.
+  // - onWork(result, context): context is the captured OWN snapshot
+  //   ({ cwd, sessionId, model, thinking, ... }) from before the POST delay.
+  // - onKnowledge(context): same snapshot at click time. Both extra args are
+  //   ignored by legacy single-arg handlers.
+  // - Polling: visible instances refresh on cadence; hidden secondaries never
+  //   fetch (only the hidden primary keeps the throttled toolbar-summary GET).
   return {
     open: show,
     close: hide,
     update,
+    refresh,
     setDocked,
-    destroy: () => {
-      clearInterval(timer);
-      queuedRefresh = false;
-      abortInflightRefresh();
-      dock = null;
-      opened = false;
-      document.body.classList.remove('roadmap-open');
-      document.body.classList.remove('roadmap-expanded');
-      updatePresentation();
-      panel.remove();
-      editor.remove();
-    },
+    destroy,
+    dispose: destroy,
+    instanceId: rawInstanceId,
+    isPrimary,
+    panel,
+    root: panel,
+    editor,
   };
 }

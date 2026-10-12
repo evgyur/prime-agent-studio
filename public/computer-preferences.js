@@ -7,13 +7,63 @@ export function normalizeComputerBackend(value) {
   return value === COMPUTER_BACKEND_CUA ? COMPUTER_BACKEND_CUA : COMPUTER_BACKEND_NATIVE;
 }
 
+// Module-shared confirmed snapshot (global PC setting, not per-root view
+// state): whichever instance confirms a save or completes a refresh publishes
+// here synchronously, so every other instance's getters (notably the primary
+// feeding sendMessage) read the fresh value immediately, before any async
+// parent fan-out refresh lands. Forms keep their own busy/generation guards;
+// the snapshot only ever holds confirmed server values, never drafts.
+let sharedComputer = null;
+let sharedComputerRevision = -1;
+const sharedComputerListeners = new Set();
+function revisionNumber(value) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+function publishComputer(next, revision) {
+  const rev = revisionNumber(revision);
+  // Server revision ordering: a delayed GET with an older revision must never
+  // roll back a newer confirmed PATCH from another instance. Reads without a
+  // revision keep the legacy merge path (no ordering).
+  if (rev !== undefined) {
+    if (rev < sharedComputerRevision) return false;
+    if (rev > sharedComputerRevision) sharedComputerRevision = rev;
+  }
+  sharedComputer = { ...(sharedComputer || {}), ...next };
+  for (const fn of [...sharedComputerListeners]) {
+    try {
+      fn(sharedComputer);
+    } catch {}
+  }
+  return true;
+}
+export function getSharedComputerPreferences() {
+  return sharedComputer ? { ...sharedComputer } : null;
+}
+export function __resetSharedComputerForTests() {
+  sharedComputer = null;
+  sharedComputerRevision = -1;
+}
+
 // Global Computer Use preferences (Preferences > Tools, one global setting
 // persisted server-side via /api/studio-preferences). The desktop engine radio
 // group and the Computer Use model live here, not in the Computer Use
 // header. Changes apply only when the desktop is off and not owned; the
 // backend default is native with no silent fallback.
-export function createComputerPreferences({ api, getContext = () => ({}), getModels, openModelPicker } = {}) {
-  const $ = (id) => document.getElementById(id);
+export function createComputerPreferences({
+  api,
+  getContext = () => ({}),
+  getModels,
+  openModelPicker,
+  getElement = null,
+  domId = null,
+  instanceId = '',
+  isPrimary = true,
+  onChanged = () => {},
+} = {}) {
+  void domId;
+  void instanceId;
+  void isPrimary;
+  const $ = (id) => (typeof getElement === 'function' ? getElement(id) : document.getElementById(id));
   let backend = COMPUTER_BACKEND_NATIVE;
   let model = '';
   let thinking = '';
@@ -23,6 +73,8 @@ export function createComputerPreferences({ api, getContext = () => ({}), getMod
   let known = false;
   let busy = false;
   let generation = 0;
+  let offLanguage = null;
+  let started = false;
 
   function readOnly() {
     try {
@@ -185,17 +237,36 @@ export function createComputerPreferences({ api, getContext = () => ({}), getMod
         api('/api/computer-use').catch(() => null),
       ]);
       if (turn !== generation) return;
-      backend = normalizeComputerBackend(prefs?.computerBackend);
-      model = typeof prefs?.computerModel === 'string' ? prefs.computerModel : '';
-      thinking = typeof prefs?.computerThinking === 'string' ? prefs.computerThinking : '';
-      if (computer && typeof computer === 'object') {
-        known = true;
-        supported = computer.supported !== false;
-        status = computer;
-        backends = Array.isArray(computer.backends) ? computer.backends : null;
+      const incomingRev = revisionNumber(prefs?.revision);
+      // Late GET safety: a stale read (older revision than the shared
+      // confirmed snapshot) adopts the shared values instead of rolling back
+      // this form and the global snapshot. Never invents server writes.
+      if (incomingRev !== undefined && incomingRev < sharedComputerRevision && sharedComputer) {
+        if (typeof sharedComputer.backend === 'string')
+          backend = normalizeComputerBackend(sharedComputer.backend);
+        if (typeof sharedComputer.model === 'string') model = sharedComputer.model;
+        if (typeof sharedComputer.thinking === 'string') thinking = sharedComputer.thinking;
+        if (computer && typeof computer === 'object') {
+          known = true;
+          supported = computer.supported !== false;
+          status = computer;
+          backends = Array.isArray(computer.backends) ? computer.backends : null;
+        }
+        showError(false);
       } else {
-        known = true;
-        status = null;
+        backend = normalizeComputerBackend(prefs?.computerBackend);
+        model = typeof prefs?.computerModel === 'string' ? prefs.computerModel : '';
+        thinking = typeof prefs?.computerThinking === 'string' ? prefs.computerThinking : '';
+        if (computer && typeof computer === 'object') {
+          known = true;
+          supported = computer.supported !== false;
+          status = computer;
+          backends = Array.isArray(computer.backends) ? computer.backends : null;
+        } else {
+          known = true;
+          status = null;
+        }
+        publishComputer({ backend, model, thinking }, incomingRev);
       }
       showError(false);
     } catch (error) {
@@ -228,6 +299,10 @@ export function createComputerPreferences({ api, getContext = () => ({}), getMod
       backend = normalizeComputerBackend(result?.computerBackend);
       showError(false);
       render();
+      publishComputer({ backend }, revisionNumber(result?.revision));
+      try {
+        await onChanged({ backend, model, thinking });
+      } catch {}
       return true;
     } catch (error) {
       backend = previous;
@@ -255,6 +330,10 @@ export function createComputerPreferences({ api, getContext = () => ({}), getMod
       model = typeof result?.computerModel === 'string' ? result.computerModel : '';
       showError(false);
       render();
+      publishComputer({ model }, revisionNumber(result?.revision));
+      try {
+        await onChanged({ backend, model, thinking });
+      } catch {}
       return true;
     } catch (error) {
       model = previous;
@@ -292,7 +371,33 @@ export function createComputerPreferences({ api, getContext = () => ({}), getMod
     });
   }
 
+  // A sibling's confirmed save lands here synchronously: adopt it unless an
+  // own save is in flight (its completion publishes and wins instead).
+  function onShared(next) {
+    if (!next || busy) return;
+    let changed = false;
+    if (typeof next.backend === 'string' && next.backend !== backend) {
+      backend = normalizeComputerBackend(next.backend);
+      changed = true;
+    }
+    if (typeof next.model === 'string' && next.model !== model) {
+      model = next.model;
+      changed = true;
+    }
+    if (typeof next.thinking === 'string' && next.thinking !== thinking) {
+      thinking = next.thinking;
+      changed = true;
+    }
+    if (changed) render();
+  }
   function start() {
+    if (started) {
+      render();
+      return;
+    }
+    started = true;
+    sharedComputerListeners.add(onShared);
+    if (sharedComputer) onShared(sharedComputer);
     const native = $('computer-backend-native');
     if (native)
       native.onchange = () => {
@@ -311,7 +416,7 @@ export function createComputerPreferences({ api, getContext = () => ({}), getMod
         void saveThinking(thinkingSelect.value || '');
       };
     try {
-      onLanguageChange(() => render());
+      offLanguage = onLanguageChange(() => render());
     } catch {}
     render();
   }
@@ -330,6 +435,10 @@ export function createComputerPreferences({ api, getContext = () => ({}), getMod
       apply(typeof result?.[field] === 'string' ? result[field] : '');
       showError(false);
       render();
+      publishComputer({ thinking }, revisionNumber(result?.revision));
+      try {
+        await onChanged({ backend, model, thinking });
+      } catch {}
       return true;
     } catch (error) {
       apply(previous);
@@ -349,16 +458,36 @@ export function createComputerPreferences({ api, getContext = () => ({}), getMod
     });
   }
 
+  const ownedRoot = () =>
+    typeof getElement === 'function'
+      ? getElement('settings-dialog')
+      : document.getElementById('settings-dialog');
   return {
     start,
     refresh,
     update: render,
+    get root() {
+      return ownedRoot();
+    },
+    dispose: () => {
+      generation++;
+      started = false;
+      sharedComputerListeners.delete(onShared);
+      try {
+        offLanguage?.();
+      } catch {}
+      offLanguage = null;
+    },
     saveBackend,
     saveModel,
     saveThinking,
-    getBackend: () => backend,
-    getModel: () => model,
-    getThinking: () => thinking,
+    // Getters prefer the module-shared confirmed snapshot so the primary
+    // (used by sendMessage) never sends a stale global after a clone update.
+    getBackend: () =>
+      typeof sharedComputer?.backend === 'string' ? sharedComputer.backend : backend,
+    getModel: () => (typeof sharedComputer?.model === 'string' ? sharedComputer.model : model),
+    getThinking: () =>
+      typeof sharedComputer?.thinking === 'string' ? sharedComputer.thinking : thinking,
     get backend() {
       return backend;
     },

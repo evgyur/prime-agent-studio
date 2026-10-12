@@ -28,6 +28,7 @@ import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { createApp } from '../server.mjs';
+import { createDefaultLayout } from '../public/docking-layout.js';
 
 // --reproduce replays the pre-fix product snapshot (source-baseline.json) via
 // Playwright route.fulfill: static /public/* requests are served the exact
@@ -150,7 +151,7 @@ async function addTabNewConversation(p) {
     .first()
     .click();
   await expect(p.locator('#docking-context-menu')).toBeVisible({ timeout: 10000 });
-  await p.locator('#docking-context-menu [aria-haspopup="menu"]').click();
+  await p.locator('#docking-context-menu [aria-controls="docking-add-menu"]').click();
   await expect(p.locator('#docking-add-menu')).toBeVisible({ timeout: 10000 });
   await p.locator('#docking-add-menu [data-dock-add="new-conversation"]').click();
   if (
@@ -256,15 +257,21 @@ try {
     viewport: { width: 1600, height: 1000 },
     reducedMotion: 'reduce',
   });
+  // Explicit classic start (enabled:false pre-navigation, fixture storage
+  // only, never DOM forcing): the toggle opt-in below stays a real step.
+  // Fresh profiles with no envelope exercise the default-ON path instead.
+  const layoutDefault = createDefaultLayout();
   await context.addInitScript(
-    ({ cwd, sid }) => {
+    ({ cwd, sid, layout }) => {
       if (!localStorage.getItem('prime-studio.selection'))
         localStorage.setItem(
           'prime-studio.selection',
           JSON.stringify({ cwd, sessionId: sid, projectOverview: false }),
         );
+      if (!localStorage.getItem('prime-studio.docking.layout'))
+        localStorage.setItem('prime-studio.docking.layout', JSON.stringify(layout));
     },
-    { cwd: cwdA, sid: 'conv-alpha' },
+    { cwd: cwdA, sid: 'conv-alpha', layout: { ...layoutDefault, enabled: false } },
   );
   if (REPRODUCE) {
     const base = JSON.parse(

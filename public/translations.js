@@ -86,6 +86,23 @@ export const messages = {
     fr: '8 conversations affichées au maximum. Fermez un onglet pour en ouvrir un autre.',
     en: 'Up to 8 displayed conversations. Close a tab to open another.',
   },
+  'docking.lock': { fr: 'Verrouiller', en: 'Lock' },
+  'docking.unlock': { fr: 'Déverrouiller', en: 'Unlock' },
+  'docking.unavailable': { fr: 'Conversation indisponible', en: 'Conversation unavailable' },
+  'docking.following': {
+    fr: 'Suit la conversation active : {name}',
+    en: 'Follows the active conversation: {name}',
+  },
+  'docking.locked': { fr: 'Verrouillé sur : {name}', en: 'Locked to: {name}' },
+  'docking.move_to': { fr: 'Déplacer vers…', en: 'Move to…' },
+  'docking.registry_full': {
+    fr: 'Le nombre de panneaux outils mémorisés est atteint. Réutilisez un panneau existant ou une disposition enregistrée.',
+    en: 'The saved tool-panel limit has been reached. Reuse an existing panel or a saved layout.',
+  },
+  'docking.tool_limit': {
+    fr: '{count} panneaux outils affichés au maximum. Fermez un onglet pour en ouvrir un autre.',
+    en: 'Up to {count} displayed tool panels. Close a tab to open another.',
+  },
   'docking.presets': { fr: 'Layouts nommés', en: 'Named layouts' },
   'docking.presets_help': {
     fr: 'Enregistre la disposition et le nombre de panneaux, sans messages ni sessions. Le chargement réutilise vos conversations ; les autres restent disponibles dans Ajouter un onglet.',
@@ -126,7 +143,7 @@ export const messages = {
     en: 'This layout cannot be loaded. Your conversations are preserved.',
   },
   'docking.title': { fr: 'Agencement', en: 'Layout' },
-  'docking.enable': { fr: 'Espace modulable · aperçu 4.3', en: 'Dockable workspace · 4.3 preview' },
+  'docking.enable': { fr: 'Espace modulable', en: 'Dockable workspace' },
   'docking.help': {
     fr: 'Déplacez les onglets vers le centre pour les regrouper, ou vers un bord pour séparer les panneaux. Les poignées se redimensionnent aussi avec les flèches du clavier. Disponible sur grand écran.',
     en: 'Drag tabs to the center to group them, or to an edge to split panels. Splitters also work with the arrow keys. Available on wide screens.',

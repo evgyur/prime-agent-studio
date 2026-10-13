@@ -43,7 +43,7 @@ Project colors also tint project pins and idle pinned conversations. Existing pa
 
 ![Import conversations into the fictional Atelier project.](../screenshots/en/desktop-project-import.png)
 
-The `.pastudio` format (v1) transfers complete conversations into another existing project. Transferable file to another PC; export and import from Studio opened on that PC, not from a remote browser (LAN/Tailscale/PWA).
+The `.pastudio` format (v1) transfers complete conversations into another existing project. The archive can be transferred to another PC. Export and import are available on the host PC and from an authenticated remote browser with full control (LAN/Tailscale/PWA), but not in consultation mode.
 
 - Transferred content: complete conversations with their subagents, plus the project Roadmap. Project files, settings, provider keys, memories and the engine are never included.
 - Additive import: imported conversations join the target project without deleting anything. Reimporting the same archive is detected and skipped; if the source changed since, new copies are created, never merged.
@@ -77,7 +77,7 @@ Merging requires confirmation. In this first version, task changes must be commi
 
 You can keep the directory to resume the task later. Removing a managed worktree requires additional confirmation if it contains unmerged or uncommitted work. The Git branch is retained; discarded uncommitted changes are not backed up by that branch.
 
-Management actions are restricted to Studio opened locally on the PC. A worktree is **not a sandbox**: processes, ports, databases, and external services remain shared. Projects using executable Git filters are not supported in this V1.
+Management actions are available on the PC and from authenticated remote devices with full control, but not in consultation mode. A worktree is **not a sandbox**: processes, ports, databases, and external services remain shared. Projects using executable Git filters are not supported in this V1.
 
 ## Images and attachments
 

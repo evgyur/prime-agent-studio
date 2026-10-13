@@ -2,7 +2,7 @@
 
 [English](en/providers.md) · **Français** · [← Retour au README](../README.fr.md)
 
-Sur le PC qui exécute le Studio, ouvrez **http://127.0.0.1:3088 → Préférences → Modèles et agents → Gérer les connexions**. Ce panneau est réservé à l’accès local du PC : il n’est pas disponible par le LAN, Tailscale ou la PWA distante, même en contrôle complet.
+Ouvrez **Préférences → Modèles et agents → Gérer les connexions** sur le PC qui exécute le Studio ou depuis un appareil distant authentifié en **contrôle complet** (LAN, Tailscale ou PWA). La gestion des fournisseurs est indisponible en mode consultation.
 
 ## Comptes et clés API
 
@@ -64,6 +64,6 @@ Après un enregistrement réussi, le catalogue de modèles du Studio est actuali
 
 Les clés et jetons sont conservés sur le PC dans le fichier natif `~/.prime/agent/auth.json`. Les écritures utilisent le verrou natif de Prime Agent et vérifient que les identifiants du fournisseur n’ont pas été modifiés entre-temps. Une modification simultanée d’un autre fournisseur ou d’un MCP est conservée.
 
-Les opérations s’exécutent dans un processus Windows masqué, indépendant des agents. Les clés et codes saisis ne sont pas placés dans les arguments de lancement, les journaux ou le stockage du navigateur. Les routes de gestion sont refusées par la passerelle distante ; masquer le bouton n’est pas la seule restriction.
+Les opérations s’exécutent dans un processus Windows masqué, indépendant des agents. Les clés et codes saisis ne sont pas placés dans les arguments de lancement, les journaux ou le stockage du navigateur. La passerelle distante autorise les routes de gestion uniquement aux accès authentifiés en contrôle complet ; le mode consultation ne peut pas les utiliser.
 
 Les tests automatiques emploient des fichiers temporaires et des clés factices. Le stockage natif et les restrictions d’accès sont vérifiés réellement ; les autorisations OAuth sont simulées pour ne connecter ni déconnecter aucun compte personnel.

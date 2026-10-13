@@ -477,7 +477,7 @@ test('slash API rejects terminal, unknown and malformed commands before a runtim
   assert.equal(f.runtime.controls[0].input.message, '/goal status');
 });
 
-test('project context actions only open registered folders and removal never stops an active agent', async (t) => {
+test('native folder opening accepts unregistered folders and removal never stops an active agent', async (t) => {
   const opened = [];
   const f = await fixture(t, {
     openDirectory: async (cwd) => {
@@ -485,10 +485,10 @@ test('project context actions only open registered folders and removal never sto
       return { opened: true };
     },
   });
-  assert.equal((await f.api('/api/projects/open', { method: 'POST', body: { cwd: f.root } })).status, 404);
-  assert.equal(opened.length, 0);
+  assert.equal((await f.api('/api/projects/open', { method: 'POST', body: { cwd: f.root } })).status, 200);
+  assert.deepEqual(opened, [await realpath(f.root)]);
   assert.equal((await f.api('/api/projects/open', { method: 'POST', body: { cwd: f.cwd } })).status, 200);
-  assert.deepEqual(opened, [f.cwd]);
+  assert.deepEqual(opened, [await realpath(f.root), await realpath(f.cwd)]);
   await f.run();
   assert.equal((await f.api('/api/projects', { method: 'DELETE', body: { cwd: f.cwd } })).status, 409);
   assert.equal(f.runtime.controls[0].cancelCalls, 0);
@@ -499,7 +499,7 @@ test('project context actions only open registered folders and removal never sto
   assert.equal((await f.api('/api/history?id=native-session')).status, 200);
 });
 
-test('project folder reveal works inside managed worktrees and stays rejected elsewhere', async (t) => {
+test('native folder reveal works inside worktrees without requiring registration and rejects missing paths', async (t) => {
   const opened = [];
   const worktrees = {};
   const f = await fixture(t, {
@@ -523,7 +523,7 @@ test('project folder reveal works inside managed worktrees and stays rejected el
   assert.deepEqual(opened, [await realpath(join(taskPath, 'docs'))]);
   assert.equal((await f.api('/api/projects/open', { method: 'POST', body: { cwd: taskPath } })).status, 200);
   assert.deepEqual(opened, [await realpath(join(taskPath, 'docs')), await realpath(taskPath)]);
-  // Unmanaged folders stay rejected without launching anything.
+  // Missing folders still fail without launching anything.
   assert.equal(
     (
       await f.api('/api/projects/open', {
@@ -877,4 +877,50 @@ test('commit message suggestion reaches the real worker over stdin and returns i
   });
   assert.equal(result.status, 200, JSON.stringify(result.json));
   assert.equal(result.json.message, 'chore: met à jour la version');
+});
+
+test('message folder reveal accepts outside references without widening content reads or bearer access', async (t) => {
+  const opened = [];
+  const f = await fixture(t, {
+    openDirectory: async (path) => {
+      opened.push(path);
+      return { opened: true };
+    },
+  });
+  const outside = join(f.root, 'outside notes');
+  await mkdir(outside);
+  const file = join(outside, 'private.txt');
+  await writeFile(file, 'Outside content must not be served');
+  for (const reference of [outside, file, '../outside notes/private.txt', f.agentHome]) {
+    const result = await f.api('/api/projects/open', { method: 'POST', body: { cwd: f.cwd, reference } });
+    assert.equal(result.status, 200, result.text);
+    assert.deepEqual(result.json, { opened: true });
+  }
+  assert.deepEqual(opened, [
+    await realpath(outside),
+    await realpath(outside),
+    await realpath(outside),
+    await realpath(f.agentHome),
+  ]);
+  const missing = await f.api('/api/projects/open', {
+    method: 'POST',
+    body: { reference: join(outside, 'absent') },
+  });
+  assert.equal(missing.status, 404);
+  const resolved = await f.api(
+    '/api/project-files/resolve?' + new URLSearchParams({ cwd: f.cwd, reference: file }),
+  );
+  assert.equal(resolved.status, 403);
+  const preview = await f.api(
+    '/api/project-files/preview?' + new URLSearchParams({ cwd: f.cwd, path: '../outside notes/private.txt' }),
+  );
+  assert.equal(preview.status, 403);
+  const bearer = await f.api('/api/projects/open', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer invalid-fixture-token' },
+    body: { reference: file },
+  });
+  assert.equal(bearer.status, 401);
+  assert.equal(opened.length, 4);
+  assert.equal(f.runtime.controls.length, 0);
 });

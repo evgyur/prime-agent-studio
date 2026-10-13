@@ -36,8 +36,47 @@ Les aperçus sont limités à 64 Kio et 30 secondes. Les flux SSE s’affichent 
 | `runs:write`     | Démarrer et arrêter un run, envoyer un message, répondre à une interaction                  |
 | `roadmaps:write` | Modifier plans, étapes, backlog et liens, avec contrôle de révision                         |
 | `files:download` | Télécharger les octets des fichiers liés aux conversations autorisées                       |
+| `computer:write` | Autoriser/révoquer le contrôle du bureau réel pour une cible (danger ; opt-in) |
 
 Chaque opération exige `read`, plus la portée d’écriture indiquée dans la référence OpenAPI. Lancer un travail depuis une roadmap qui modifie ses liens exige les deux portées d’écriture.
+
+## Computer Use : autorisation explicite du bureau
+
+`GET /api/v1/computer-use` exige `read`. Sans paramètre, il lit la disponibilité et l’activité globales. On peut préciser `sessionId` OU `runId`, jamais les deux. Les paramètres inconnus, répétés, vides ou mal formés renvoient `400` ; une cible inconnue ou non autorisée renvoie `404`. Cette lecture ne démarre aucun worker, aucune capture ni saisie.
+
+`POST /api/v1/computer-use` exige `read` et **`computer:write`**. Cette nouvelle permission locale est décochée par défaut ; les tokens existants ne la reçoivent pas. **Danger : elle autorise le contrôle du bureau réel.** Le corps strict exige `enabled` (booléen), `expectedRevision` (entier ≥ 0) et exactement un `sessionId` ou `runId`. Aucun champ backend, model, cwd, takeover, requestId, stop-all ou de saisie n’est accepté.
+
+La session doit exister, même inactive ; le run doit être actif. SET autorise ou révoque uniquement Computer Use. Il ne lance ni agent, ni capture, ni saisie ; désactiver Computer Use n’arrête pas le run. Le backend est celui configuré globalement. Le contrôleur d’une autre cible n’est jamais repris ni arrêté, même dans le même projet. Lors d’une activation, un backend indisponible, un modèle actif incompatible avec la vision, un autre propriétaire ou un nettoyage incertain renvoie `409`.
+
+Les deux opérations renvoient `200` avec le même état : `machineId`, `revision`, `supported`, `enabled`, `busy` global, `backend` (`native`, `cua` ou null), `backends` (`id`, `supported`, `available`), `owner`, `ownerHidden`, `cleanupPending`, `cleanupFailed`, `hotkey`, `hotkeyAvailable` et `target`. Owner et target sont null ou contiennent `projectId` et éventuellement `sessionId`/`runId`. Sans cible, `enabled` indique la présence d’un propriétaire global. Avec cible, il indique son autorisation effective, y compris une permission conservée pour une session inactive lorsqu’aucun autre contrôleur n’existe. Il ne signifie pas qu’un agent ou un worker de bureau est lancé. Les identifiants d’un propriétaire non autorisé sont masqués (`ownerHidden`) ; les noms, cwd, lastAction, lastFrame, erreurs brutes et chemins de backend ne sont jamais exposés.
+
+`hotkeyAvailable` indique qu’aucune erreur d’enregistrement n’est connue, pas qu’un worker ou le raccourci a été lancé ou testé par cette lecture. Après désactivation, vérifier `cleanupPending` et `cleanupFailed` : l’autorisation est révoquée, mais un échec du nettoyage physique demande encore une intervention dans Studio.
+
+La révision est locale au processus et repart à zéro au redémarrage du serveur. Une révision périmée renvoie `409` avec `currentRevision`. **Après un conflit ou un timeout, relire l’état et décider explicitement. Ne jamais réessayer automatiquement.** Aucun toggle ni clé d’idempotence. Relire après reconnexion ou redémarrage du Studio. Reprendre une session ou envoyer des prompts/messages/interactions à une session ou un run avec Computer Use actif exige aussi `computer:write`, en plus des portées normales. Les nouveaux runs ordinaires exigent seulement `read` et `runs:write`. `runs:write` permet déjà l’exécution de code ; ce n’est pas une sandbox.
+
+Exemple (shell POSIX, `curl` et `jq`). Définir `STUDIO_TOKEN` de façon sûre dans l’environnement, ainsi que `STUDIO_URL` et un `SESSION_ID` autorisé. Ne pas coller de secret dans les commandes ni les journaux. Examiner l’état avant chaque écriture explicite :
+
+```sh
+STATE=$(curl --fail-with-body -sS -H "Authorization: Bearer $STUDIO_TOKEN" \
+  "$STUDIO_URL/api/v1/computer-use?sessionId=$SESSION_ID")
+printf '%s\n' "$STATE" | jq .
+REVISION=$(printf '%s' "$STATE" | jq -er '.revision')
+# Autorisation explicite, uniquement après examen de l’état :
+jq -n --arg sessionId "$SESSION_ID" --argjson revision "$REVISION" \
+  '{enabled:true,expectedRevision:$revision,sessionId:$sessionId}' | \
+  curl --fail-with-body -sS -H "Authorization: Bearer $STUDIO_TOKEN" \
+    -H 'Content-Type: application/json' --data-binary @- "$STUDIO_URL/api/v1/computer-use"
+
+# Plus tard : relire, examiner puis révoquer explicitement, sans arrêter le run.
+STATE=$(curl --fail-with-body -sS -H "Authorization: Bearer $STUDIO_TOKEN" \
+  "$STUDIO_URL/api/v1/computer-use?sessionId=$SESSION_ID")
+printf '%s\n' "$STATE" | jq .
+REVISION=$(printf '%s' "$STATE" | jq -er '.revision')
+jq -n --arg sessionId "$SESSION_ID" --argjson revision "$REVISION" \
+  '{enabled:false,expectedRevision:$revision,sessionId:$sessionId}' | \
+  curl --fail-with-body -sS -H "Authorization: Bearer $STUDIO_TOKEN" \
+    -H 'Content-Type: application/json' --data-binary @- "$STUDIO_URL/api/v1/computer-use"
+```
 
 ## Machines, projets et modèles
 

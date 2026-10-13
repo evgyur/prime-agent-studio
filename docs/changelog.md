@@ -4,6 +4,12 @@
 
 Les changements par version. Retrouvez les installateurs et les archives du code source dans les [releases GitHub](https://github.com/zerr0o/prime-agent-studio/releases).
 
+## 4.3.1
+
+- **Computer Use dans l’API publique** : `GET /api/v1/computer-use` lit l’état ; `POST` active ou désactive l’autorisation pour une session ou un run. La nouvelle permission `computer:write` est décochée par défaut et n’est pas ajoutée aux anciens jetons. Chaque écriture exige la révision lue, sans reprise du contrôleur d’une autre cible ni capture ou saisie implicite. Documentation FR/EN et OpenAPI à jour.
+- **Ouvrir un dossier hors projet** : le menu **Ouvrir le dossier** accepte tout dossier existant accessible au PC, sans l’enregistrer comme projet. Les chemins absolus, relatifs et `file://` sont pris en charge ; un fichier ouvre son dossier parent. Les aperçus et téléchargements gardent leurs limites d’accès.
+- **Menu des liens dans un aperçu** : les liens d’un document ouvert dans un dialogue peuvent aussi ouvrir leur dossier ; le menu reste cliquable et le retour du focus au clavier est préservé.
+
 ## 4.3.0
 
 - **Espace modulaire stable** : disposez jusqu’à huit conversations et seize panneaux outils. Chaque conversation conserve son éditeur, ses brouillons, pièces jointes et position de lecture. Les dispositions classique et mobile restent disponibles.

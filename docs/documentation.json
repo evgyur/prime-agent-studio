@@ -25,8 +25,8 @@
       "fr": "docs/desktop.md",
       "en": "docs/en/desktop.md",
       "reviewed": {
-        "fr": "9c7b0b89b71112d85c189cba235f3f17981ae0bd36c016886c178c65deb525ac",
-        "en": "242d61dd642e4726d1239780e9a89862fec86f1de3d2491ce9545d3fd6c7f34d"
+        "fr": "d65021eb33c7393da08cab09b48ae4d7fcefdfe65a40e826ee6f88aff83ca847",
+        "en": "cd9ce61c90213633453952c6c42ed5aff423cd6d5ee28a6b80f2a1aa6798af7a"
       }
     },
     {
@@ -43,8 +43,8 @@
       "fr": "docs/changelog.md",
       "en": "docs/en/changelog.md",
       "reviewed": {
-        "fr": "5b9285c95a0b82c491db6a8effe43630765a24fa6806aaeaf9e6ed5fb138b0f1",
-        "en": "90073c20d57c91e9aa5205ffb30d5a5c1d6f427d7ca184b55c38a04aefa31a7a"
+        "fr": "d88105359485c0d5ad9996f3cd6bb44df03ee54a6cb80a46803b8ed5d7c4b02c",
+        "en": "d895ede2a4704a9e9dd6be1cfe1e521c1a6089040909039ef52d6308f5d1b2c0"
       }
     },
     {
@@ -79,8 +79,8 @@
       "fr": "docs/inspector.md",
       "en": "docs/en/inspector.md",
       "reviewed": {
-        "fr": "69d79101ee978c1fb509dd6c751cbe015b84dd4d414ed2a451adf7391676bf15",
-        "en": "04910da12b9aaaefa7f4ddf0a6146fb68f76d9b553263a46446353298aa88ba6"
+        "fr": "29b432737ac5de007b9d42d5e116f1356ad8cd99f32dcdd9a5578886e4df0df9",
+        "en": "af7bcb39d7e6e06fb29047a98c0931d9183dc2e385ff9e05fb0a6c5e7c7273a5"
       }
     },
     {
@@ -151,8 +151,8 @@
       "fr": "docs/api.md",
       "en": "docs/en/api.md",
       "reviewed": {
-        "fr": "ad18faa59da23d3ab984f3b126aea24b9f079a5db4b608e37588005e2fa46740",
-        "en": "fc8e7331f2b8b371f247055327073f0da3c05f709171b4d9f099c24d970d8998"
+        "fr": "af221b7594c107eda753e5f83ecc8ccc355c300194e3f113969a5af9b18510c6",
+        "en": "30c85a125e8db7360d6e5cfed08c844062a32c9b0371faf9d2aab0177e0b71d7"
       }
     }
   ]

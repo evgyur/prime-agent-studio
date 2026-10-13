@@ -1,9 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
-import { join, dirname, resolve } from 'node:path';
+import { basename, join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
-import { createDirectoryOpener } from '../lib/open-directory.mjs';
+import { createDirectoryOpener, directoryForReference } from '../lib/open-directory.mjs';
+import { realpath, symlink } from 'node:fs/promises';
+import { pathToFileURL } from 'node:url';
 
 async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), 'prime-studio-folder-unit-'));
@@ -109,4 +111,69 @@ test('other desktop openers report nonzero command failures instead of treating 
     fail = true;
     await assert.rejects(open(folder), { status: 502 });
   }
+});
+
+test('native folder references are independent of project containment and preserve literal names', async (t) => {
+  const { root, folder } = await fixture(t);
+  const project = join(root, 'project');
+  await mkdir(join(project, 'docs'), { recursive: true });
+  const file = join(folder, 'mes notes.txt');
+  await writeFile(file, 'Fixture');
+  const expected = await realpath(folder);
+  for (const input of [
+    { cwd: folder },
+    { path: folder },
+    { cwd: project, path: '../' + basename(folder) },
+    { cwd: project, reference: folder },
+    { reference: folder },
+    { reference: file },
+    { cwd: project, reference: pathToFileURL(file).href },
+    { cwd: project, reference: file + ':12:3' },
+    { cwd: project, reference: file + '#L4-L9' },
+    { cwd: project, reference: '../../' + basename(folder) + '/mes%20notes.txt', basePath: 'docs/readme.md' },
+  ]) {
+    const actual = await directoryForReference(input).catch((error) => {
+      error.message += ' ' + JSON.stringify(input);
+      throw error;
+    });
+    assert.equal(actual, expected, JSON.stringify(input));
+  }
+  const literal = join(folder, 'folder#L12');
+  const percent = join(folder, '100% done');
+  const encodedLiteral = join(folder, 'literal%20space');
+  await mkdir(literal);
+  await mkdir(percent);
+  await mkdir(encodedLiteral);
+  assert.equal(await directoryForReference({ reference: literal }), await realpath(literal));
+  assert.equal(await directoryForReference({ reference: percent }), await realpath(percent));
+  assert.equal(await directoryForReference({ reference: encodedLiteral }), await realpath(encodedLiteral));
+  const junction = join(project, 'external');
+  await symlink(folder, junction, process.platform === 'win32' ? 'junction' : 'dir');
+  assert.equal(await directoryForReference({ cwd: project, reference: 'external' }), expected);
+});
+
+test('native folder resolution validates paths, types and existence without reading or launching files', async (t) => {
+  const { root, folder } = await fixture(t);
+  const file = join(root, 'installer.exe');
+  await writeFile(file, 'Fixture: never executed');
+  assert.equal(await directoryForReference({ reference: file }), await realpath(root));
+  await assert.rejects(directoryForReference({ path: file }), { status: 400 });
+  await assert.rejects(directoryForReference({ reference: join(root, 'missing') }), { status: 404 });
+  for (const input of [
+    {},
+    { cwd: 'relative', reference: 'docs' },
+    { cwd: null },
+    { path: null },
+    { cwd: folder, reference: '' },
+    { reference: 12 },
+    { reference: folder, basePath: [] },
+    { reference: folder, path: 'ambiguous' },
+    { reference: 'https://example.com/path' },
+    { reference: 'javascript:alert(1)' },
+    { reference: 'data:text/plain,test' },
+    { reference: 'file:' },
+    { cwd: folder, reference: 'bad\x00path' },
+    { cwd: folder, reference: 'bad%00path' },
+  ])
+    await assert.rejects(directoryForReference(input), { status: 400 }, JSON.stringify(input));
 });

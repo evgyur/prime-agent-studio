@@ -39,8 +39,20 @@ test('default state is disabled with integer revision and documented scopes', as
   assert.equal(state.enabled, false);
   assert.equal(state.revision, 0);
   assert.deepEqual(state.tokens, []);
-  assert.deepEqual(state.scopes, ['read', 'runs:write', 'roadmaps:write', 'files:download']);
-  assert.deepEqual(PUBLIC_API_SCOPES, ['read', 'runs:write', 'roadmaps:write', 'files:download']);
+  assert.deepEqual(state.scopes, [
+    'read',
+    'runs:write',
+    'roadmaps:write',
+    'files:download',
+    'computer:write',
+  ]);
+  assert.deepEqual(PUBLIC_API_SCOPES, [
+    'read',
+    'runs:write',
+    'roadmaps:write',
+    'files:download',
+    'computer:write',
+  ]);
   await assert.rejects(api.authenticate(reqWith('anything')), (error) => {
     assert.equal(error.status, 404);
     assert.match(error.message, /api_disabled/);

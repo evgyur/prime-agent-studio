@@ -21,7 +21,7 @@ await Promise.all([cwd, agentHome, sessionDir, dataDir].map((path) => mkdir(path
 
 const PROJECT_A = `p_${'a'.repeat(32)}`;
 const PROJECT_B = `p_${'b'.repeat(32)}`;
-const VALID_SCOPES = new Set(['read', 'runs:write', 'roadmaps:write', 'files:download']);
+const VALID_SCOPES = new Set(['read', 'runs:write', 'roadmaps:write', 'files:download', 'computer:write']);
 const PROJECT_PATTERN = /^p_[0-9a-fA-F]{32}$/;
 const banned = new RegExp(['mo', 'bile'].join(''), 'i');
 
@@ -209,7 +209,7 @@ try {
   await expect(docsLink).toContainText('Documentation interactive');
   const [docsPage] = await Promise.all([context.waitForEvent('page'), docsLink.click()]);
   await docsPage.waitForURL(url + '/api-docs');
-  await expect(docsPage.locator('details[data-operation-id]')).toHaveCount(18);
+  await expect(docsPage.locator('details[data-operation-id]')).toHaveCount(20);
   await expect(docsPage.locator('#api-docs-token')).toHaveValue('');
   await docsPage.close();
   await expect(page.locator('#settings-panel-api')).toContainText('outils externes');
@@ -227,6 +227,8 @@ try {
   await expect(page.locator('#public-api-enabled')).toBeChecked();
 
   await page.locator('#public-api-name').fill('Script d’automatisation');
+  await expect(page.locator('#public-api-scope-computer-write')).not.toBeChecked();
+  await page.locator('#public-api-scope-computer-write').check();
   await page.locator('#public-api-scope-runs-write').check();
   await page.locator(`#public-api-project-options input[value="${PROJECT_A}"]`).check();
   await page.locator('#public-api-create').click();
@@ -234,6 +236,8 @@ try {
   await expect(page.locator('#public-api-credential')).toHaveText('pa_fixture_tok-1');
   await expect(page.locator('#public-api-token-list')).toContainText('Script d’automatisation');
   await expect(page.locator('#public-api-token-list')).toContainText('Exécution');
+  assert.ok(adminState.tokens[0].scopes.includes('computer:write'));
+  await expect(page.locator('#public-api-token-list')).toContainText('bureau réel');
   await expect(page.locator('#toasts .toast').filter({ hasText: 'Copiez le secret' })).toBeVisible();
   const dumpAfterCreate = await page.evaluate(
     () => JSON.stringify({ ...localStorage }) + JSON.stringify({ ...sessionStorage }),
@@ -475,7 +479,7 @@ try {
       .waitForFunction(() => !document.querySelector('#toasts .toast'), null, { timeout: 10000 })
       .catch(() => {});
     await realPage.locator('#settings-dialog').screenshot({
-      path: '.local/public-api-preferences.png',
+      path: '.local/public-api-computer-use/public-api-preferences.png',
       animations: 'disabled',
     });
     realChecks.push('redacted preferences screenshot saved');

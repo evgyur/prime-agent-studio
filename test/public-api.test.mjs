@@ -216,7 +216,7 @@ async function enableApi(f, { scopes = FULL_SCOPES, projectIds = ['*'], name = '
   assert.equal(initial.json.enabled, false);
   assert.equal(initial.json.revision, 0);
   assert.deepEqual(initial.json.tokens, []);
-  assert.deepEqual(initial.json.scopes, FULL_SCOPES);
+  assert.deepEqual(initial.json.scopes, [...FULL_SCOPES, 'computer:write']);
   const enabled = await f.api('/api/public-api', {
     method: 'PATCH',
     body: { enabled: true, revision: initial.json.revision },
@@ -376,7 +376,14 @@ test('runtime reads expose stable projections with bounded pagination', async (t
   const machine = await f.api('/api/v1/machine', { headers: auth });
   assert.equal(machine.json.machineId, machineId);
   assert.equal(machine.json.apiVersion, 'v1');
-  assert.deepEqual(machine.json.capabilities, ['projects', 'conversations', 'runs', 'roadmaps', 'files']);
+  assert.deepEqual(machine.json.capabilities, [
+    'projects',
+    'conversations',
+    'runs',
+    'roadmaps',
+    'files',
+    'computer-use',
+  ]);
   assert.deepEqual(machine.json.idempotency, { retentionSeconds: 3600, persistent: false });
 
   const listed = await f.api('/api/v1/projects', { headers: auth });
@@ -1459,7 +1466,13 @@ test('roadmap step completion attributes the checking Studio and caller conversa
   document = (
     await api2(`/api/v1/projects/${projectId}/roadmap/mutations`, {
       method: 'POST',
-      body: { action: 'step.check', expectedRevision: document.revision, planId, stepId: secondStepId, done: true },
+      body: {
+        action: 'step.check',
+        expectedRevision: document.revision,
+        planId,
+        stepId: secondStepId,
+        done: true,
+      },
       headers: auth,
     })
   ).json.roadmap;
@@ -1473,7 +1486,13 @@ test('roadmap step completion attributes the checking Studio and caller conversa
   document = (
     await api2(`/api/v1/projects/${projectId}/roadmap/mutations`, {
       method: 'POST',
-      body: { action: 'step.check', expectedRevision: document.revision, planId, stepId: firstStepId, done: false },
+      body: {
+        action: 'step.check',
+        expectedRevision: document.revision,
+        planId,
+        stepId: firstStepId,
+        done: false,
+      },
       headers: auth,
     })
   ).json.roadmap;

@@ -4,6 +4,12 @@
 
 Changes by version. See [GitHub releases](https://github.com/zerr0o/prime-agent-studio/releases) for installers and source archives.
 
+## 4.3.1
+
+- **Computer Use in the public API**: `GET /api/v1/computer-use` reads state; `POST` enables or disables authorization for one session or run. The new `computer:write` permission defaults unchecked and is not added to existing tokens. Every write requires the previously read revision, with no takeover of another target's controller and no implicit capture or input. FR/EN guides and OpenAPI are updated.
+- **Open folders outside the project**: **Open folder** accepts any existing folder accessible to the PC, without registering it as a project. Absolute, relative and `file://` paths are supported; a file opens its parent folder. Previews and downloads keep their access boundaries.
+- **Link menus inside previews**: links in a document dialog can also open their containing folder; the menu remains clickable and keyboard focus is preserved.
+
 ## 4.3.0
 
 - **Stable dockable workspace**: arrange up to eight conversations and sixteen tool panels. Each conversation keeps its composer, drafts, attachments and reading position. Classic and mobile layouts remain available.

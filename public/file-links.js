@@ -1,5 +1,4 @@
 import { t as tr, bindAttribute } from './i18n.js';
-import { parentFolder } from './file-presentation.js';
 // Any project looking path is linked, whatever its extension. Plain prose,
 // code blocks and external URLs stay unchanged. The project file resolve API
 // stays the source of truth for existence and access, so unknown, protected
@@ -115,6 +114,7 @@ function openLinkMenu(anchor, x, y) {
   const { reference, menu } = entry;
   const context = menu.context();
   const items = ensureLinkMenu();
+  (anchor.closest('dialog[open]') || document.body).append(items);
   items.replaceChildren();
   items.setAttribute('aria-label', reference);
   const folderLabel = context.remote ? tr('ui.ouvrir_le_dossier_sur_le_pc') : tr('ui.ouvrir_le_dossier');
@@ -137,16 +137,14 @@ function openLinkMenu(anchor, x, y) {
         anchorNode?.focus({ preventScroll: true });
         void (async () => {
           try {
-            const resolved = await menu.resolve(reference, menu.context());
-            const folder = resolved.directory ? resolved.path : parentFolder(resolved.path);
-            await menu.reveal(menu.context().cwd, folder);
+            await menu.reveal(reference, context);
             menu.toast(() => tr('ui.ouverture_demandee_sur_le_pc'));
           } catch (error) {
             menu.toast(error?.message || String(error), true);
           }
         })();
       },
-      !context.cwd || context.readOnly || !context.nativeFileOpen || !context.online,
+      context.readOnly || !context.nativeFileOpen || !context.online,
     ],
     [
       () => tr('ui.copier_le_chemin'),

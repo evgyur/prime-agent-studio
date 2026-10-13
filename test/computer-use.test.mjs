@@ -931,3 +931,56 @@ test('an in-flight native-stop close surfaces cleanupPending', async (t) => {
     await computer.close();
   }
 });
+
+test('slow CUA enable cannot resurrect a lease stopped during availability preflight', async () => {
+  let release,
+    hold = false;
+  const computer = manager({
+    getCuaAvailability: () =>
+      hold
+        ? new Promise((resolve) => {
+            release = resolve;
+          })
+        : { supported: true, available: true },
+    availabilityTtlMs: 0,
+  });
+  await computer.enable({ sessionId: 'first', backend: 'native' });
+  hold = true;
+  const pending = computer.enable({ sessionId: 'first', backend: 'cua' });
+  assert.equal(typeof release, 'function');
+  const rejected = assert.rejects(pending, (error) => error.code === 'computer_use_conflict');
+  await computer.stop();
+  release({ supported: true, available: true });
+  await rejected;
+  assert.equal(computer.status().owner, null);
+  assert.equal(computer.status({ sessionId: 'first' }).enabled, false);
+  await computer.close();
+});
+
+test('guarded control checks the lease after authorization and before any foreign mutation', async () => {
+  const computer = manager();
+  await computer.enable({ sessionId: 'first', runId: 'run-first' });
+  computer.setFrame({ width: 10, height: 10 });
+  const before = computer._debug();
+  const guard = { expectedRevision: computer.revision, allowTakeover: false };
+  await assert.rejects(computer.enable({ sessionId: 'other' }, guard), { code: 'computer_use_conflict' });
+  await assert.rejects(computer.disable({ sessionId: 'other' }, guard), { code: 'computer_use_conflict' });
+  for (const partial of [{ sessionId: 'first' }, { runId: 'run-first' }])
+    await assert.rejects(computer.enable(partial, guard), { code: 'computer_use_conflict' });
+  assert.deepEqual(
+    computer._debug(),
+    before,
+    'Rejected foreign calls preserve frames, preferences and epochs',
+  );
+  const delayed = {
+    ...guard,
+    authorize: async () => {
+      await computer.stop();
+    },
+  };
+  await assert.rejects(computer.enable({ sessionId: 'first', runId: 'run-first' }, delayed), {
+    code: 'computer_use_conflict',
+  });
+  assert.equal(computer.status().owner, null);
+  await computer.close();
+});

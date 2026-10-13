@@ -1820,8 +1820,11 @@ function markdown(text, { cwd = execCwdOf(), basePath = '', imageRoot } = {}) {
       api(
         `/api/project-files/resolve?${new URLSearchParams({ cwd: context.cwd, reference, basePath: context.basePath || '' })}`,
       ),
-    reveal: (folderCwd, path) =>
-      api('/api/projects/open', { method: 'POST', body: { cwd: folderCwd, path } }),
+    reveal: (reference, context) =>
+      api('/api/projects/open', {
+        method: 'POST',
+        body: { cwd: context.cwd, reference, basePath: context.basePath || '' },
+      }),
     copy: (text) => copyText(text),
     toast,
   });

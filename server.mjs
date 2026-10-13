@@ -24,7 +24,7 @@ import { createModelDefaultsStore } from './lib/model-defaults.mjs';
 import { createEngineSettingsStore } from './lib/engine-settings.mjs';
 import { createSubagentDefaultsStore } from './lib/subagent-defaults.mjs';
 import { validPolicy } from './runtime/subagent-policy.mjs';
-import { openDirectory } from './lib/open-directory.mjs';
+import { directoryForReference, openDirectory } from './lib/open-directory.mjs';
 import { openTerminal } from './lib/open-terminal.mjs';
 import { createDirectoryPicker } from './lib/pick-directory.mjs';
 import { createMcpService } from './lib/mcp-service.mjs';
@@ -840,6 +840,171 @@ export function createApp(options = {}) {
       run.clients.clear();
     }
   }
+  async function setComputerUse(
+    body,
+    { authorize, expectedRevision, allowTakeover = true, admission = computer.status().controlRevision } = {},
+  ) {
+    let resolvedRun = null;
+    let resolvedModel = null;
+    const rejectStaleGrant = () => {
+      const state = computer.status();
+      if (state.controlRevision !== admission)
+        throw Object.assign(
+          new HttpError(
+            409,
+            state.owner
+              ? 'Computer Use changed. Read its state before retrying.'
+              : 'Computer Use was stopped while enabling. The desktop stays off; enable again if still needed.',
+          ),
+          {
+            code: 'computer_use_conflict',
+            currentRevision: computer.revision,
+          },
+        );
+    };
+    const guard = {
+      expectedRevision,
+      allowTakeover,
+      authorize: async () => {
+        await authorize?.();
+        if (body.enabled) rejectStaleGrant();
+        if (
+          allowTakeover === false &&
+          resolvedRun &&
+          (runs.get(resolvedRun.id) !== resolvedRun ||
+            resolvedRun.finished ||
+            resolvedRun.status !== 'running' ||
+            resolvedRun.model !== resolvedModel)
+        )
+          throw new HttpError(409, 'The requested run is no longer active.');
+      },
+    };
+    if (typeof body.enabled !== 'boolean') throw new HttpError(400, 'Computer Use needs an enabled flag.');
+    if (body.enabled) {
+      if (allowTakeover === false) {
+        const state = computer.status();
+        if (!state.supported || state.cleanupPending || state.cleanupFailed)
+          throw new HttpError(409, 'Computer Use is unavailable or waiting for desktop cleanup.');
+      }
+      // Global backend default (Preferences > Tools, one global setting).
+      // An explicit body.backend stays accepted for API compatibility and is
+      // validated the same way. When omitted, the stored global backend is
+      // used. The manager revalidates after an async CUA refresh at
+      // admission, so a stale cache can never grant an unavailable backend.
+      // Never silently falls back across backends.
+      let backend = null;
+      if (body.backend !== undefined) {
+        if (!COMPUTER_USE_BACKENDS.includes(body.backend))
+          throw new HttpError(400, 'Unknown Computer Use backend. Send native or cua.');
+        backend = body.backend;
+      } else {
+        try {
+          const prefs = await studioPreferences();
+          backend = prefs?.computerBackend === 'cua' ? 'cua' : 'native';
+        } catch {
+          backend = 'native';
+        }
+      }
+      if (backend) {
+        if (typeof computer.refreshBackends === 'function') await computer.refreshBackends().catch(() => {});
+        const entries = computer.status().backends;
+        if (Array.isArray(entries)) {
+          const entry = entries.find((candidate) => candidate?.id === backend);
+          if (!entry?.available)
+            throw new HttpError(409, entry?.reason || 'The requested Computer Use backend is unavailable.');
+        }
+      }
+      const sessionId = typeof body.sessionId === 'string' && body.sessionId ? body.sessionId : null;
+      const runId = typeof body.runId === 'string' && body.runId ? body.runId : null;
+      if (!sessionId && !runId)
+        throw new HttpError(400, 'Select a session or use the current run to enable Computer Use.');
+      let cwd;
+      if (runId) {
+        const target = runs.get(runId);
+        resolvedRun = target;
+        if (!target || target.finished || target.status !== 'running')
+          throw new HttpError(404, 'The requested run is no longer active.');
+        if (sessionId && target.sessionId && target.sessionId !== sessionId)
+          throw new HttpError(409, 'The run does not belong to the requested session.');
+        cwd = target.cwd;
+        const catalog = await models();
+        resolvedModel = target.model;
+        const capable = modelSupportsImages(resolvedModel, catalog);
+        if (!capable)
+          throw new HttpError(
+            409,
+            'The current model does not support images. Choose an image capable model to use Computer Use.',
+          );
+        // A run without a native session yet binds by run only; the real
+        // session arrives through the session event. A body sessionId is
+        // never trusted over it.
+        rejectStaleGrant();
+        const ownerSession = target.sessionId || null;
+        if (ownerSession)
+          return computer.enable(
+            {
+              sessionId: ownerSession,
+              runId,
+              cwd,
+              ...(backend ? { backend } : {}),
+              model: target.model || undefined,
+              imageCapable: capable,
+            },
+            guard,
+          );
+        rejectStaleGrant();
+        return computer.enable(
+          {
+            runId,
+            cwd,
+            ...(backend ? { backend } : {}),
+            model: target.model || undefined,
+            imageCapable: capable,
+          },
+          guard,
+        );
+      }
+      const existing = await store.history(sessionId).catch(() => null);
+      if (!existing?.cwd) throw new HttpError(404, 'The requested session does not exist.');
+      cwd = typeof body.cwd === 'string' && body.cwd ? body.cwd : existing.cwd;
+      const active = [...runs.values()].find(
+        (candidate) => candidate.sessionId === sessionId && candidate.status === 'running',
+      );
+      if (active) {
+        resolvedRun = active;
+        const catalog = await models();
+        resolvedModel = active.model;
+        const capable = modelSupportsImages(resolvedModel, catalog);
+        if (!capable)
+          throw new HttpError(
+            409,
+            'The current model does not support images. Choose an image capable model to use Computer Use.',
+          );
+        rejectStaleGrant();
+        return computer.enable(
+          {
+            sessionId,
+            runId: active.id,
+            cwd,
+            ...(backend ? { backend } : {}),
+            model: active.model || undefined,
+            imageCapable: capable,
+          },
+          guard,
+        );
+      }
+      rejectStaleGrant();
+      return computer.enable({ sessionId, cwd, ...(backend ? { backend } : {}) }, guard);
+    }
+    return computer.disable(
+      {
+        ...(typeof body.sessionId === 'string' && body.sessionId ? { sessionId: body.sessionId } : {}),
+        ...(typeof body.runId === 'string' && body.runId ? { runId: body.runId } : {}),
+      },
+      guard,
+    );
+  }
+
   async function startRun(body, { authorize, apiRequestId } = {}) {
     await authorize?.();
     // Admission revision for the Computer Use opt-in: slow validation
@@ -1085,6 +1250,8 @@ export function createApp(options = {}) {
         );
       if (body.computerUse === true || (existing?.id && computer.status({ sessionId: existing.id }).enabled))
         await computerBridge.ready;
+      // Public requests recheck their scopes before any desktop lease mutation.
+      await authorize?.();
       // Check after the final preflight await, immediately before admission.
       if (
         computer.status().controlRevision === computerAdmission &&
@@ -1229,6 +1396,8 @@ export function createApp(options = {}) {
     subscribe,
     roadmapRoutes,
     liveMessages,
+    computer,
+    setComputerUse,
     readBody,
     onRoadmapRead: () => syncSoon(0, 60000),
     getEndpoints: async () => {
@@ -1760,13 +1929,21 @@ export function createApp(options = {}) {
       }
       if (method === 'POST' && path === '/api/projects/open') {
         const body = await readBody(req);
-        // filesFor routes managed task worktree folders through the same
-        // resolve safeguards as the file routes. Unmanaged folders still
-        // fail project lookup, so they stay rejected.
-        const folder = await filesFor(body.cwd).localDirectory(
-          body.cwd,
-          body.path === undefined ? '' : body.path,
-        );
+        let folder;
+        try {
+          folder = await directoryForReference(body);
+        } catch (error) {
+          // Preserve the existing unambiguous bare-filename lookup for message links.
+          if (error.status !== 404 || typeof body.reference !== 'string' || /[\\/:]/.test(body.reference))
+            throw error;
+          const found = await filesFor(body.cwd).resolveReference(body.cwd, body.reference, body.basePath);
+          if (found.matches)
+            throw new HttpError(
+              409,
+              tr('server.plusieurs_fichiers_portent_ce_nom_indiquez_leur_chemin_dans_le_pr'),
+            );
+          folder = await directoryForReference({ cwd: body.cwd, reference: found.path });
+        }
         return json(res, 200, await (options.openDirectory || openDirectory)(folder));
       }
       // Puts the project on the Git state recorded by a conversation (local only).
@@ -1897,144 +2074,8 @@ export function createApp(options = {}) {
         );
       }
       if (method === 'POST' && path === '/api/computer-use') {
-        // Admission revision: slow preflight awaits follow. A stop or
-        // disable landing meanwhile must win over this stale grant.
         const admission = computer.status().controlRevision;
-        const rejectStaleGrant = () => {
-          if (computer.status().controlRevision !== admission)
-            throw new HttpError(
-              409,
-              'Computer Use was stopped while enabling. The desktop stays off; enable again if still needed.',
-            );
-        };
-        const body = await readBody(req);
-        if (typeof body.enabled !== 'boolean')
-          throw new HttpError(400, 'Computer Use needs an enabled flag.');
-        if (body.enabled) {
-          // Global backend default (Preferences > Tools, one global setting).
-          // An explicit body.backend stays accepted for API compatibility and is
-          // validated the same way. When omitted, the stored global backend is
-          // used. The manager revalidates after an async CUA refresh at
-          // admission, so a stale cache can never grant an unavailable backend.
-          // Never silently falls back across backends.
-          let backend = null;
-          if (body.backend !== undefined) {
-            if (!COMPUTER_USE_BACKENDS.includes(body.backend))
-              throw new HttpError(400, 'Unknown Computer Use backend. Send native or cua.');
-            backend = body.backend;
-          } else {
-            try {
-              const prefs = await studioPreferences();
-              backend = prefs?.computerBackend === 'cua' ? 'cua' : 'native';
-            } catch {
-              backend = 'native';
-            }
-          }
-          if (backend) {
-            if (typeof computer.refreshBackends === 'function')
-              await computer.refreshBackends().catch(() => {});
-            const entries = computer.status().backends;
-            if (Array.isArray(entries)) {
-              const entry = entries.find((candidate) => candidate?.id === backend);
-              if (!entry?.available)
-                throw new HttpError(
-                  409,
-                  entry?.reason || 'The requested Computer Use backend is unavailable.',
-                );
-            }
-          }
-          const sessionId = typeof body.sessionId === 'string' && body.sessionId ? body.sessionId : null;
-          const runId = typeof body.runId === 'string' && body.runId ? body.runId : null;
-          if (!sessionId && !runId)
-            throw new HttpError(400, 'Select a session or use the current run to enable Computer Use.');
-          let cwd;
-          if (runId) {
-            const target = runs.get(runId);
-            if (!target || target.status === 'finished')
-              throw new HttpError(404, 'The requested run is no longer active.');
-            if (sessionId && target.sessionId && target.sessionId !== sessionId)
-              throw new HttpError(409, 'The run does not belong to the requested session.');
-            cwd = target.cwd;
-            const catalog = await models();
-            const capable = modelSupportsImages(target.model, catalog);
-            if (!capable)
-              throw new HttpError(
-                409,
-                'The current model does not support images. Choose an image capable model to use Computer Use.',
-              );
-            // A run without a native session yet binds by run only; the real
-            // session arrives through the session event. A body sessionId is
-            // never trusted over it.
-            rejectStaleGrant();
-            const ownerSession = target.sessionId || null;
-            if (ownerSession)
-              return json(
-                res,
-                200,
-                await computer.enable({
-                  sessionId: ownerSession,
-                  runId,
-                  cwd,
-                  ...(backend ? { backend } : {}),
-                  model: target.model || undefined,
-                  imageCapable: capable,
-                }),
-              );
-            rejectStaleGrant();
-            return json(
-              res,
-              200,
-              await computer.enable({
-                runId,
-                cwd,
-                ...(backend ? { backend } : {}),
-                model: target.model || undefined,
-                imageCapable: capable,
-              }),
-            );
-          }
-          const existing = await store.history(sessionId).catch(() => null);
-          if (!existing?.cwd) throw new HttpError(404, 'The requested session does not exist.');
-          cwd = typeof body.cwd === 'string' && body.cwd ? body.cwd : existing.cwd;
-          const active = [...runs.values()].find(
-            (candidate) => candidate.sessionId === sessionId && candidate.status === 'running',
-          );
-          if (active) {
-            const catalog = await models();
-            const capable = modelSupportsImages(active.model, catalog);
-            if (!capable)
-              throw new HttpError(
-                409,
-                'The current model does not support images. Choose an image capable model to use Computer Use.',
-              );
-            rejectStaleGrant();
-            return json(
-              res,
-              200,
-              await computer.enable({
-                sessionId,
-                runId: active.id,
-                cwd,
-                ...(backend ? { backend } : {}),
-                model: active.model || undefined,
-                imageCapable: capable,
-              }),
-            );
-          }
-          rejectStaleGrant();
-          return json(res, 200, await computer.enable({ sessionId, cwd, ...(backend ? { backend } : {}) }));
-        }
-        // A backend sent alongside enabled:false is only a local selector
-        // choice: it never enables desktop control and never changes the
-        // stored preference. Only an explicit enable can take control.
-        return json(
-          res,
-          200,
-          await computer.disable({
-            ...(typeof body.sessionId === 'string' && body.sessionId ? { sessionId: body.sessionId } : {}),
-            ...(typeof body.runId === 'string' && body.runId ? { runId: body.runId } : {}),
-          }),
-        );
+        return json(res, 200, await setComputerUse(await readBody(req), { admission }));
       }
       if (method === 'POST' && path === '/api/computer-use/stop') {
         const body = await readBody(req).catch(() => ({}));

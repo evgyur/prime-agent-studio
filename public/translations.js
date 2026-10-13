@@ -7001,6 +7001,10 @@ export const messages = {
   'api.expires_never': { fr: 'Sans expiration', en: 'Never expires' },
   'api.expires_on': { fr: 'Expire le {date}', en: 'Expires {date}' },
   'api.created_on': { fr: 'Créé le {date}', en: 'Created {date}' },
+  'api.scope_computer_write': {
+    fr: 'Danger — Computer Use : autoriser le contrôle du bureau réel',
+    en: 'Danger — Computer Use: authorize real desktop control',
+  },
   'api.scope_read': { fr: 'Lecture (toujours accordée)', en: 'Read (always granted)' },
   'api.scope_runs_write': {
     fr: 'Exécution : démarrer et arrêter des runs',

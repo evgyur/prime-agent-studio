@@ -31,6 +31,8 @@ test('generated openapi-v1.json equals generateOpenApi()', async () => {
 
 test('operations: agreed IDs, methods, /api/v1 prefix and scope coverage', () => {
   const expectedScopes = {
+    computerUse: ['read'],
+    setComputerUse: ['read', 'computer:write'],
     machine: ['read'],
     projects: ['read'],
     models: ['read'],
@@ -254,23 +256,34 @@ test('openapi paths cover every operation exactly once', () => {
 
 test('step.check accepts an optional caller sessionId; other actions keep their meaning', () => {
   assert.deepEqual(roadmapMutationFields['step.check'].fields.includes('sessionId'), true);
-  const base = { action: 'step.check', expectedRevision: 0, planId: 'plan-abc', stepId: 'step-1', done: true };
+  const base = {
+    action: 'step.check',
+    expectedRevision: 0,
+    planId: 'plan-abc',
+    stepId: 'step-1',
+    done: true,
+  };
   assert.equal(validatePublicApiBody('mutateRoadmap', base).ok, true);
   assert.equal(validatePublicApiBody('mutateRoadmap', { ...base, sessionId: 'native-session' }).ok, true);
-  assert.equal(
-    validatePublicApiBody('mutateRoadmap', { ...base, sessionId: 'bad id!' }).ok,
-    false,
-  );
+  assert.equal(validatePublicApiBody('mutateRoadmap', { ...base, sessionId: 'bad id!' }).ok, false);
   // Other actions do not gain sessionId: vision stays closed.
   assert.equal(
-    validatePublicApiBody('mutateRoadmap', { action: 'vision', expectedRevision: 0, text: 'v', sessionId: 'native-session' })
-      .ok,
+    validatePublicApiBody('mutateRoadmap', {
+      action: 'vision',
+      expectedRevision: 0,
+      text: 'v',
+      sessionId: 'native-session',
+    }).ok,
     false,
   );
   // Existing sessionId meanings are unchanged.
   assert.equal(
-    validatePublicApiBody('mutateRoadmap', { action: 'plan.attach', expectedRevision: 0, planId: 'plan-abc', sessionId: 'native-session' })
-      .ok,
+    validatePublicApiBody('mutateRoadmap', {
+      action: 'plan.attach',
+      expectedRevision: 0,
+      planId: 'plan-abc',
+      sessionId: 'native-session',
+    }).ok,
     true,
   );
   const work = {
@@ -283,7 +296,13 @@ test('step.check accepts an optional caller sessionId; other actions keep their 
 });
 
 test('completion, machineId and completedAt are output-only and never accepted', () => {
-  const base = { action: 'step.check', expectedRevision: 0, planId: 'plan-abc', stepId: 'step-1', done: true };
+  const base = {
+    action: 'step.check',
+    expectedRevision: 0,
+    planId: 'plan-abc',
+    stepId: 'step-1',
+    done: true,
+  };
   for (const forged of [
     { ...base, completion: null },
     { ...base, machineId: 'm' },
@@ -356,7 +375,8 @@ test('RoadmapStep input stays closed; completion lives in output schemas only', 
   const forbidNull = (schema, where) => {
     if (!schema || typeof schema !== 'object') return;
     if (schema.type === 'null') nullTypes.push(where);
-    if (Array.isArray(schema.oneOf)) schema.oneOf.forEach((entry, index) => forbidNull(entry, `${where}.oneOf[${index}]`));
+    if (Array.isArray(schema.oneOf))
+      schema.oneOf.forEach((entry, index) => forbidNull(entry, `${where}.oneOf[${index}]`));
     if (schema.properties)
       for (const [key, entry] of Object.entries(schema.properties)) forbidNull(entry, `${where}.${key}`);
     if (schema.items) forbidNull(schema.items, `${where}[]`);
@@ -371,7 +391,10 @@ test('RoadmapStep input stays closed; completion lives in output schemas only', 
   assert.deepEqual(nullTypes, []);
   const docSchema = document.components.schemas.RoadmapDocument;
   assert.ok(docSchema.properties.plans);
-  assert.equal(document.components.schemas.Roadmap.properties.roadmap.$ref, '#/components/schemas/RoadmapDocument');
+  assert.equal(
+    document.components.schemas.Roadmap.properties.roadmap.$ref,
+    '#/components/schemas/RoadmapDocument',
+  );
   assert.equal(
     document.components.schemas.RoadmapWorkAccept.properties.roadmap.$ref,
     '#/components/schemas/RoadmapDocument',
@@ -415,4 +438,40 @@ test('forged-key guard never recurses into RangeError on deeply nested bodies', 
   });
   assert.equal(rejected.ok, false);
   assert.equal(rejected.status, 400);
+});
+
+test('Computer Use is a closed explicit state write with exactly one target', () => {
+  const valid = { enabled: true, expectedRevision: 0, sessionId: 'session-1' };
+  assert.equal(validatePublicApiBody('setComputerUse', valid).ok, true);
+  assert.equal(
+    validatePublicApiBody('setComputerUse', { enabled: false, expectedRevision: 3, runId: 'run-1' }).ok,
+    true,
+  );
+  for (const body of [
+    {},
+    { ...valid, enabled: 'true' },
+    { ...valid, expectedRevision: -1 },
+    { ...valid, expectedRevision: 1.5 },
+    { ...valid, expectedRevision: '0' },
+    { enabled: true, expectedRevision: 0 },
+    { ...valid, runId: 'run-1' },
+    ...['', ' ', '../x', null].map((sessionId) => ({ ...valid, sessionId })),
+    ...['backend', 'cwd', 'model', 'takeover', 'requestId', 'stopAll', 'input'].map((key) => ({
+      ...valid,
+      [key]: true,
+    })),
+  ])
+    assert.equal(validatePublicApiBody('setComputerUse', body).status, 400, JSON.stringify(body));
+  const spec = generateOpenApi();
+  for (const method of ['get', 'post']) {
+    const op = spec.paths['/api/v1/computer-use'][method];
+    assert.equal(
+      op.responses[200].content['application/json'].schema.$ref,
+      '#/components/schemas/ComputerUseState',
+    );
+  }
+  const state = spec.components.schemas.ComputerUseState;
+  assert.equal(state.additionalProperties, false);
+  for (const key of ['cwd', 'name', 'lastAction', 'lastFrame', 'error'])
+    assert.equal(key in state.properties, false);
 });

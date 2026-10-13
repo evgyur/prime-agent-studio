@@ -36,8 +36,47 @@ Previews are limited to 64 KiB and 30 seconds. SSE streams appear progressively;
 | `runs:write`     | Start and stop a run, send a message, answer an interaction                                 |
 | `roadmaps:write` | Edit plans, steps, backlog, and links, with revision control                                |
 | `files:download` | Download the bytes of files linked to authorized conversations                              |
+| `computer:write` | Authorize/revoke real desktop control for one target (dangerous; opt-in) |
 
 Every operation requires `read`, plus the write scope shown in the OpenAPI reference. Starting roadmap work that edits its links requires both write scopes.
+
+## Computer Use: explicit desktop authorization
+
+`GET /api/v1/computer-use` requires `read`. With no query it reads global availability and busy state. Optionally select `sessionId` OR `runId`, never both. Unknown, repeated, empty or malformed query parameters return `400`; unknown or unauthorized targets return `404`. This read starts no worker, capture or input.
+
+`POST /api/v1/computer-use` requires `read` and **`computer:write`**. This new local token permission defaults unchecked; existing tokens do not gain it. **Danger: it authorizes control of the real desktop.** The strict body requires `enabled` (boolean), `expectedRevision` (integer ≥ 0), and exactly one `sessionId` or `runId`. No backend, model, cwd, takeover, requestId, stop-all or input fields are accepted.
+
+An existing session may be idle; a run must be active. SET only authorizes or revokes Computer Use. It starts no agent, capture or input; disabling does not stop the agent run. It uses the globally configured backend. Another target's controller is never taken over or stopped, even within the same project. Enabling with an unavailable backend, a vision-incompatible active model, another owner, or cleanup uncertainty returns `409`.
+
+Both operations return `200` with the same state: `machineId`, `revision`, `supported`, `enabled`, global `busy`, `backend` (`native`, `cua`, or null), `backends` (`id`, `supported`, `available`), `owner`, `ownerHidden`, `cleanupPending`, `cleanupFailed`, `hotkey`, `hotkeyAvailable`, and `target`. Owner and target are null or contain `projectId` and optional `sessionId`/`runId`. Without a target, `enabled` means a global owner exists. With a target, it follows that target's effective authorization, including a remembered idle-session permission when no other controller exists. It does not mean an agent or desktop worker is running. Foreign owner identifiers are redacted (`ownerHidden`); names, cwd, lastAction, lastFrame, raw errors and backend paths are never exposed.
+
+`hotkeyAvailable` means no registration error is known, not that a worker or shortcut was started or tested by this read. After disabling, check `cleanupPending` and `cleanupFailed`: authorization is revoked, but failed physical cleanup still needs attention in Studio.
+
+Revision is process-local and resets when the server restarts. A revision mismatch returns `409` with `currentRevision`. **After any conflict or timeout, reread state and decide explicitly. Never retry automatically.** There is no toggle or idempotency key. Read again after reconnecting or restarting Studio. Resuming or sending prompts/messages/interactions to a Computer Use-enabled session or run also requires `computer:write` in addition to its normal scopes. Ordinary new runs still need only `read` and `runs:write`. `runs:write` already permits code execution; it is not a sandbox.
+
+Example (POSIX shell, `curl` and `jq`). Set `STUDIO_TOKEN` securely in your environment, plus `STUDIO_URL` and an authorized `SESSION_ID`. Do not paste secrets into commands or logs. Inspect state before each explicit write:
+
+```sh
+STATE=$(curl --fail-with-body -sS -H "Authorization: Bearer $STUDIO_TOKEN" \
+  "$STUDIO_URL/api/v1/computer-use?sessionId=$SESSION_ID")
+printf '%s\n' "$STATE" | jq .
+REVISION=$(printf '%s' "$STATE" | jq -er '.revision')
+# Explicit authorization, only after inspecting the state:
+jq -n --arg sessionId "$SESSION_ID" --argjson revision "$REVISION" \
+  '{enabled:true,expectedRevision:$revision,sessionId:$sessionId}' | \
+  curl --fail-with-body -sS -H "Authorization: Bearer $STUDIO_TOKEN" \
+    -H 'Content-Type: application/json' --data-binary @- "$STUDIO_URL/api/v1/computer-use"
+
+# Later: reread, inspect, then explicitly revoke. This does not stop the run.
+STATE=$(curl --fail-with-body -sS -H "Authorization: Bearer $STUDIO_TOKEN" \
+  "$STUDIO_URL/api/v1/computer-use?sessionId=$SESSION_ID")
+printf '%s\n' "$STATE" | jq .
+REVISION=$(printf '%s' "$STATE" | jq -er '.revision')
+jq -n --arg sessionId "$SESSION_ID" --argjson revision "$REVISION" \
+  '{enabled:false,expectedRevision:$revision,sessionId:$sessionId}' | \
+  curl --fail-with-body -sS -H "Authorization: Bearer $STUDIO_TOKEN" \
+    -H 'Content-Type: application/json' --data-binary @- "$STUDIO_URL/api/v1/computer-use"
+```
 
 ## Machines, projects, and models
 

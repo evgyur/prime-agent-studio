@@ -79,6 +79,212 @@
         ]
       }
     },
+    "/api/v1/computer-use": {
+      "get": {
+        "operationId": "computerUse",
+        "summary": "Read Computer Use availability and ownership without starting a worker, capture or input.",
+        "description": "Optional sessionId OR runId, never both. Unknown, repeated, empty or malformed query parameters return 400. No target reads global state; an unauthorized or unknown target returns 404. Owner identifiers outside token projects are redacted. No owner name, cwd, lastAction, lastFrame, raw errors or backend paths are exposed.",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,199}$"
+            }
+          },
+          {
+            "name": "runId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,199}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComputerUseState"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Valid token without the needed scope or project.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown or unauthorized target.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-required-scopes": [
+          "read"
+        ]
+      },
+      "post": {
+        "operationId": "setComputerUse",
+        "summary": "Authorize or revoke real desktop control for one target.",
+        "description": "Explicit enabled state, not a toggle. Requires exactly one existing session (including idle) or active run. Uses the globally configured backend; never launches an agent, captures pixels or sends input. Disabling does not stop the agent run. Never takes over or stops another target, even in the same project. Reread after conflict or timeout; no automatic retry. Revision resets at server restart.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "enabled",
+                      "expectedRevision",
+                      "sessionId"
+                    ],
+                    "properties": {
+                      "enabled": {
+                        "type": "boolean"
+                      },
+                      "expectedRevision": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "sessionId": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,199}$"
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "enabled",
+                      "expectedRevision",
+                      "runId"
+                    ],
+                    "properties": {
+                      "enabled": {
+                        "type": "boolean"
+                      },
+                      "expectedRevision": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "runId": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,199}$"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Current state after authorization or revocation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComputerUseState"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Valid token without the needed scope or project.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown or unauthorized target.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision mismatch (currentRevision included), another target owns control, unavailable backend, vision-incompatible active model, or cleanup uncertainty. Reread; never retry automatically.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-required-scopes": [
+          "read",
+          "computer:write"
+        ]
+      }
+    },
     "/api/v1/projects": {
       "get": {
         "operationId": "projects",
@@ -2948,6 +3154,127 @@
       }
     },
     "schemas": {
+      "ComputerUseTarget": {
+        "type": "object",
+        "nullable": true,
+        "additionalProperties": false,
+        "required": [
+          "projectId"
+        ],
+        "properties": {
+          "sessionId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,199}$"
+          },
+          "runId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,199}$"
+          },
+          "projectId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,199}$"
+          }
+        }
+      },
+      "ComputerUseState": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "machineId",
+          "revision",
+          "supported",
+          "enabled",
+          "busy",
+          "backend",
+          "backends",
+          "owner",
+          "ownerHidden",
+          "cleanupPending",
+          "cleanupFailed",
+          "hotkey",
+          "hotkeyAvailable",
+          "target"
+        ],
+        "properties": {
+          "machineId": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Process-local; resets at server restart. Reread after conflict or timeout, never retry automatically."
+          },
+          "supported": {
+            "type": "boolean"
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Selected target owns Computer Use; without a target, any global owner is present."
+          },
+          "busy": {
+            "type": "boolean",
+            "description": "Global controller activity."
+          },
+          "backend": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "native",
+              "cua",
+              null
+            ]
+          },
+          "backends": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "supported",
+                "available"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "enum": [
+                    "native",
+                    "cua"
+                  ]
+                },
+                "supported": {
+                  "type": "boolean"
+                },
+                "available": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "owner": {
+            "$ref": "#/components/schemas/ComputerUseTarget"
+          },
+          "ownerHidden": {
+            "type": "boolean",
+            "description": "Unauthorized owner identifiers are redacted; availability and busy remain visible."
+          },
+          "cleanupPending": {
+            "type": "boolean"
+          },
+          "cleanupFailed": {
+            "type": "boolean"
+          },
+          "hotkey": {
+            "type": "string"
+          },
+          "hotkeyAvailable": {
+            "type": "boolean"
+          },
+          "target": {
+            "$ref": "#/components/schemas/ComputerUseTarget"
+          }
+        }
+      },
       "Machine": {
         "type": "object",
         "required": [
@@ -2979,7 +3306,7 @@
             "items": {
               "type": "string"
             },
-            "description": "Currently projects, conversations, runs, roadmaps and files."
+            "description": "Currently projects, conversations, runs, roadmaps, files and computer-use."
           },
           "idempotency": {
             "type": "object",

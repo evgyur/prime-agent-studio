@@ -75,7 +75,10 @@ async function fingerprint() {
   );
 }
 
-function snapshot(registry, { metaCanonical = false, museCanonical = false, museOAuthStored = false } = {}) {
+function snapshot(
+  registry,
+  { metaCanonical = false, museCanonical = false, museOAuthStored = false, museServed = null } = {},
+) {
   // Canonical Meta models must only reach the picker with a real credential.
   // The registration placeholder alone (models_json_key without stored key or
   // MODEL_API_KEY env) is pruned here; the provider still lists in manage
@@ -112,6 +115,8 @@ function snapshot(registry, { metaCanonical = false, museCanonical = false, muse
     if (!id || !provider) continue;
     if (pruneMeta && provider === META_PROVIDER_ID) continue;
     if (pruneMuse && provider === MUSE_CODE_PROVIDER_ID) continue;
+    // Hide subscription models this account is not served (plan-gated, e.g. Wonder Full).
+    if (museServed && provider === MUSE_CODE_PROVIDER_ID && !museServed.has(id)) continue;
     const levels = thinkingLevels(model);
     models.set(`${provider}/${id}`, {
       id,
@@ -146,6 +151,7 @@ function publish(current) {
     metaCanonical: current.metaCanonical === true,
     museCanonical: current.museCanonical === true,
     museOAuthStored: current.museOAuthStored === true,
+    museServed: current.museServed || null,
   });
 }
 
@@ -168,6 +174,14 @@ function beginRefresh(current) {
     }
   }, POLL_INTERVAL);
   current.timer.unref();
+  const listServed = current.museAdapter?.fetchServedMuseModelIds;
+  if (current.museCanonical && current.museOAuthStored && typeof listServed === 'function') {
+    void listServed(auth.get(MUSE_CODE_PROVIDER_ID)).then((served) => {
+      if (state !== current || !served) return;
+      current.museServed = served;
+      publish(current);
+    });
+  }
   Promise.resolve()
     .then(() => current.registry.refreshAvailableModels())
     .then(() => {
@@ -203,9 +217,11 @@ async function read(message) {
     // ANY user models.json muse-code entry (JSONC-aware) wins; malformed
     // content fails closed and skips the gated registration.
     let museCanonical = false;
+    let museAdapter = null;
     try {
       const loaded = await loadMuseCodeConfig(() => import('../lib/muse-oauth-provider.mjs'));
       if (loaded) {
+        museAdapter = loaded.adapter;
         museCanonical = ensureMuseCodeProvider(registry, loaded.config, {
           hasUserConfig: hasUserMuseCodeConfig(modelsPath),
         });
@@ -222,7 +238,17 @@ async function read(message) {
     } catch {
       museOAuthStored = false;
     }
-    const current = { registry, stamp, refreshing: false, lastRefresh: 0, metaCanonical, museCanonical, museOAuthStored };
+    const current = {
+      registry,
+      stamp,
+      refreshing: false,
+      lastRefresh: 0,
+      metaCanonical,
+      museCanonical,
+      museOAuthStored,
+      museAdapter,
+      museServed: null,
+    };
     state = current;
     publish(current);
   }

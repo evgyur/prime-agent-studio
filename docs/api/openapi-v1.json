@@ -285,6 +285,57 @@
         ]
       }
     },
+    "/api/v1/sync": {
+      "get": {
+        "operationId": "syncState",
+        "summary": "Encrypted Cloudflare R2 sync state of this Studio, without credentials or conversation lists.",
+        "responses": {
+          "200": {
+            "description": "Current sync state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncState"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Valid token without the needed scope or project.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-required-scopes": [
+          "read"
+        ]
+      }
+    },
     "/api/v1/projects": {
       "get": {
         "operationId": "projects",
@@ -1345,6 +1396,116 @@
         "x-required-scopes": [
           "read",
           "runs:write"
+        ]
+      }
+    },
+    "/api/v1/projects/{projectId}/sync": {
+      "post": {
+        "operationId": "syncProject",
+        "summary": "Synchronize now through the configured R2 bucket and wait for the result.",
+        "description": "With sessionId: sends and receives that one conversation, including one this Studio has never seen. Membership in projectId is checked after receipt; a conversation of another project returns 404. Without sessionId: one full cycle (all synced projects and roadmaps), only for tokens authorized on every synced project. A running cycle is awaited, never skipped. A conversation with an active run is not sent (state pending). Never starts, stops or resumes an agent.",
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "sessionId": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,199}$"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Sync finished.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Full cycle requested by a token not authorized on every synced project.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown or unauthorized project or conversation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Sync is not configured, or disabled for this project.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "The bucket could not be reached or rejected the request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-required-scopes": [
+          "read",
+          "sync:write"
         ]
       }
     },
@@ -3154,6 +3315,122 @@
       }
     },
     "schemas": {
+      "SyncState": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "machineId",
+          "configured",
+          "running",
+          "lastSync"
+        ],
+        "properties": {
+          "machineId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,199}$"
+          },
+          "configured": {
+            "type": "boolean"
+          },
+          "running": {
+            "type": "boolean"
+          },
+          "lastSync": {
+            "type": "object",
+            "nullable": true,
+            "additionalProperties": false,
+            "required": [
+              "at",
+              "ok",
+              "sent",
+              "received"
+            ],
+            "properties": {
+              "at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "ok": {
+                "type": "boolean"
+              },
+              "sent": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "received": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        }
+      },
+      "SyncResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "machineId",
+          "projectId",
+          "scope"
+        ],
+        "properties": {
+          "machineId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,199}$"
+          },
+          "projectId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,199}$"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "session",
+              "all"
+            ]
+          },
+          "sessionId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,199}$"
+          },
+          "state": {
+            "type": "string",
+            "description": "Conversation sync state after the call: synced, pending (a run is active, nothing sent) or off."
+          },
+          "changed": {
+            "type": "boolean",
+            "description": "True when this call received newer content from the bucket."
+          },
+          "lastSync": {
+            "type": "object",
+            "nullable": true,
+            "additionalProperties": false,
+            "required": [
+              "at",
+              "ok",
+              "sent",
+              "received"
+            ],
+            "properties": {
+              "at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "ok": {
+                "type": "boolean"
+              },
+              "sent": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "received": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        }
+      },
       "ComputerUseTarget": {
         "type": "object",
         "nullable": true,

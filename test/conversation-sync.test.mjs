@@ -342,6 +342,16 @@ test('two machines sync through an encrypted passive store', async (t) => {
   await A.sync.checkSession(sid);
   assert.equal((await B.sync.checkSession(sid)).changed, true);
   assert.deepEqual(context(B), context(A));
+  // A running full cycle never makes the quick check skip: it waits, then syncs.
+  await pause();
+  a.appendMessage(user('pendant un cycle complet'));
+  a.appendMessage(reply('ok'));
+  const cycle = A.sync.run();
+  const during = await A.sync.checkSession(sid);
+  await cycle;
+  assert.equal(during.state, 'synced', 'checked after the cycle, not reported busy');
+  assert.equal((await B.sync.checkSession(sid)).changed, true);
+  assert.deepEqual(context(B), context(A));
   assert.equal((await B.sync.checkSession(sid)).changed, false);
   assert.equal((await A.sync.checkSession(hidden.getSessionId())).state, 'off');
   await A.sync.forget();

@@ -1398,6 +1398,7 @@ export function createApp(options = {}) {
     liveMessages,
     computer,
     setComputerUse,
+    sync: conversationSync,
     readBody,
     onRoadmapRead: () => syncSoon(0, 60000),
     getEndpoints: async () => {

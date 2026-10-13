@@ -36,7 +36,8 @@ Les aperçus sont limités à 64 Kio et 30 secondes. Les flux SSE s’affichent 
 | `runs:write`     | Démarrer et arrêter un run, envoyer un message, répondre à une interaction                  |
 | `roadmaps:write` | Modifier plans, étapes, backlog et liens, avec contrôle de révision                         |
 | `files:download` | Télécharger les octets des fichiers liés aux conversations autorisées                       |
-| `computer:write` | Autoriser/révoquer le contrôle du bureau réel pour une cible (danger ; opt-in) |
+| `computer:write` | Autoriser/révoquer le contrôle du bureau réel pour une cible (danger ; opt-in)              |
+| `sync:write`     | Lancer maintenant la synchronisation R2 chiffrée, d’une conversation ou complète            |
 
 Chaque opération exige `read`, plus la portée d’écriture indiquée dans la référence OpenAPI. Lancer un travail depuis une roadmap qui modifie ses liens exige les deux portées d’écriture.
 
@@ -107,6 +108,18 @@ jq -n --arg sessionId "$SESSION_ID" --argjson revision "$REVISION" \
 - Aucune reprise rétroactive : les étapes `done` antérieures à l’attribution gardent `completion: null` jusqu’à leur prochaine transition. Rouvrir (`done: false`) efface (`null`) ; recocher crée une nouvelle attribution ; répéter le même état `done` conserve l’attribution existante. La synchronisation conserve la source : l’attribution voyage avec l’étape et n’est pas réécrite par le Studio lecteur.
 - Côté natif, la conversation enfant courante est créditée, pas la racine : si une conversation enfant coche l’étape, `completion.sessionId` est l’enfant réel vérifié.
 - La fin d’un run ne coche jamais automatiquement une étape de roadmap.
+
+## Synchronisation entre Studios
+
+Quand plusieurs Studios partagent le même bucket Cloudflare R2 (**Préférences → Synchronisation**), une conversation terminée sur un PC arrive sur les autres à leur prochain cycle, jusqu’à cinq minutes plus tard. Ces routes la rendent immédiate.
+
+- `GET /api/v1/sync` (`read`) renvoie `{ machineId, configured, running, lastSync }`, avec `lastSync` = `{ at, ok, sent, received }` ou `null`. Ni identifiants, ni adresse du bucket, ni texte d’erreur, ni liste de conversations.
+- `POST /api/v1/projects/{projectId}/sync` (`read` + `sync:write`) avec `{ sessionId }` envoie et reçoit cette conversation et attend le résultat : `{ machineId, projectId, scope: "session", sessionId, state, changed }`. Cela fonctionne aussi pour une conversation que ce Studio n’a jamais vue. L’appartenance à `projectId` est vérifiée après réception : une conversation d’un autre projet renvoie `404`.
+- Avec un corps vide `{}`, la même route lance un cycle complet (tous les projets synchronisés et leurs Roadmaps) et renvoie `{ machineId, projectId, scope: "all", lastSync }`. Comme un cycle couvre tous les projets synchronisés, il exige un token autorisé sur chacun d’eux ; sinon `403`.
+- Un cycle déjà en cours est attendu, jamais sauté. Une conversation dont le run est encore actif n’est pas envoyée (`state: "pending"`) : synchronisez-la après la fin du run. La synchronisation ne démarre, n’arrête ni ne reprend jamais un agent.
+- `409 sync_not_configured` ou `sync_disabled` si la synchronisation est désactivée pour ce Studio ou ce projet ; `502 sync_failed` si le bucket échoue, sans transmettre ses détails.
+
+Passage du PC A au PC B : suivez `/runs/{runId}/events` sur A jusqu’à la fin du flux, appelez `POST /projects/{projectId}/sync` avec le `sessionId` sur **A** (envoi), puis sur **B** avec le `projectId` de B (réception). B peut alors lire la conversation ou la poursuivre avec `POST /projects/{projectId}/runs` et ce `sessionId`.
 
 ## Fichiers liés
 

@@ -7023,6 +7023,10 @@ export const messages = {
     fr: 'Fichiers : télécharger les fichiers liés',
     en: 'Files: download linked files',
   },
+  'api.scope_sync_write': {
+    fr: 'Synchronisation : synchroniser maintenant via R2 (conversations et Roadmaps)',
+    en: 'Sync: sync now through R2 (conversations and roadmaps)',
+  },
   'api.create_title': { fr: 'Nouveau jeton', en: 'New token' },
   'api.name_label': { fr: 'Nom d’intégration', en: 'Integration name' },
   'api.name_placeholder': { fr: 'Script d’automatisation', en: 'Automation script' },

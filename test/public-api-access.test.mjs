@@ -45,6 +45,7 @@ test('default state is disabled with integer revision and documented scopes', as
     'roadmaps:write',
     'files:download',
     'computer:write',
+    'sync:write',
   ]);
   assert.deepEqual(PUBLIC_API_SCOPES, [
     'read',
@@ -52,6 +53,7 @@ test('default state is disabled with integer revision and documented scopes', as
     'roadmaps:write',
     'files:download',
     'computer:write',
+    'sync:write',
   ]);
   await assert.rejects(api.authenticate(reqWith('anything')), (error) => {
     assert.equal(error.status, 404);

@@ -1,0 +1,17 @@
+# Moteur Rust expérimental
+
+[English](en/rust-runtime.md)
+
+Studio conserve le moteur JavaScript par défaut. Pour essayer Rust, définissez `PRIME_STUDIO_RUST_CLI` avec le chemin absolu d'un exécutable officiel Prime Agent 0.10. Studio démarre son propre démon dans un espace privé ; il ne se connecte jamais à un démon utilisateur existant. Cette option n'est pas activée par l'installateur de bureau.
+
+Gardez `PRIME_AGENT_CLI` dirigé vers un paquet JavaScript compatible. L'archive npm officielle 0.10 en contient un dans `legacy/prime-agent/dist/bundle/cli.js` ; ce paquet imbriqué annonce la version 0.9.8. Installez ses dépendances dans ce paquet avec `npm install --ignore-scripts`. Le dossier `dist` à la racine contient des lanceurs, pas les modules de métadonnées. Studio utilise le paquet JavaScript pour les modèles et les réglages ; Rust exécute les tours de l'agent.
+
+Pour un premier essai, utilisez des dossiers dédiés pour `PRIME_AGENT_CODING_AGENT_DIR` et `PRIME_AGENT_SESSION_DIR`. Rust gère ses fichiers de session natifs. Une reprise exige le fichier exact et une réponse confirmant la même session et le même projet. Ne faites pas travailler deux moteurs simultanément dans le même dossier de sessions. L'adaptateur vérifie le socket privé, le superviseur et les identités de session. Une mutation dont le résultat est incertain n'est jamais répétée automatiquement.
+
+L'adaptateur couvre les tours texte/image, les événements en continu, les niveaux de raisonnement, les sous-agents natifs, l'annulation, la file active et l'inspecteur. Les questions, les connaissances du projet et la feuille de route utilisent un module Python par tour via `python_repl`, avec une communication locale authentifiée et bornée. Le module doit être initialisé à chaque tour ; son autorisation est révoquée à la fin du tour. Cela ne garantit pas la compatibilité de toutes les extensions JavaScript.
+
+Computer Use, les pièces jointes de fichiers, les valeurs par défaut non vides de modèle/raisonnement des sous-agents Studio et le fournisseur Meta JavaScript sont refusés en mode Rust. Effacez les valeurs par défaut des sous-agents avant un tour Rust ; leur suppression reste possible dans les réglages. La disponibilité native des modèles peut différer du catalogue JavaScript. Le moteur JavaScript habituel ne change pas lorsque la variable d'activation est absente.
+
+Exécutez `node --test test/rust-*.test.mjs` pour vérifier le protocole, le moteur et le pont Python. `node scripts/rust-native-canary.mjs CHEMIN_ABSOLU_EXECUTABLE` utilise un état temporaire isolé et `--offline` pour tester un vrai démon : connexion, création, attachement, lecture et fermeture de la session, sans appel à un modèle. N'utilisez pas de données ou d'identifiants de production pour ce test.
+
+Les exécutables officiels Windows et Linux 0.10 ont passé les vérifications de connexion et de session. Avec un fournisseur de modèle simulé sur la boucle locale, Linux a terminé deux tours en continu et repris la session sauvegardée. Sous Windows, le premier tour a réussi, mais la reprise a échoué : l'ancien processus de session conservait le verrou du fichier alors que `complete_owned_session` avait annoncé un succès. Augmenter le délai maximal de fermeture ne résout pas ce problème du moteur natif. La reprise sous Windows reste bloquée en attendant une correction en amont ; cette intégration n'est pas prête pour un usage courant sous Windows. Ces tests ne prouvent pas l'accès à un fournisseur réel ni la parité de toutes les extensions. Ce mode reste expérimental.

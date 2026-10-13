@@ -298,6 +298,7 @@ In Studio, open **Preferences → Updates → Check for updates**: this check is
 | [Projects and conversations](docs/en/navigation.md)   | Expandable projects, search, archives, menus and reordering.             |
 | [Project knowledge](docs/en/knowledge.md)             | Past work, native memories, refinements and agent history tools.         |
 | [Project roadmap](docs/en/roadmap.md)                 | Shared plans, checklists, backlog, native tools and conversation links.  |
+| [Experimental Rust runtime](docs/en/rust-runtime.md)  | Developer opt-in, official engine requirements and current limitations.  |
 | [Computer Use](docs/en/computer-use.md)               | Opt-in real Windows desktop observation and input for agents.            |
 | [Providers](docs/en/providers.md)                     | Account connections, API keys, sign-out and PC-only access.              |
 | [Mobile access](docs/en/lan.md)                       | Activation, network address, authentication and permissions.             |
@@ -307,7 +308,7 @@ In Studio, open **Preferences → Updates → Check for updates**: this check is
 | [Agents and files](docs/en/inspector.md)              | Subagents, usage, Git changes, previews and document opening.            |
 | [Commands and skills](docs/en/commands.md)            | Native commands, shortcuts, skills and project prompts.                  |
 | [MCP connections](docs/en/mcp.md)                     | Servers, OAuth, allowed tools and connection diagnostics.                |
-| [Public API](docs/en/api.md)                          | Generic v1 contract: local tokens, runs, roadmaps, and linked files.       |
+| [Public API](docs/en/api.md)                          | Generic v1 contract: local tokens, runs, roadmaps, and linked files.     |
 | [Languages and translations](docs/en/translations.md) | Interface translations and two-language documentation upkeep.            |
 
 To verify the project:

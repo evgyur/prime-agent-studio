@@ -382,6 +382,7 @@ export function createApp(options = {}) {
     if (!length) throw new HttpError(400, tr('server.la_demande_json_est_invalide'));
     return Buffer.concat(chunks);
   }
+  const rustOptIn = !options.runtime && Boolean(process.env.PRIME_STUDIO_RUST_CLI);
   const runtime =
     options.runtime ||
     createAgentRuntime({
@@ -389,7 +390,7 @@ export function createApp(options = {}) {
       sessionDir,
       cliPath: process.env.PRIME_AGENT_CLI,
       kernelRoot: process.env.PRIME_AGENT_GUI_KERNEL_ROOT,
-      subagentPolicyFile: subagentDefaults.file,
+      ...(rustOptIn ? {} : { subagentPolicyFile: subagentDefaults.file }),
       knowledge: { dataDir },
       roadmap: { config: roadmapBridge.config },
       computer: { config: computerBridge.config },
@@ -844,6 +845,11 @@ export function createApp(options = {}) {
     body,
     { authorize, expectedRevision, allowTakeover = true, admission = computer.status().controlRevision } = {},
   ) {
+    if (rustOptIn && body.enabled)
+      throw Object.assign(
+        new HttpError(409, 'Studio Computer Use is unavailable with the official Rust daemon.'),
+        { code: 'rust_computer_use_unsupported' },
+      );
     let resolvedRun = null;
     let resolvedModel = null;
     const rejectStaleGrant = () => {
@@ -1063,6 +1069,19 @@ export function createApp(options = {}) {
     }
     const images = validateImages(body.images);
     const files = validateFiles(body.files);
+    if (rustOptIn && files.length)
+      throw Object.assign(
+        new HttpError(409, 'File attachments are unavailable with the official Rust daemon.'),
+        { code: 'rust_file_attachment_unsupported' },
+      );
+    if (rustOptIn) {
+      const policy = (await subagentDefaults.get(cwd)).effective;
+      if (policy.model || policy.thinking)
+        throw Object.assign(
+          new HttpError(409, 'Studio subagent defaults are unavailable with the official Rust daemon.'),
+          { code: 'rust_subagent_policy_unsupported' },
+        );
+    }
     if (images.length + files.length > 8)
       throw new HttpError(400, tr('server.ajoutez_au_maximum_8_pieces_jointes'));
     if (typeof body.message !== 'string' || (!body.message.trim() && !images.length && !files.length))
@@ -1097,7 +1116,7 @@ export function createApp(options = {}) {
       if (
         selected?.input &&
         !selected.input.includes('image') &&
-        !(await imageRouteModel(catalog).catch(() => null))
+        !(rustOptIn ? false : await imageRouteModel(catalog).catch(() => null))
       )
         throw new HttpError(400, tr('ui.ce_modele_ne_prend_pas_en_charge_les_images_choisissez_un_modele'));
     }
@@ -1177,6 +1196,11 @@ export function createApp(options = {}) {
       (pastudioResolved ?? body.model ?? settings?.model ?? existing?.model) || catalog.default?.model;
     const computerAuthorizedForModel =
       body.computerUse === true || (existing?.id && computer.status({ sessionId: existing.id }).enabled);
+    if (rustOptIn && computerAuthorizedForModel)
+      throw Object.assign(
+        new HttpError(409, 'Studio Computer Use is unavailable with the official Rust daemon.'),
+        { code: 'rust_computer_use_unsupported' },
+      );
     if (computerAuthorizedForModel && globalComputerModel) {
       const override = catalog.models?.find((model) => model?.id === globalComputerModel);
       if (!override) throw new HttpError(400, tr('server.ce_modele_n_est_pas_disponible_dans_prime_agent'));
@@ -1284,6 +1308,7 @@ export function createApp(options = {}) {
         model: selectedModel || undefined,
         thinking: selectedThinking || undefined,
         allowQuestions,
+        computerUse: computerAuthorizedForModel,
         onEvent: (event) => pushEvent(run, event),
       });
       if (existing?.id) await store.consumePastudioModelGate?.(existing.id).catch(() => {});
@@ -1671,7 +1696,18 @@ export function createApp(options = {}) {
         if (path === '/api/project-subagent-defaults' && !cwd)
           throw new HttpError(400, tr('server.choisissez_un_projet_pour_modifier_ses_sous_agents'));
         if (cwd) await store.findProject(cwd);
-        if (method === 'GET') return json(res, 200, await subagentDefaults.get(cwd));
+        if (method === 'GET') {
+          const settings = await subagentDefaults.get(cwd);
+          return json(res, 200, rustOptIn ? { ...settings, supported: false } : settings);
+        }
+        if (rustOptIn && (body.policy?.model || body.policy?.thinking))
+          throw Object.assign(
+            new HttpError(
+              409,
+              'Studio subagent defaults are unavailable with the official Rust daemon. Clear the policy to inherit native defaults.',
+            ),
+            { code: 'rust_subagent_policy_unsupported' },
+          );
         if (body.policy !== null) {
           if (!validPolicy(body.policy))
             throw new HttpError(400, tr('server.reglages_des_sous_agents_invalides'));
@@ -2064,14 +2100,18 @@ export function createApp(options = {}) {
         // off forever. Pure file check only, TTL-gated, never a worker
         // spawn; failures keep the last cached verdict.
         if (typeof computer.refreshBackends === 'function') await computer.refreshBackends().catch(() => {});
-        return json(
-          res,
-          200,
-          computer.status({
+        return json(res, 200, {
+          ...computer.status({
             ...(url.searchParams.get('sessionId') ? { sessionId: url.searchParams.get('sessionId') } : {}),
             ...(url.searchParams.get('runId') ? { runId: url.searchParams.get('runId') } : {}),
           }),
-        );
+          ...(rustOptIn
+            ? {
+                supported: false,
+                unsupportedReason: 'Computer Use is unavailable with the official Rust daemon.',
+              }
+            : {}),
+        });
       }
       if (method === 'POST' && path === '/api/computer-use') {
         const admission = computer.status().controlRevision;

@@ -298,6 +298,7 @@ Dans le Studio, ouvrez **Préférences → Mise à jour → Vérifier les mises 
 | [Projets et conversations](docs/navigation.md)    | Projets dépliables, recherche, archives, menus et réorganisation.                   |
 | [Connaissances du projet](docs/knowledge.md)      | Travaux passés, mémoires natives, refinements et outils d’historique des agents.    |
 | [Roadmap du projet](docs/roadmap.md)              | Plans partagés, checklists, backlog, outils natifs et liens vers les conversations. |
+| [Moteur Rust expérimental](docs/rust-runtime.md)  | Activation pour le développement, moteur officiel et limites actuelles.             |
 | [Computer Use](docs/computer-use.md)              | Observation et contrôle du vrai bureau Windows, activables pour les agents.         |
 | [Fournisseurs](docs/providers.md)                 | Connexions par compte, clés API, déconnexion et accès réservé au PC.                |
 | [Accès mobile](docs/lan.md)                       | Activation, adresse réseau, authentification et permissions.                        |
@@ -307,7 +308,7 @@ Dans le Studio, ouvrez **Préférences → Mise à jour → Vérifier les mises 
 | [Agents et fichiers](docs/inspector.md)           | Sous-agents, consommation, changements Git, aperçus et ouverture des documents.     |
 | [Commandes et skills](docs/commands.md)           | Commandes natives, raccourcis, skills et prompts du projet.                         |
 | [Connexions MCP](docs/mcp.md)                     | Serveurs, OAuth, outils autorisés et diagnostic des connexions.                     |
-| [API publique](docs/api.md)                        | Contrat v1 générique : jetons locaux, runs, roadmaps et fichiers liés.                |
+| [API publique](docs/api.md)                       | Contrat v1 générique : jetons locaux, runs, roadmaps et fichiers liés.              |
 | [Langues et traductions](docs/translations.md)    | Traductions de l’interface et maintien des deux langues de documentation.           |
 
 Pour vérifier le projet :

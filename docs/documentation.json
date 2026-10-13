@@ -34,8 +34,8 @@
       "fr": "README.fr.md",
       "en": "README.md",
       "reviewed": {
-        "fr": "ca7ce281047f3082c5f6ce6910150144d61d538d21db8153afc028a5e72cc20a",
-        "en": "95db20452c08d6c140c75865be392a247256894e6321770033619fddeb8e73ce"
+        "fr": "5b96f3bf9236e09ae42395be009c3bc24134ccd82f134fe3450be3a52b7137a2",
+        "en": "fc589f403717de6cb896aedc9ff3cf64bc34daa17b892aece74fceac611772f2"
       }
     },
     {
@@ -153,6 +153,15 @@
       "reviewed": {
         "fr": "af221b7594c107eda753e5f83ecc8ccc355c300194e3f113969a5af9b18510c6",
         "en": "30c85a125e8db7360d6e5cfed08c844062a32c9b0371faf9d2aab0177e0b71d7"
+      }
+    },
+    {
+      "id": "rust-runtime",
+      "fr": "docs/rust-runtime.md",
+      "en": "docs/en/rust-runtime.md",
+      "reviewed": {
+        "fr": "3ea929a8c4dd34db3c843d176299b0740372a4524098187b120f2cb0b3399e4a",
+        "en": "3dc5b1efaf17d0cc65d9c0715e31e7b1bda51e1e2e6333ba73470ec67e880143"
       }
     }
   ]

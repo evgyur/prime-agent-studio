@@ -1,0 +1,685 @@
+/* ==========================================================================
+   Prime Agent Studio style kit: studio.css
+   Faithful extract of the Prime Agent Studio 4.3 interface (public/styles.css and panel
+   stylesheets), MIT license, (c) zerr0o. Values are the ones the app renders.
+
+   - Token names are Studio's own (--bg, --surface, --accent...). Keep them.
+   - Component classes use the ps- prefix so they never collide with your own CSS.
+   - Dark theme by default. <html data-theme="light"> switches to the light theme.
+     assets/theme.js resolves "system" exactly like Studio does.
+   ========================================================================== */
+
+/* 1. Tokens ---------------------------------------------------------------- */
+:root,
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  /* Surfaces, from back to front */
+  --sidebar: #151618;          /* sidebar, tab bars, settings navigation */
+  --bg: #1b1c1e;               /* app background, panels, inputs inside dialogs */
+  --surface: #222326;          /* cards, composer, user bubbles, hover of rows */
+  --surface-raised: #26272b;   /* floating layers: menus, dialogs, toasts */
+  --surface-hover: #2b2c30;    /* hover of buttons and options, inline code */
+  --code: #161719;             /* code blocks */
+  /* Lines */
+  --line: #303135;             /* default 1px borders, dividers, splitters */
+  --line-soft: #28292d;        /* structural separators (sidebar edge, header bottom) */
+  /* Text */
+  --text: #ededea;             /* primary text */
+  --muted: #96979d;            /* secondary text, idle controls */
+  --faint: #777983;            /* metadata only: counts, times, hints (about 4:1) */
+  --picker-secondary: #9a9ba1; /* secondary text inside pickers and dialogs */
+  /* Accent (lavender) */
+  --accent: #b7b2e7;           /* primary buttons, focus ring, active indicators, progress */
+  --accent-strong: #cbc7f3;    /* hover of accent fills */
+  --accent-bg: #302e40;        /* selected rows, active tabs, tinted buttons, icon tiles */
+  --accent-text: #d4d0f4;      /* text on --accent-bg, links */
+  --accent-ink: #252132;       /* text and icons on --accent fills */
+  /* Status */
+  --green: #96bca5;            /* running, connected, success */
+  --blue: #88b6f6;             /* unread, information */
+  --amber: #dab982;            /* warning, attention, held by another owner */
+  --red: #e8a2a2;              /* error, destructive */
+  /* Effects */
+  --shadow: 0 20px 70px #0005;          /* menus, dialogs, toasts */
+  --shadow-menu: 0 8px 30px #0003;      /* small context menus */
+  --shadow-composer: 0 4px 16px #00000008;
+  --backdrop: #0008;                    /* behind dialogs, with blur(4px) */
+  --dialog-line: #77717f66;             /* dialog border */
+  --tinted-line: #79738e45;             /* border of tinted buttons */
+  --composer-line: #414047;             /* composer frame, both themes */
+  --composer-line-focus: #8f88a9;
+  /* Dimensions */
+  --sidebar-width: 272px;
+  --detail-width: 276px;
+  --header-height: 67px;
+  --tabbar-height: 35px;
+  /* Type */
+  --font-ui: 'Segoe UI Variable Text', 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'Cascadia Code', 'SFMono-Regular', Consolas, monospace;
+  --fs-micro: 9px;     /* hints, mono ids, uppercase group titles */
+  --fs-caption: 10px;  /* counts, timestamps, status footers */
+  --fs-meta: 11px;     /* tabs, meta lines, small headings, descriptions */
+  --fs-ui: 12px;       /* default UI text: rows, buttons, menus, inputs */
+  --fs-body: 13px;     /* reading text: messages, descriptions in panels */
+  --fs-heading: 14px;  /* list and section headings (weight 600) */
+  --fs-panel: 15px;    /* panel titles */
+  --fs-title: 19px;    /* dialog titles (weight 550) */
+  --fs-section: 20px;  /* settings section titles (weight 550) */
+  --fs-stat: 23px;     /* big numbers (weight 500) */
+  --fs-brand: 26px;    /* wordmark */
+  /* Radii */
+  --r-xs: 4px;         /* kbd, chrome buttons, small menu items */
+  --r-sm: 6px;         /* project rows, banner buttons */
+  --r-control: 7px;    /* buttons, inputs, rows, menu items */
+  --r-pill-button: 8px;/* header pill buttons, send button */
+  --r-menu: 9px;       /* popover menus, options, search fields, code blocks */
+  --r-md: 10px;        /* toasts, segmented controls, icon tiles */
+  --r-card: 12px;      /* cards */
+  --r-composer: 13px;
+  --r-dialog: 15px;
+  --r-full: 999px;
+  /* Motion */
+  --ease-fast: 0.15s;
+  /* Palettes (vivid, same in both themes) */
+  --project-blue: #3b82f6; --project-green: #16a34a; --project-amber: #d97706; --project-red: #dc2626; --project-violet: #8b5cf6;
+  --plan-teal: #0d9488; --plan-pink: #db2777; --plan-indigo: #4f46e5; --plan-lime: #65a30d; --plan-orange: #ea580c;
+  --device-cyan: #0891b2; --device-yellow: #ca8a04; --device-fuchsia: #c026d3; --device-slate: #64748b; --device-brown: #92400e;
+}
+:root[data-theme='light'] {
+  color-scheme: light;
+  --sidebar: #f1f0ec;
+  --bg: #faf9f6;
+  --surface: #fff;
+  --surface-raised: #fff;
+  --surface-hover: #eae9e5;
+  --code: #f0f0ed;
+  --line: #deded8;
+  --line-soft: #e9e8e2;
+  --text: #28282e;
+  --muted: #6e707b;
+  --faint: #797b84;
+  --picker-secondary: #656771;
+  --accent: #7771b2;
+  --accent-strong: #635b9f;
+  --accent-bg: #eae7f6;
+  --accent-text: #5f568f;
+  --accent-ink: #252132;
+  --green: #4f8568;
+  --blue: #286ac4;
+  --amber: #947036;
+  --red: #ae4f50;
+  --shadow: 0 20px 70px #1c1c2820;
+  --shadow-menu: 0 8px 30px #1c1c2818;
+}
+
+/* 2. Base ------------------------------------------------------------------ */
+*, *::before, *::after { box-sizing: border-box; }
+html {
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-synthesis: none;
+  -webkit-text-size-adjust: 100%;
+}
+body { margin: 0; background: var(--bg); color: var(--text); }
+h1, h2, h3, p { margin-top: 0; }
+button, input, select, textarea { font: inherit; color: inherit; border-radius: var(--r-control); }
+button {
+  cursor: pointer; background: none; border: 0; padding: 0;
+  transition: background var(--ease-fast), color var(--ease-fast), border-color var(--ease-fast), opacity var(--ease-fast);
+}
+button:disabled { cursor: not-allowed; opacity: 0.4; }
+input, select, textarea { color: var(--text); }
+input::placeholder, textarea::placeholder { color: var(--faint); }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+a { color: var(--accent-text); text-underline-offset: 3px; }
+::selection { background: var(--accent-bg); color: var(--text); }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--faint); }
+[hidden] { display: none !important; }
+.ps-icon, button svg { width: 18px; height: 18px; display: block; flex-shrink: 0; }
+.ps-icon { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+@keyframes ps-pulse { 50% { opacity: 0.4; } }
+@keyframes ps-spin { to { transform: rotate(360deg); } }
+@keyframes ps-toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important; animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important; scroll-behavior: auto !important;
+  }
+}
+
+/* 3. Text helpers ----------------------------------------------------------- */
+.ps-muted { color: var(--muted); }
+.ps-faint { color: var(--faint); }
+.ps-mono { font-family: var(--font-mono); }
+.ps-num { font-variant-numeric: tabular-nums; }
+.ps-truncate { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ps-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.ps-section-label {          /* "WORKSPACE": tiny uppercase section label */
+  font-size: var(--fs-caption); font-weight: 650; letter-spacing: 1.2px; text-transform: uppercase; color: var(--faint);
+}
+.ps-group-label {            /* "Pinned", "Projects": list group label, sentence case */
+  margin: 16px 12px 7px; font-size: var(--fs-meta); font-weight: 550; line-height: 1.5; color: var(--faint);
+}
+.ps-group-title {            /* "FAVORITES" inside pickers */
+  margin: 0; padding: 7px 10px 6px; font-size: var(--fs-micro); font-weight: 650; letter-spacing: 1px;
+  text-transform: uppercase; color: var(--picker-secondary);
+}
+.ps-panel-title { margin: 0; font-size: var(--fs-panel); font-weight: 600; }
+.ps-heading { margin: 0; font-size: var(--fs-heading); font-weight: 600; line-height: 1.5; }
+.ps-stat { font-size: var(--fs-stat); font-weight: 500; font-variant-numeric: tabular-nums; color: var(--text); }
+
+/* 4. App shell -------------------------------------------------------------- */
+.ps-app { display: flex; height: 100dvh; overflow: hidden; background: var(--bg); }
+.ps-sidebar {
+  width: var(--sidebar-width); flex-shrink: 0; display: flex; flex-direction: column; min-height: 0;
+  background: var(--sidebar); border-right: 1px solid var(--line-soft);
+}
+.ps-sidebar-top { padding: 0 16px 26px; }
+.ps-sidebar-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 0 10px 20px; scrollbar-gutter: stable; }
+.ps-sidebar-heading {
+  display: flex; align-items: center; justify-content: space-between; height: 28px; padding: 0 21px 8px;
+}
+.ps-sidebar-footer { flex-shrink: 0; border-top: 1px solid var(--line-soft); padding: 17px 20px 14px; }
+.ps-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.ps-header {
+  height: var(--header-height); min-height: var(--header-height); display: flex; align-items: center;
+  justify-content: space-between; gap: 16px; padding: 0 27px; border-bottom: 1px solid var(--line-soft);
+}
+.ps-header-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.ps-body { flex: 1; min-height: 0; display: flex; }
+.ps-pane { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--bg); }
+.ps-pane + .ps-pane { border-left: 1px solid var(--line); }
+.ps-pane-content { flex: 1; min-height: 0; overflow-y: auto; }
+
+/* Brand */
+.ps-brand { height: 88px; display: flex; align-items: center; gap: 11px; padding: 0 23px; color: var(--text); text-decoration: none; flex-shrink: 0; }
+.ps-brand-mark { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: var(--accent); color: #292737; flex-shrink: 0; }
+.ps-brand-mark svg { width: 30px; height: 30px; }
+.ps-brand-name { font-size: var(--fs-brand); font-weight: 650; letter-spacing: -1.1px; line-height: 1; }
+.ps-brand-sub { display: block; margin-top: 6px; font-size: 8px; font-weight: 550; letter-spacing: 1.6px; text-transform: uppercase; color: var(--muted); }
+
+/* Breadcrumb */
+.ps-breadcrumb { display: flex; align-items: center; gap: 12px; min-width: 0; overflow: hidden; font-size: var(--fs-ui); }
+.ps-breadcrumb .ps-icon { width: 15px; height: 15px; color: var(--muted); }
+.ps-breadcrumb-parent { color: var(--muted); white-space: nowrap; }
+.ps-breadcrumb-sep { color: var(--faint); }
+.ps-breadcrumb-current { color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* 5. Buttons ---------------------------------------------------------------- */
+.ps-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  padding: 9px 13px; border: 1px solid transparent; border-radius: var(--r-control);
+  font-size: var(--fs-ui); font-weight: 500; white-space: nowrap;
+}
+.ps-btn svg { width: 13px; height: 13px; }
+.ps-btn--primary { background: var(--accent); color: var(--accent-ink); }
+.ps-btn--primary:hover { background: var(--accent-strong); }
+.ps-btn--secondary { background: transparent; border-color: var(--line); color: var(--muted); }
+.ps-btn--secondary:hover { background: var(--surface-hover); color: var(--text); }
+.ps-btn--danger { background: var(--red); color: var(--bg); }
+.ps-btn--compact { min-height: 32px; padding: 6px 10px; font-size: var(--fs-caption); }
+.ps-btn--tinted {            /* "New session": the one emphasized action of a sidebar */
+  width: 100%; justify-content: flex-start; gap: 9px; padding: 11px 12px;
+  border-color: var(--tinted-line); background: var(--accent-bg); color: var(--accent-text); font-weight: 550;
+}
+.ps-btn--tinted:hover { border-color: var(--accent); background: var(--surface-hover); }
+.ps-btn--tinted svg { width: 16px; height: 16px; }
+.ps-btn--tinted .ps-kbd { margin-left: auto; color: var(--muted); border-color: #aaa5cc30; }
+.ps-btn--quiet {             /* full-width outline action under the main one */
+  width: 100%; gap: 9px; padding: 8px 12px; border-color: var(--line); color: var(--muted); font-size: var(--fs-meta); font-weight: 400;
+}
+.ps-btn--quiet:hover { color: var(--text); background: var(--surface-hover); }
+.ps-text-btn { padding: 3px 0; font-size: var(--fs-ui); color: var(--muted); text-align: left; }
+.ps-text-btn:hover { color: var(--text); }
+.ps-icon-btn {
+  display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px;
+  padding: 0; color: var(--muted); border-radius: var(--r-control); flex-shrink: 0;
+}
+.ps-icon-btn:hover { color: var(--text); background: var(--surface-hover); }
+.ps-icon-btn--sm { width: 23px; height: 23px; }
+.ps-icon-btn--sm svg { width: 15px; height: 15px; }
+.ps-icon-btn--header { width: 28px; height: 28px; }
+.ps-icon-btn--header svg { width: 16px; height: 16px; }
+.ps-icon-btn.is-active { color: var(--accent); background: var(--accent-bg); }
+.ps-pill-btn {               /* header actions: "Roadmap 42 %", "Computer Use" */
+  display: inline-flex; align-items: center; gap: 7px; min-height: 34px; padding: 6px 10px;
+  border: 1px solid var(--line); border-radius: var(--r-pill-button); background: var(--surface);
+  color: var(--text); font-size: var(--fs-ui); white-space: nowrap;
+}
+.ps-pill-btn:hover:not(:disabled) { border-color: var(--accent); }
+.ps-pill-btn svg { width: 16px; height: 16px; }
+.ps-pill-btn--sm { min-height: 28px; padding: 4px 9px; gap: 6px; font-size: var(--fs-meta); color: var(--muted); }
+.ps-pill-btn.is-on { color: var(--text); border-color: var(--accent); background: var(--accent-bg); }
+.ps-pill-btn .ps-num { color: var(--accent); }
+.ps-send-btn {                /* 44 px in panes, 30 px with --sm; disabled while the input is empty */
+  display: grid; place-items: center; width: 44px; height: 44px; border-radius: var(--r-pill-button);
+  background: var(--accent); color: var(--accent-ink); flex-shrink: 0;
+}
+.ps-send-btn:hover { background: var(--accent-strong); }
+.ps-send-btn:disabled { opacity: 0.3; }
+.ps-send-btn svg { width: 17px; height: 17px; }
+.ps-send-btn--sm { width: 30px; height: 30px; }
+
+/* 6. Small labels ------------------------------------------------------------ */
+.ps-kbd {
+  font-family: inherit; font-size: var(--fs-micro); color: var(--faint); border: 1px solid var(--line);
+  border-radius: var(--r-xs); padding: 2px 4px; line-height: 1.2; white-space: nowrap;
+}
+.ps-tag {                    /* "LOCAL" */
+  font-size: 8px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; padding: 4px 6px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-xs); color: var(--muted);
+}
+.ps-badge {                  /* rounded status badge: "Update available", "This address" */
+  display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: var(--r-full);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent);
+  font-size: var(--fs-caption); white-space: nowrap;
+}
+.ps-badge svg { width: 12px; height: 12px; }
+.ps-badge--solid { border-color: transparent; background: var(--accent-bg); color: var(--accent-text); font-size: var(--fs-meta); font-weight: 600; padding: 1px 8px; line-height: 1.6; }
+.ps-status-letter {          /* file change letters: M, +, D */
+  display: inline-grid; place-items: center; width: 20px; height: 22px; border-radius: 5px;
+  font-family: var(--font-mono); font-size: var(--fs-caption); background: var(--accent-bg); color: var(--accent-text);
+}
+.ps-status-letter.is-added { background: #274532; color: #a5d8b7; }
+.ps-status-letter.is-deleted { background: #bc656522; color: var(--red); }
+:root[data-theme='light'] .ps-status-letter.is-added { background: #e3f1e8; color: #2f6b49; }
+.ps-count { margin-left: auto; font-size: var(--fs-caption); color: var(--faint); font-variant-numeric: tabular-nums; }
+
+/* 7. Status dots ------------------------------------------------------------- */
+.ps-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; background: var(--faint); }
+.ps-dot--sm { width: 5px; height: 5px; }
+.ps-dot--running { background: var(--green); box-shadow: 0 0 0 3px #96bca518; animation: ps-pulse 1.7s ease-in-out infinite; }
+.ps-dot--connected { background: var(--green); }
+.ps-dot--unread { background: var(--blue); box-shadow: 0 0 0 3px color-mix(in srgb, var(--blue) 12%, transparent); }
+.ps-dot--attention { background: var(--amber); }
+.ps-dot--error { background: var(--red); }
+.ps-status { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-meta); line-height: 1.5; color: var(--muted); }
+.ps-status::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: 0 0 6px; }
+.ps-status.is-working { color: var(--accent-text); }
+.ps-status.is-connected::before { background: var(--green); }   /* green dot, muted text: "Engine connected" */
+.ps-status.is-attention::before { background: var(--amber); }
+.ps-status.is-done { color: #9fc7b0; }
+.ps-status.is-failed { color: #e7a3a3; }
+:root[data-theme='light'] .ps-status.is-done { color: var(--green); }
+:root[data-theme='light'] .ps-status.is-failed { color: var(--red); }
+
+/* 8. Inputs ------------------------------------------------------------------ */
+.ps-input {
+  width: 100%; padding: 11px 12px; border: 1px solid var(--line); background: var(--bg);
+  border-radius: var(--r-control); font-size: var(--fs-body);
+}
+.ps-label { display: block; margin-bottom: 9px; font-size: var(--fs-ui); font-weight: 500; }
+.ps-label small { margin-left: 4px; font-size: var(--fs-micro); font-weight: 400; color: var(--faint); }
+.ps-help { margin: 0; font-size: var(--fs-meta); line-height: 1.6; color: var(--muted); }
+.ps-search {                 /* borderless search line in a sidebar */
+  display: flex; align-items: center; gap: 8px; margin-top: 16px; padding: 0 1px; color: var(--faint);
+}
+.ps-search svg { width: 15px; height: 15px; }
+.ps-search input { flex: 1; min-width: 0; height: 26px; border: 0; background: none; outline: none; font-size: var(--fs-meta); }
+.ps-search:focus-within { color: var(--accent); }
+.ps-search .ps-kbd { font-size: 8px; padding: 2px 3px; }
+.ps-search-box {             /* framed search field in dialogs */
+  display: flex; align-items: center; gap: 10px; padding: 0 12px; border: 1px solid var(--line);
+  border-radius: var(--r-menu); background: var(--bg); color: var(--picker-secondary);
+}
+.ps-search-box svg { width: 16px; height: 16px; }
+.ps-search-box input { flex: 1; min-width: 0; height: 42px; border: 0; outline: 0; background: transparent; font-size: var(--fs-body); }
+.ps-search-box input::placeholder { color: var(--picker-secondary); opacity: 1; }
+.ps-search-box:focus-within { color: var(--accent); border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent); }
+.ps-select {
+  min-height: 40px; padding: 9px 12px; border: 1px solid var(--line); border-radius: var(--r-menu);
+  background: var(--surface); color: var(--text); cursor: pointer;
+}
+.ps-select--bare { min-height: 28px; padding: 5px 17px 5px 1px; border: 0; background: var(--surface); color: var(--muted); font-size: var(--fs-ui); }
+.ps-checkbox { display: inline-flex; align-items: center; gap: 6px; padding: 8px 0; font-size: var(--fs-ui); color: var(--muted); white-space: nowrap; cursor: pointer; }
+.ps-checkbox input { width: 14px; height: 14px; margin: 0; accent-color: var(--accent); }
+.ps-switch {
+  appearance: none; width: 31px; height: 18px; margin: 0; flex-shrink: 0; position: relative; cursor: pointer;
+  background: var(--line); border-radius: 15px; transition: background var(--ease-fast);
+}
+.ps-switch::before {
+  content: ''; position: absolute; top: 3px; left: 3px; width: 12px; height: 12px; border-radius: 50%;
+  background: var(--muted); transition: transform var(--ease-fast);
+}
+.ps-switch:checked { background: var(--accent); }
+.ps-switch:checked::before { transform: translateX(13px); background: #fff; }
+.ps-segmented {
+  display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); padding: 4px;
+  border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface);
+}
+.ps-segmented label { position: relative; cursor: pointer; }
+.ps-segmented input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.ps-segmented span { display: grid; place-items: center; min-height: 40px; border-radius: var(--r-control); font-size: var(--fs-ui); color: var(--muted); }
+.ps-segmented input:checked + span { background: var(--accent-bg); color: var(--accent-text); }
+.ps-segmented input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: -2px; }
+.ps-choice-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.ps-choice-cards button {
+  display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 16px 10px;
+  border: 1px solid var(--line); background: var(--bg); font-size: var(--fs-ui); color: var(--muted);
+}
+.ps-choice-cards button[aria-pressed='true'] { border-color: var(--accent); color: var(--accent); background: var(--accent-bg); }
+.ps-choice-cards svg { width: 20px; height: 20px; }
+.ps-settings-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 18px 0; border-top: 1px solid var(--line); }
+.ps-settings-row .ps-label { margin-bottom: 5px; }
+
+/* 9. Navigation rows -------------------------------------------------------- */
+.ps-row {                    /* project or item row in a sidebar */
+  display: flex; align-items: center; gap: 8px; width: 100%; min-height: 38px; padding: 8px 5px;
+  border-radius: var(--r-sm); font-size: var(--fs-ui); color: var(--muted); text-align: left;
+}
+.ps-row:hover { background: var(--surface); color: var(--text); }
+.ps-row.is-active { color: var(--text); }
+.ps-row svg { width: 15px; height: 15px; color: var(--faint); }
+.ps-row .ps-folder { color: var(--row-color, var(--faint)); }
+.ps-row .ps-folder path { fill: var(--row-color, none); }
+.ps-subrow {                 /* conversation row under a project */
+  display: flex; align-items: center; gap: 9px; width: 100%; min-height: 38px; margin-bottom: 2px; padding: 9px 10px;
+  border-radius: var(--r-control); font-size: var(--fs-ui); line-height: 1.4; color: var(--muted); text-align: left;
+}
+.ps-subrow:hover { background: var(--surface); }
+.ps-subrow.is-active { background: var(--accent-bg); color: var(--accent-text); }
+.ps-subrow .ps-truncate { flex: 1; }
+.ps-nav-item {               /* settings navigation */
+  display: flex; align-items: center; gap: 11px; min-height: 42px; padding: 11px 12px; border: 1px solid transparent;
+  border-radius: var(--r-control); font-size: var(--fs-ui); color: var(--muted); text-align: left; width: 100%;
+}
+.ps-nav-item svg { width: 17px; height: 17px; }
+.ps-nav-item:hover { background: var(--surface-hover); color: var(--text); }
+.ps-nav-item[aria-selected='true'] { background: var(--accent-bg); color: var(--accent); }
+
+/* 10. Tabs -------------------------------------------------------------------- */
+.ps-tabbar {                 /* IDE-like tab bar of a docked panel */
+  display: flex; align-items: center; min-height: var(--tabbar-height); padding-right: 4px; gap: 2px;
+  background: var(--sidebar); border-bottom: 1px solid var(--line);
+}
+.ps-tabbar-tabs { display: flex; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: thin; }
+.ps-tab {
+  position: relative; display: flex; align-items: center; gap: 7px; flex: 0 0 auto; max-width: min(240px, 100%);
+  padding: 10px 13px 9px; border-radius: 0; font-size: var(--fs-meta); line-height: 15px; color: var(--muted); white-space: nowrap;
+}
+.ps-tab svg { width: 14px; height: 14px; }
+.ps-tab:hover { color: var(--text); background: var(--surface-hover); }
+.ps-tab[aria-selected='true'] { color: var(--text); background: var(--bg); }
+.ps-tab[aria-selected='true']::after {
+  content: ''; position: absolute; inset: 0 12px auto; height: 2px; background: var(--accent); border-radius: 0 0 2px 2px;
+}
+.ps-tab.has-lock { padding-right: 38px; }
+.ps-tab .ps-tab-lock { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); display: grid; place-items: center; width: 24px; height: 24px; border-radius: var(--r-xs); color: var(--muted); opacity: 0.55; }
+.ps-tab .ps-tab-lock svg { width: 13px; height: 13px; }
+.ps-tab .ps-tab-lock:hover { background: var(--surface-hover); color: var(--text); opacity: 1; }
+.ps-tab .ps-tab-lock.is-locked { color: var(--accent-text); opacity: 1; }
+.ps-chrome-btn { flex: none; width: 26px; height: 26px; border-radius: var(--r-xs); color: var(--muted); font-size: 18px; line-height: 1; }
+.ps-chrome-btn:hover { background: var(--surface-hover); color: var(--text); }
+.ps-tabs-underline { display: flex; gap: 25px; padding: 0 24px; border-bottom: 1px solid var(--line); }
+.ps-tabs-underline button { padding: 12px 0; border-bottom: 2px solid transparent; border-radius: 0; color: var(--muted); font-size: var(--fs-heading); }
+.ps-tabs-underline button[aria-selected='true'] { color: var(--text); border-color: var(--accent); }
+.ps-tabs-pill { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 3px; }
+.ps-tabs-pill button { min-height: 40px; border-radius: var(--r-pill-button); color: var(--muted); font-size: var(--fs-ui); display: flex; align-items: center; justify-content: center; gap: 5px; }
+.ps-tabs-pill button[aria-selected='true'] { background: var(--accent-bg); color: var(--text); }
+.ps-splitter { flex: 0 0 1px; background: var(--line); cursor: col-resize; position: relative; }
+.ps-splitter:hover { background: var(--accent); }
+
+/* 11. Cards and lists -------------------------------------------------------- */
+.ps-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card); padding: 13px; }
+.ps-card--interactive { display: flex; flex-direction: column; align-items: flex-start; gap: 7px; text-align: left; width: 100%; }
+.ps-card--interactive:hover { border-color: var(--accent); }
+.ps-card-eyebrow { font-size: var(--fs-meta); color: var(--muted); }
+.ps-card-title { font-size: var(--fs-body); font-weight: 700; line-height: 1.5; }
+.ps-card-meta { font-size: var(--fs-caption); color: var(--muted); font-family: var(--font-mono); }
+.ps-activity {               /* collapsible activity card ("Agent activity") */
+  border: 1px solid var(--line); background: var(--surface); border-radius: 11px; overflow: hidden;
+}
+.ps-activity > summary {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 11px;
+  min-height: 44px; padding: 9px 12px; cursor: pointer; list-style: none;
+}
+.ps-activity > summary::-webkit-details-marker { display: none; }
+.ps-activity-label { font-size: var(--fs-body); font-weight: 550; color: var(--text); }
+.ps-activity-count, .ps-activity-state { font-size: var(--fs-meta); color: var(--muted); }
+.ps-activity-content { border-top: 1px solid var(--line); padding: 3px 14px 14px; }
+.ps-starter {                /* welcome suggestion card */
+  display: flex; align-items: flex-start; gap: 12px; padding: 17px 14px; text-align: left;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-menu);
+}
+.ps-starter:hover { border-color: #87809e; background: var(--surface-hover); }
+.ps-starter strong { display: block; font-size: var(--fs-body); font-weight: 550; line-height: 1.4; }
+.ps-starter small { display: block; margin-top: 5px; font-size: var(--fs-meta); line-height: 1.6; color: var(--muted); }
+.ps-option {                 /* selectable option (model picker row) */
+  display: flex; align-items: center; min-height: 48px; padding: 8px 7px 8px 10px; border: 1px solid transparent;
+  border-radius: var(--r-menu); text-align: left; width: 100%;
+}
+.ps-option:hover { background: var(--surface-hover); }
+.ps-option[aria-selected='true'] { background: var(--accent-bg); color: var(--accent-text); border-color: color-mix(in srgb, var(--accent) 35%, transparent); }
+.ps-option-name { display: block; font-size: var(--fs-ui); font-weight: 550; color: var(--text); }
+.ps-option[aria-selected='true'] .ps-option-name { color: var(--accent-text); }
+.ps-option-detail { display: block; font-family: var(--font-mono); font-size: var(--fs-micro); color: var(--picker-secondary); }
+.ps-icon-tile { width: 36px; height: 36px; display: grid; place-items: center; border-radius: var(--r-md); background: var(--accent-bg); color: var(--accent); flex-shrink: 0; }
+.ps-icon-tile svg { width: 19px; height: 19px; }
+
+/* Key and value list (Studio: update versions, system info, archive counts) */
+.ps-kv { display: grid; grid-template-columns: 1fr auto; gap: 12px 24px; margin: 0; font-size: var(--fs-ui); }
+.ps-kv dt { min-width: 0; color: var(--muted); }
+.ps-kv dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.ps-kv--framed { gap: 15px 24px; padding: 20px; border: 1px solid var(--line); border-radius: var(--r-menu); background: var(--surface); }
+
+/* Machine list for touch screens (Studio's Machines screen, with tokens instead of its dark-only values) */
+.ps-machine-list { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.ps-machine {
+  display: flex; align-items: center; gap: 13px; min-width: 0; padding: 13px 14px;
+  border: 1px solid var(--line); border-radius: 14px; background: var(--surface); color: inherit; text-decoration: none;
+  transition: border-color var(--ease-fast), background var(--ease-fast);
+}
+.ps-machine:hover { border-color: color-mix(in srgb, var(--accent) 30%, var(--line)); background: var(--surface-hover); }
+.ps-machine-icon { flex: none; width: 38px; height: 38px; display: grid; place-items: center; border-radius: 11px; background: var(--accent-bg); color: var(--machine-color, var(--accent)); }
+.ps-machine-icon svg { width: 20px; height: 20px; }
+.ps-machine-body { flex: 1; min-width: 0; }
+.ps-machine-name, .ps-machine-meta { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ps-machine-name { font-size: 15.5px; font-weight: 600; line-height: 1.35; }
+.ps-machine-meta { font-size: 12.5px; line-height: 1.4; color: var(--muted); }
+.ps-machine-meta code { font-family: var(--font-mono); font-size: 12px; }
+
+/* 12. Floating layers ------------------------------------------------------- */
+.ps-menu {
+  width: min(248px, calc(100vw - 24px)); padding: 5px; border: 1px solid var(--line); border-radius: var(--r-menu);
+  background: var(--surface-raised); box-shadow: var(--shadow);
+}
+.ps-menu button {
+  display: flex; align-items: center; gap: 9px; width: 100%; min-height: 40px; padding: 9px;
+  text-align: left; font-size: var(--fs-ui); color: var(--muted); border-radius: var(--r-control);
+}
+.ps-menu button:hover, .ps-menu button:focus-visible { background: var(--surface-hover); color: var(--text); }
+.ps-menu svg { width: 14px; height: 14px; }
+.ps-menu .is-danger { color: var(--red); }
+.ps-menu-divider { height: 1px; margin: 4px; background: var(--line); }
+.ps-menu-label { padding: 8px 9px 4px; font-size: var(--fs-meta); color: var(--faint); }
+.ps-swatches { display: flex; gap: 2px; padding: 0 5px 6px; }
+.ps-swatch { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; border: 1px solid transparent; }
+.ps-swatch::before { content: ''; width: 16px; height: 16px; border-radius: 50%; background: var(--swatch, transparent); }
+.ps-swatch.is-default::before { border: 1px dashed var(--line); }
+.ps-swatch[aria-checked='true'] { border-color: var(--text); }
+.ps-context-menu {           /* small tab or row context menu */
+  display: flex; flex-direction: column; min-width: 210px; padding: 5px; border: 1px solid var(--line);
+  border-radius: var(--r-control); background: var(--surface); box-shadow: var(--shadow-menu);
+}
+.ps-context-menu button { padding: 9px 11px; text-align: left; font-size: var(--fs-ui); color: var(--text); border-radius: var(--r-xs); }
+.ps-context-menu button:hover, .ps-context-menu button:focus-visible { background: var(--accent-bg); color: var(--accent-text); outline: none; }
+.ps-context-menu hr { width: 100%; border: 0; border-top: 1px solid var(--line); margin: 5px 0; }
+.ps-dialog {
+  width: 460px; max-width: calc(100vw - 32px); padding: 28px; color: var(--text); background: var(--surface-raised);
+  border: 1px solid var(--dialog-line); border-radius: var(--r-dialog); box-shadow: var(--shadow);
+}
+.ps-dialog::backdrop { background: var(--backdrop); backdrop-filter: blur(4px); }
+.ps-dialog-head { display: flex; align-items: flex-start; gap: 14px; margin-bottom: 18px; }
+.ps-dialog-title { margin: 0 0 4px; font-size: var(--fs-title); font-weight: 550; letter-spacing: -0.6px; line-height: 1.3; }
+.ps-dialog-desc { margin: 0; font-size: var(--fs-meta); line-height: 1.6; color: var(--muted); }
+.ps-dialog-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 15px; }
+.ps-toasts { position: fixed; right: 24px; bottom: 24px; display: flex; flex-direction: column; gap: 8px; z-index: 100; max-width: calc(100vw - 32px); pointer-events: none; }
+.ps-toast {
+  display: flex; align-items: center; gap: 10px; max-width: 390px; padding: 13px 15px; pointer-events: auto;
+  background: var(--surface-raised); border: 1px solid var(--line); border-radius: var(--r-md); box-shadow: var(--shadow);
+  font-size: var(--fs-ui); line-height: 1.5; animation: ps-toast-in 0.2s ease-out;
+}
+.ps-toast svg { width: 15px; height: 15px; color: var(--green); flex-shrink: 0; }
+.ps-toast.is-error svg { color: var(--red); }
+
+/* 13. Banners ------------------------------------------------------------------ */
+.ps-banner {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 27px; border-bottom: 1px solid var(--line);
+  background: var(--accent-bg); color: var(--accent-text); font-size: var(--fs-meta); line-height: 1.6;
+}
+.ps-banner > span { flex: 1 1 240px; }
+.ps-banner > [data-icon], .ps-banner > svg { flex: none; }
+.ps-banner button { min-height: 32px; padding: 6px 10px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface); color: var(--text); font-size: var(--fs-meta); }
+.ps-banner button:hover:not(:disabled) { border-color: var(--accent); }
+.ps-banner--warning { background: color-mix(in srgb, var(--amber) 9%, var(--bg)); color: var(--text); font-size: var(--fs-ui); }
+.ps-banner--error { background: #bc656512; color: var(--red); }
+.ps-banner--quiet { background: transparent; color: var(--muted); border-bottom-color: var(--line-soft); padding: 9px 24px; }
+.ps-banner--quiet svg { width: 14px; height: 14px; color: var(--accent); }
+
+/* 14. Progress ----------------------------------------------------------------- */
+.ps-progress { appearance: none; display: block; width: 100%; height: 4px; border: 0; border-radius: 3px; overflow: hidden; background: var(--line); }
+.ps-progress::-webkit-progress-bar { background: var(--line); }
+.ps-progress::-webkit-progress-value { background: var(--accent); }
+.ps-progress::-moz-progress-bar { background: var(--accent); }
+.ps-progress-label { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; font-size: var(--fs-ui); color: var(--muted); }
+.ps-spinner { width: 14px; height: 14px; border: 1.5px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: ps-spin 0.8s linear infinite; }
+
+/* 15. Conversation ------------------------------------------------------------- */
+.ps-thread { max-width: 880px; margin: 0 auto; padding: 31px 39px 40px; }
+.ps-msg { margin-bottom: 30px; }
+.ps-msg-head { display: flex; align-items: center; gap: 9px; margin-bottom: 14px; font-size: var(--fs-meta); }
+.ps-msg-author { font-size: var(--fs-ui); font-weight: 550; }
+.ps-msg-model { font-family: var(--font-mono); font-size: var(--fs-micro); color: var(--faint); }
+.ps-msg-time { margin-left: auto; font-size: var(--fs-micro); color: var(--faint); }
+.ps-avatar { width: 25px; height: 25px; display: grid; place-items: center; border-radius: var(--r-control); background: var(--accent-bg); color: var(--accent); font-size: var(--fs-micro); font-weight: 600; }
+.ps-avatar svg { width: 16px; height: 16px; }
+.ps-msg-body { padding-left: 34px; font-size: var(--fs-body); line-height: 1.8; overflow-wrap: anywhere; }
+.ps-msg--user .ps-msg-head { flex-direction: row-reverse; margin-left: 34px; }
+.ps-msg--user .ps-msg-time { margin-left: 0; margin-right: auto; }
+.ps-msg--user .ps-avatar { background: var(--surface-hover); color: var(--muted); }
+.ps-msg--user .ps-msg-body {
+  margin-left: 34px; padding: 15px 18px; white-space: pre-wrap; font-size: var(--fs-ui);
+  background: var(--surface); border: 1px solid var(--line-soft); border-radius: 3px 12px 12px 12px;
+}
+/* Composer area: centers the composer under the thread (Studio .composer-area) */
+.ps-composer-area { flex-shrink: 0; width: 100%; max-width: 940px; margin: 0 auto; padding: 0 32px 22px; }
+.ps-composer {
+  background: var(--surface); border: 1px solid var(--composer-line); border-radius: var(--r-composer);
+  padding: 16px 16px 11px; box-shadow: var(--shadow-composer); transition: border-color var(--ease-fast);
+}
+.ps-composer:focus-within { border-color: var(--composer-line-focus); }
+.ps-composer textarea { display: block; width: 100%; min-height: 51px; max-height: 200px; resize: none; padding: 1px 2px; border: 0; outline: none; background: transparent; font-size: var(--fs-heading); line-height: 22px; }
+.ps-composer-tool { display: grid; place-items: center; width: 36px; height: 36px; border-radius: var(--r-control); color: var(--muted); font-size: var(--fs-heading); }
+.ps-composer-tool:hover { color: var(--text); background: var(--surface-hover); }
+.ps-composer textarea:focus-visible { outline: none; }
+.ps-composer-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 9px; }
+.ps-composer-hint { margin-top: 12px; padding: 0 3px; font-size: var(--fs-micro); color: var(--faint); text-align: right; }
+.ps-separator { width: 1px; height: 12px; margin: 0 3px; background: var(--line); }
+
+/* Agent question: inline in the thread, aligned with the agent text (not a card) */
+.ps-question { margin: 12px 0 12px 34px; padding: 24px 0; font-size: 14px; }
+.ps-question-label, .ps-question-status { font-size: var(--fs-ui); color: var(--muted); }
+.ps-question-status { margin: 12px 0 0; }
+.ps-question-title { margin: 8px 0 18px; font-size: 16px; font-weight: 600; line-height: 1.5; }
+.ps-question fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
+.ps-question-option { display: flex; align-items: baseline; gap: 12px; margin-bottom: 10px; padding: 10px 12px; border-radius: 8px; line-height: 1.5; cursor: pointer; }
+.ps-question-option:hover, .ps-question-option:has(input:checked) { background: var(--surface-hover); }
+.ps-question-option input { accent-color: var(--accent); }
+.ps-question-option span { min-width: 0; overflow-wrap: anywhere; }
+.ps-question-input { display: block; width: 100%; margin: 12px 0; padding: 12px; resize: vertical; font: inherit; line-height: 1.5; color: inherit; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+.ps-question-actions { display: flex; align-items: center; gap: 18px; margin-top: 16px; }
+.ps-question-actions .ps-btn { padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 400; }
+.ps-question-actions .ps-btn--secondary { padding: 9px 17px; }
+.ps-question-error { font-size: 13px; color: var(--red); }
+@media (max-width: 640px) { .ps-question { margin-left: 0; padding: 16px 0; } }
+
+/* 16. Rich text (markdown) ---------------------------------------------------- */
+.ps-prose p { margin: 0 0 13px; }
+.ps-prose > :first-child { margin-top: 0; }
+.ps-prose > :last-child { margin-bottom: 0; }
+.ps-prose h1, .ps-prose h2, .ps-prose h3, .ps-prose h4 { font-weight: 600; margin: 25px 0 12px; line-height: 1.4; }
+.ps-prose h1 { font-size: 22px; letter-spacing: -0.5px; }
+.ps-prose h2 { font-size: 18px; }
+.ps-prose h3 { font-size: 15px; }
+.ps-prose h4 { font-size: 13px; }
+.ps-prose ul, .ps-prose ol { margin: 10px 0 17px; padding-left: 23px; }
+.ps-prose li { margin: 4px 0; }
+.ps-prose li::marker { color: var(--muted); }
+.ps-prose blockquote { margin: 18px 0; padding: 4px 15px; border-left: 2px solid var(--accent); color: var(--muted); }
+.ps-prose hr { border: 0; border-top: 1px solid var(--line); margin: 25px 0; }
+.ps-prose code, .ps-code-inline { font-family: var(--font-mono); font-size: 0.9em; background: var(--surface-hover); border-radius: var(--r-xs); padding: 2px 5px; }
+.ps-prose table, .ps-table { border-collapse: collapse; width: 100%; font-size: var(--fs-meta); margin: 15px 0; }
+.ps-prose th, .ps-prose td, .ps-table th, .ps-table td { padding: 9px 12px; border: 1px solid var(--line); text-align: left; vertical-align: top; }
+.ps-prose th, .ps-table th { background: var(--surface); font-weight: 550; }
+.ps-code {                   /* code block with its header bar */
+  position: relative; margin: 16px 0; padding: 44px 16px 17px; overflow-x: auto;
+  background: var(--code); border: 1px solid var(--line); border-radius: var(--r-menu);
+  font-family: var(--font-mono); font-size: var(--fs-meta); line-height: 1.7; white-space: pre;
+}
+.ps-code-bar {
+  position: absolute; top: 0; left: 0; right: 0; height: 31px; padding: 0 12px; display: flex; align-items: center;
+  justify-content: space-between; border-bottom: 1px solid var(--line-soft); color: var(--faint);
+  font: var(--fs-micro) var(--font-ui);
+}
+.ps-code-bar button { display: flex; align-items: center; gap: 5px; padding: 4px; font-size: var(--fs-micro); color: var(--muted); }
+.ps-code-bar button:hover { color: var(--accent); }
+.ps-code-bar svg { width: 11px; height: 11px; }
+
+/* 17. Trees (sidebar projects and their conversations) ----------------------- */
+.ps-tree-head { display: flex; align-items: center; min-height: 36px; }
+.ps-tree-head .ps-row { flex: 1; min-width: 0; }
+.ps-disclosure { display: grid; place-items: center; flex: 0 0 22px; height: 32px; padding: 0; color: var(--faint); }
+.ps-disclosure svg { width: 12px; height: 12px; transition: transform var(--ease-fast); }
+.ps-disclosure[aria-expanded='true'] svg { transform: rotate(90deg); }
+.ps-disclosure:hover { color: var(--text); }
+.ps-tree { margin-bottom: 6px; }
+.ps-tree-children { padding: 1px 0 6px 33px; }
+
+/* 18. Panels -------------------------------------------------------------------- */
+.ps-pane-head { padding: 18px 18px 14px; }
+.ps-pane-head .ps-panel-title + p { margin: 6px 0 0; font-size: var(--fs-body); color: var(--muted); }
+.ps-pane-section { padding: 0 18px; }
+
+/* 19. Plans and tasks (Roadmap) -------------------------------------------------- */
+.ps-plan { border-top: 1px solid var(--line); padding: 17px 0; }
+.ps-plan.has-color { border-left: 3px solid var(--plan-color); padding-left: 12px; }
+.ps-plan-head { display: flex; align-items: center; gap: 8px; }
+.ps-plan-title { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 9px; font-size: var(--fs-heading); font-weight: 600; line-height: 1.5; text-align: left; }
+.ps-plan-title::before { content: '›'; display: inline-block; width: 9px; flex: none; font-size: 18px; line-height: 1; color: var(--muted); }
+.ps-plan-title[aria-expanded='true']::before { transform: rotate(90deg); }
+.ps-plan-dot { width: 10px; height: 10px; border-radius: 50%; border: 1px solid var(--line); background: var(--plan-color, transparent); flex-shrink: 0; }
+.ps-plan-meta { display: flex; flex-wrap: wrap; gap: 6px 12px; margin: 6px 0 0 18px; font-size: var(--fs-meta); color: var(--muted); }
+.ps-inline-count { margin-left: auto; font-size: var(--fs-meta); font-weight: 400; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ps-steps { list-style: none; margin: 8px 0; padding: 0; }
+.ps-steps .ps-steps { margin-left: 22px; }
+.ps-step { display: flex; align-items: flex-start; gap: 9px; padding: 8px 0; font-size: var(--fs-body); line-height: 1.55; }
+.ps-step input { width: 16px; height: 16px; margin: 3px 0 0; flex: none; accent-color: var(--accent); cursor: pointer; }
+.ps-step input:checked:not(:indeterminate) { accent-color: var(--green); }
+.ps-step.is-done .ps-step-title { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--faint); }
+
+/* Width steps of Studio */
+@media (min-width: 1600px) { :root { --sidebar-width: 286px; --detail-width: 300px; } .ps-header { padding: 0 35px; } .ps-composer-area { padding-bottom: 28px; } }
+@media (max-width: 1250px) { .ps-composer-area { padding: 0 25px 19px; } :root { --sidebar-width: 245px; --detail-width: 235px; } .ps-brand { padding: 0 18px; } .ps-brand-name { font-size: 24px; } .ps-brand-mark { width: 33px; height: 33px; } }
+
+/* 20. Mobile and touch --------------------------------------------------------- */
+@media (max-width: 760px) {
+  .ps-sidebar { position: fixed; inset: 0 auto 0 0; z-index: 50; transform: translateX(-100%); transition: transform 0.2s; box-shadow: var(--shadow); }
+  .ps-sidebar.is-open { transform: translateX(0); }
+  .ps-backdrop { position: fixed; inset: 0; z-index: 45; background: var(--backdrop); backdrop-filter: blur(2px); }
+  .ps-header { height: auto; min-height: 58px; padding: 6px 13px; }
+  .ps-thread { padding: 25px 19px; }
+  .ps-row, .ps-subrow, .ps-nav-item { font-size: var(--fs-body); }
+  .ps-composer-area { padding: 0 14px 16px; }
+  .ps-composer { padding: 13px 13px 10px; }
+  .ps-composer textarea { font-size: 14px; }
+}
+@media (pointer: coarse) {
+  .ps-row, .ps-subrow, .ps-menu button, .ps-icon-btn { min-height: 44px; }
+  .ps-search-box input { font-size: 16px; }   /* avoids zoom on iOS */
+}

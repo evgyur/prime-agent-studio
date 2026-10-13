@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" fill="none">
+  <title>Prime Agent Studio</title>
+  <rect x="12" y="12" width="232" height="232" rx="64.4444" fill="#b7b2e7"/>
+  <g transform="translate(31.3333 31.3333) scale(6.0416667)">
+    <path d="M9 24V8h10a6 6 0 0 1 0 12h-5v4M14 13h5a1 1 0 1 1 0 2h-5v-2Z" stroke="#292737" stroke-width="2.5" stroke-linejoin="round"/>
+  </g>
+</svg>

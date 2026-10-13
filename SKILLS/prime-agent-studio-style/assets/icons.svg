@@ -1,0 +1,244 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="976" height="636" viewBox="0 0 976 636">
+  <!--
+    Prime Agent Studio icons (MIT, (c) 2026 zerr0o). 56 line icons, 24 x 24 grid, stroke 1.5, currentColor.
+    1. As a sprite:  <svg class="ps-icon" width="18" height="18" aria-hidden="true"><use href="icons.svg#ps-i-refresh"/></svg>
+       The <symbol> elements below are the icons. The color follows the CSS "color" of the <svg> that uses them.
+    2. Opened on its own, this file shows a preview sheet of every icon (the part after the symbols).
+    To paste the sprite inside an HTML page, copy only the <symbol> elements into <svg hidden>...</svg>.
+  -->
+  <title>Prime Agent Studio icons</title>
+
+  <!-- Symbols: one icon per line -->
+  <symbol id="ps-i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="ps-i-bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9ZM10 21h4"/></symbol>
+  <symbol id="ps-i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m21 21-4.4-4.4M19 10.5a8.5 8.5 0 1 1-17 0 8.5 8.5 0 0 1 17 0"/></symbol>
+  <symbol id="ps-i-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a1 1 0 0 1 1-1h5l2 3h9a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7Z"/></symbol>
+  <symbol id="ps-i-folder-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5h6l2 2h10v13H3V7Zm9 3v7m-3-3.5h6"/></symbol>
+  <symbol id="ps-i-branch" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v12M18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM18 9a9 9 0 0 1-9 9"/></symbol>
+  <symbol id="ps-i-archive" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h16v12H4V8ZM3 3h18v5H3V3Zm7 9h4"/></symbol>
+  <symbol id="ps-i-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m10 3-.5 2-2 .9-1.8-.6-2 3.4L5.2 10v2l-1.5 1.3 2 3.4 1.8-.6 2 .9.5 2h4l.5-2 2-.9 1.8.6 2-3.4-1.5-1.3v-2l1.5-1.3-2-3.4-1.8.6-2-.9L14 3h-4ZM15 11a3 3 0 1 1-6 0 3 3 0 0 1 6 0"/></symbol>
+  <symbol id="ps-i-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+  <symbol id="ps-i-more" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h.01M12 12h.01M19 12h.01"/></symbol>
+  <symbol id="ps-i-grip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5h.01M15 5h.01M9 12h.01M15 12h.01M9 19h.01M15 19h.01"/></symbol>
+  <symbol id="ps-i-panel" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h18v16H3V4Zm12 0v16"/></symbol>
+  <symbol id="ps-i-layout" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h18v16H3V4Zm11 0v16m0-8h7"/></symbol>
+  <symbol id="ps-i-map" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3V6Zm6-3v15m6-12v15"/></symbol>
+  <symbol id="ps-i-compass" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0ZM16 8l-2 6-6 2 2-6 6-2Z"/></symbol>
+  <symbol id="ps-i-code" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m8 6-6 6 6 6m8-12 6 6-6 6M14 4l-4 16"/></symbol>
+  <symbol id="ps-i-bug" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 7V5a4 4 0 0 1 8 0v2M6 7h12v8a6 6 0 0 1-12 0V7Zm6 0v14M2 9h4m12 0h4M2 15h4m12 0h4M4 21l3-3m10 0 3 3"/></symbol>
+  <symbol id="ps-i-sparkles" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 2.4 6.6L21 12l-6.6 2.4L12 21l-2.4-6.6L3 12l6.6-2.4L12 3Zm8-1v4m-2-2h4"/></symbol>
+  <symbol id="ps-i-arrow-up-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 18 18 6M6 6h12v12"/></symbol>
+  <symbol id="ps-i-arrow-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5m-6 6 6-6 6 6"/></symbol>
+  <symbol id="ps-i-arrow-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14m-6-6 6 6 6-6"/></symbol>
+  <symbol id="ps-i-model" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5"/></symbol>
+  <symbol id="ps-i-stop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6h12v12H6V6"/></symbol>
+  <symbol id="ps-i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 3 7v5c0 5 9 9 9 9s9-4 9-9V7l-9-4Zm-4 9 3 3 5-6"/></symbol>
+  <symbol id="ps-i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 9h12v12H9V9ZM5 15H3V3h12v2"/></symbol>
+  <symbol id="ps-i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m-5-5 5 5 5-5M3 16v5h18v-5"/></symbol>
+  <symbol id="ps-i-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21V9m-5 5 5-5 5 5M3 16v5h18v-5"/></symbol>
+  <symbol id="ps-i-terminal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m4 5 6 6-6 6m8 0h8"/></symbol>
+  <symbol id="ps-i-pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m16 3 5 5L8 21H3v-5L16 3Zm-2 2 5 5"/></symbol>
+  <symbol id="ps-i-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 3 12 12-3 3-5-2-4 4-5-5 4-4-2-5 3-3Zm-3 15-4 4"/></symbol>
+  <symbol id="ps-i-star" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m12 2.8 2.8 5.7 6.3.9-4.6 4.5 1.1 6.3-5.6-3-5.6 3 1.1-6.3-4.6-4.5 6.3-.9L12 2.8Z"/></symbol>
+  <symbol id="ps-i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 6 12 12M6 18 18 6"/></symbol>
+  <symbol id="ps-i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20.9 13A9 9 0 0 1 11 3.1 9 9 0 1 0 20.9 13Z"/></symbol>
+  <symbol id="ps-i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0ZM12 1v2m0 18v2M1 12h2m18 0h2M4.2 4.2l1.4 1.4m12.8 12.8 1.4 1.4M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/></symbol>
+  <symbol id="ps-i-monitor" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h20v14H2V3Zm10 14v4m-5 0h10"/></symbol>
+  <symbol id="ps-i-chat" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 4H3v13h5l4 4 4-4h5V4Z"/></symbol>
+  <symbol id="ps-i-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 5 7 7-7 7"/></symbol>
+  <symbol id="ps-i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4 4L19 6"/></symbol>
+  <symbol id="ps-i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7v5h-5M4 17v-5h5M6.1 7a7 7 0 0 1 11.6-2L20 8M4 16l2.3 3A7 7 0 0 0 17.9 17"/></symbol>
+  <symbol id="ps-i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 10 18H2L12 3Zm0 5v6m0 3v.01"/></symbol>
+  <symbol id="ps-i-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0ZM4 21v-3a8 5 0 0 1 16 0v3"/></symbol>
+  <symbol id="ps-i-brain" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4C8 0 4 4 5 7c-5 1-4 7-1 8-1 5 5 8 8 4 3 4 9 1 8-4 3-1 4-7-1-8 1-3-3-7-7-3Zm0 0v15"/></symbol>
+  <symbol id="ps-i-tool" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 3a6 6 0 0 1-8 8L5 21l-3-3 9-9a6 6 0 0 1 8-8l-4 4 3 3 3-5Z"/></symbol>
+  <symbol id="ps-i-conversation" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 4H3v13h5l4 4 4-4h5V4Z"/></symbol>
+  <symbol id="ps-i-roadmap" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3V6Zm6-3v15m6-12v15"/></symbol>
+  <symbol id="ps-i-session" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h10l4 4v14H5V3Zm10 0v5h4M8 12h8M8 16h6"/></symbol>
+  <symbol id="ps-i-agents" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+  <symbol id="ps-i-files" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a1 1 0 0 1 1-1h5l2 3h9a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7Z"/></symbol>
+  <symbol id="ps-i-preferences" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m10 3-.5 2-2 .9-1.8-.6-2 3.4L5.2 10v2l-1.5 1.3 2 3.4 1.8-.6 2 .9.5 2h4l.5-2 2-.9 1.8.6 2-3.4-1.5-1.3v-2l1.5-1.3-2-3.4-1.8.6-2-.9L14 3h-4ZM15 11a3 3 0 1 1-6 0 3 3 0 0 1 6 0"/></symbol>
+  <symbol id="ps-i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10.5h10a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-5.5a2 2 0 0 1 2-2ZM8 10.5V7a4 4 0 0 1 8 0v3.5"/></symbol>
+  <symbol id="ps-i-unlock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10.5h10a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-5.5a2 2 0 0 1 2-2ZM8 10.5V7a4 4 0 0 1 7.8-1.3"/></symbol>
+  <symbol id="ps-i-machine" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h18v12H3V4Zm9 12v4m-5 0h10"/></symbol>
+  <symbol id="ps-i-scan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V5h3M17 5h3v3M20 16v3h-3M7 19H4v-3M7 12h10"/></symbol>
+  <symbol id="ps-i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6m4-6v6M6 7l1 13h10l1-13M9 7V4h6v3"/></symbol>
+  <symbol id="ps-i-image" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3ZM9.5 8a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0M3 17l6-6 4 4 3-3 5 5"/></symbol>
+  <symbol id="ps-i-paperclip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m21 11-8.5 8.5a6 6 0 0 1-8.5-8.5l9-9a4 4 0 0 1 5.7 5.7l-9 9a2 2 0 0 1-2.9-2.9L15 6.5"/></symbol>
+
+  <!-- Preview sheet (ignored when the file is used as a sprite) -->
+  <style>.ps-sheet-title{font:600 15px "Segoe UI Variable Text","Segoe UI",-apple-system,sans-serif;fill:#ededea}.ps-sheet-sub{font:11px "Segoe UI Variable Text","Segoe UI",-apple-system,sans-serif;fill:#96979d}.ps-sheet-name{font:10px "Cascadia Code",Consolas,monospace;fill:#96979d}</style>
+  <rect width="976" height="636" fill="#1b1c1e"/>
+  <text class="ps-sheet-title" x="24" y="34">Prime Agent Studio icons</text>
+  <text class="ps-sheet-sub" x="24" y="53">56 icons · 24 px grid · stroke 1.5 · id ps-i-&lt;name&gt;</text>
+  <g color="#ededea">
+    <rect x="28" y="74" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-plus" xlink:href="#ps-i-plus" x="70" y="84" width="24" height="24"/>
+    <text class="ps-sheet-name" x="82" y="128" text-anchor="middle">plus</text>
+    <rect x="144" y="74" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-bell" xlink:href="#ps-i-bell" x="186" y="84" width="24" height="24"/>
+    <text class="ps-sheet-name" x="198" y="128" text-anchor="middle">bell</text>
+    <rect x="260" y="74" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-search" xlink:href="#ps-i-search" x="302" y="84" width="24" height="24"/>
+    <text class="ps-sheet-name" x="314" y="128" text-anchor="middle">search</text>
+    <rect x="376" y="74" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-folder" xlink:href="#ps-i-folder" x="418" y="84" width="24" height="24"/>
+    <text class="ps-sheet-name" x="430" y="128" text-anchor="middle">folder</text>
+    <rect x="492" y="74" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-folder-plus" xlink:href="#ps-i-folder-plus" x="534" y="84" width="24" height="24"/>
+    <text class="ps-sheet-name" x="546" y="128" text-anchor="middle">folder-plus</text>
+    <rect x="608" y="74" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-branch" xlink:href="#ps-i-branch" x="650" y="84" width="24" height="24"/>
+    <text class="ps-sheet-name" x="662" y="128" text-anchor="middle">branch</text>
+    <rect x="724" y="74" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-archive" xlink:href="#ps-i-archive" x="766" y="84" width="24" height="24"/>
+    <text class="ps-sheet-name" x="778" y="128" text-anchor="middle">archive</text>
+    <rect x="840" y="74" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-settings" xlink:href="#ps-i-settings" x="882" y="84" width="24" height="24"/>
+    <text class="ps-sheet-name" x="894" y="128" text-anchor="middle">settings</text>
+    <rect x="28" y="152" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-menu" xlink:href="#ps-i-menu" x="70" y="162" width="24" height="24"/>
+    <text class="ps-sheet-name" x="82" y="206" text-anchor="middle">menu</text>
+    <rect x="144" y="152" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-more" xlink:href="#ps-i-more" x="186" y="162" width="24" height="24"/>
+    <text class="ps-sheet-name" x="198" y="206" text-anchor="middle">more</text>
+    <rect x="260" y="152" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-grip" xlink:href="#ps-i-grip" x="302" y="162" width="24" height="24"/>
+    <text class="ps-sheet-name" x="314" y="206" text-anchor="middle">grip</text>
+    <rect x="376" y="152" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-panel" xlink:href="#ps-i-panel" x="418" y="162" width="24" height="24"/>
+    <text class="ps-sheet-name" x="430" y="206" text-anchor="middle">panel</text>
+    <rect x="492" y="152" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-layout" xlink:href="#ps-i-layout" x="534" y="162" width="24" height="24"/>
+    <text class="ps-sheet-name" x="546" y="206" text-anchor="middle">layout</text>
+    <rect x="608" y="152" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-map" xlink:href="#ps-i-map" x="650" y="162" width="24" height="24"/>
+    <text class="ps-sheet-name" x="662" y="206" text-anchor="middle">map</text>
+    <rect x="724" y="152" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-compass" xlink:href="#ps-i-compass" x="766" y="162" width="24" height="24"/>
+    <text class="ps-sheet-name" x="778" y="206" text-anchor="middle">compass</text>
+    <rect x="840" y="152" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-code" xlink:href="#ps-i-code" x="882" y="162" width="24" height="24"/>
+    <text class="ps-sheet-name" x="894" y="206" text-anchor="middle">code</text>
+    <rect x="28" y="230" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-bug" xlink:href="#ps-i-bug" x="70" y="240" width="24" height="24"/>
+    <text class="ps-sheet-name" x="82" y="284" text-anchor="middle">bug</text>
+    <rect x="144" y="230" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-sparkles" xlink:href="#ps-i-sparkles" x="186" y="240" width="24" height="24"/>
+    <text class="ps-sheet-name" x="198" y="284" text-anchor="middle">sparkles</text>
+    <rect x="260" y="230" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-arrow-up-right" xlink:href="#ps-i-arrow-up-right" x="302" y="240" width="24" height="24"/>
+    <text class="ps-sheet-name" x="314" y="284" text-anchor="middle">arrow-up-right</text>
+    <rect x="376" y="230" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-arrow-up" xlink:href="#ps-i-arrow-up" x="418" y="240" width="24" height="24"/>
+    <text class="ps-sheet-name" x="430" y="284" text-anchor="middle">arrow-up</text>
+    <rect x="492" y="230" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-arrow-down" xlink:href="#ps-i-arrow-down" x="534" y="240" width="24" height="24"/>
+    <text class="ps-sheet-name" x="546" y="284" text-anchor="middle">arrow-down</text>
+    <rect x="608" y="230" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-model" xlink:href="#ps-i-model" x="650" y="240" width="24" height="24"/>
+    <text class="ps-sheet-name" x="662" y="284" text-anchor="middle">model</text>
+    <rect x="724" y="230" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-stop" xlink:href="#ps-i-stop" x="766" y="240" width="24" height="24"/>
+    <text class="ps-sheet-name" x="778" y="284" text-anchor="middle">stop</text>
+    <rect x="840" y="230" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-shield" xlink:href="#ps-i-shield" x="882" y="240" width="24" height="24"/>
+    <text class="ps-sheet-name" x="894" y="284" text-anchor="middle">shield</text>
+    <rect x="28" y="308" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-copy" xlink:href="#ps-i-copy" x="70" y="318" width="24" height="24"/>
+    <text class="ps-sheet-name" x="82" y="362" text-anchor="middle">copy</text>
+    <rect x="144" y="308" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-download" xlink:href="#ps-i-download" x="186" y="318" width="24" height="24"/>
+    <text class="ps-sheet-name" x="198" y="362" text-anchor="middle">download</text>
+    <rect x="260" y="308" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-upload" xlink:href="#ps-i-upload" x="302" y="318" width="24" height="24"/>
+    <text class="ps-sheet-name" x="314" y="362" text-anchor="middle">upload</text>
+    <rect x="376" y="308" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-terminal" xlink:href="#ps-i-terminal" x="418" y="318" width="24" height="24"/>
+    <text class="ps-sheet-name" x="430" y="362" text-anchor="middle">terminal</text>
+    <rect x="492" y="308" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-pencil" xlink:href="#ps-i-pencil" x="534" y="318" width="24" height="24"/>
+    <text class="ps-sheet-name" x="546" y="362" text-anchor="middle">pencil</text>
+    <rect x="608" y="308" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-pin" xlink:href="#ps-i-pin" x="650" y="318" width="24" height="24"/>
+    <text class="ps-sheet-name" x="662" y="362" text-anchor="middle">pin</text>
+    <rect x="724" y="308" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-star" xlink:href="#ps-i-star" x="766" y="318" width="24" height="24"/>
+    <text class="ps-sheet-name" x="778" y="362" text-anchor="middle">star</text>
+    <rect x="840" y="308" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-x" xlink:href="#ps-i-x" x="882" y="318" width="24" height="24"/>
+    <text class="ps-sheet-name" x="894" y="362" text-anchor="middle">x</text>
+    <rect x="28" y="386" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-moon" xlink:href="#ps-i-moon" x="70" y="396" width="24" height="24"/>
+    <text class="ps-sheet-name" x="82" y="440" text-anchor="middle">moon</text>
+    <rect x="144" y="386" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-sun" xlink:href="#ps-i-sun" x="186" y="396" width="24" height="24"/>
+    <text class="ps-sheet-name" x="198" y="440" text-anchor="middle">sun</text>
+    <rect x="260" y="386" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-monitor" xlink:href="#ps-i-monitor" x="302" y="396" width="24" height="24"/>
+    <text class="ps-sheet-name" x="314" y="440" text-anchor="middle">monitor</text>
+    <rect x="376" y="386" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-chat" xlink:href="#ps-i-chat" x="418" y="396" width="24" height="24"/>
+    <text class="ps-sheet-name" x="430" y="440" text-anchor="middle">chat</text>
+    <rect x="492" y="386" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-chevron" xlink:href="#ps-i-chevron" x="534" y="396" width="24" height="24"/>
+    <text class="ps-sheet-name" x="546" y="440" text-anchor="middle">chevron</text>
+    <rect x="608" y="386" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-check" xlink:href="#ps-i-check" x="650" y="396" width="24" height="24"/>
+    <text class="ps-sheet-name" x="662" y="440" text-anchor="middle">check</text>
+    <rect x="724" y="386" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-refresh" xlink:href="#ps-i-refresh" x="766" y="396" width="24" height="24"/>
+    <text class="ps-sheet-name" x="778" y="440" text-anchor="middle">refresh</text>
+    <rect x="840" y="386" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-alert" xlink:href="#ps-i-alert" x="882" y="396" width="24" height="24"/>
+    <text class="ps-sheet-name" x="894" y="440" text-anchor="middle">alert</text>
+    <rect x="28" y="464" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-user" xlink:href="#ps-i-user" x="70" y="474" width="24" height="24"/>
+    <text class="ps-sheet-name" x="82" y="518" text-anchor="middle">user</text>
+    <rect x="144" y="464" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-brain" xlink:href="#ps-i-brain" x="186" y="474" width="24" height="24"/>
+    <text class="ps-sheet-name" x="198" y="518" text-anchor="middle">brain</text>
+    <rect x="260" y="464" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-tool" xlink:href="#ps-i-tool" x="302" y="474" width="24" height="24"/>
+    <text class="ps-sheet-name" x="314" y="518" text-anchor="middle">tool</text>
+    <rect x="376" y="464" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-conversation" xlink:href="#ps-i-conversation" x="418" y="474" width="24" height="24"/>
+    <text class="ps-sheet-name" x="430" y="518" text-anchor="middle">conversation</text>
+    <rect x="492" y="464" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-roadmap" xlink:href="#ps-i-roadmap" x="534" y="474" width="24" height="24"/>
+    <text class="ps-sheet-name" x="546" y="518" text-anchor="middle">roadmap</text>
+    <rect x="608" y="464" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-session" xlink:href="#ps-i-session" x="650" y="474" width="24" height="24"/>
+    <text class="ps-sheet-name" x="662" y="518" text-anchor="middle">session</text>
+    <rect x="724" y="464" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-agents" xlink:href="#ps-i-agents" x="766" y="474" width="24" height="24"/>
+    <text class="ps-sheet-name" x="778" y="518" text-anchor="middle">agents</text>
+    <rect x="840" y="464" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-files" xlink:href="#ps-i-files" x="882" y="474" width="24" height="24"/>
+    <text class="ps-sheet-name" x="894" y="518" text-anchor="middle">files</text>
+    <rect x="28" y="542" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-preferences" xlink:href="#ps-i-preferences" x="70" y="552" width="24" height="24"/>
+    <text class="ps-sheet-name" x="82" y="596" text-anchor="middle">preferences</text>
+    <rect x="144" y="542" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-lock" xlink:href="#ps-i-lock" x="186" y="552" width="24" height="24"/>
+    <text class="ps-sheet-name" x="198" y="596" text-anchor="middle">lock</text>
+    <rect x="260" y="542" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-unlock" xlink:href="#ps-i-unlock" x="302" y="552" width="24" height="24"/>
+    <text class="ps-sheet-name" x="314" y="596" text-anchor="middle">unlock</text>
+    <rect x="376" y="542" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-machine" xlink:href="#ps-i-machine" x="418" y="552" width="24" height="24"/>
+    <text class="ps-sheet-name" x="430" y="596" text-anchor="middle">machine</text>
+    <rect x="492" y="542" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-scan" xlink:href="#ps-i-scan" x="534" y="552" width="24" height="24"/>
+    <text class="ps-sheet-name" x="546" y="596" text-anchor="middle">scan</text>
+    <rect x="608" y="542" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-trash" xlink:href="#ps-i-trash" x="650" y="552" width="24" height="24"/>
+    <text class="ps-sheet-name" x="662" y="596" text-anchor="middle">trash</text>
+    <rect x="724" y="542" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-image" xlink:href="#ps-i-image" x="766" y="552" width="24" height="24"/>
+    <text class="ps-sheet-name" x="778" y="596" text-anchor="middle">image</text>
+    <rect x="840" y="542" width="108" height="70" rx="9" fill="#222326" stroke="#303135"/>
+    <use href="#ps-i-paperclip" xlink:href="#ps-i-paperclip" x="882" y="552" width="24" height="24"/>
+    <text class="ps-sheet-name" x="894" y="596" text-anchor="middle">paperclip</text>
+  </g>
+</svg>

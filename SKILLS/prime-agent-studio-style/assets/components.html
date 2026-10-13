@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prime Agent Studio style: components</title>
+<link rel="stylesheet" href="studio.css">
+<script src="theme.js"></script>
+<style>
+  /* Gallery layout only. */
+  body { padding: 32px 40px 60px; }
+  .gx-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 28px; }
+  .gx-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 18px; align-items: start; }
+  .gx-cell { background: var(--bg); border: 1px solid var(--line-soft); border-radius: 12px; padding: 18px; }
+  .gx-cell > .ps-section-label { display: block; margin-bottom: 14px; }
+  .gx-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+  .gx-stack { display: grid; gap: 10px; }
+  .gx-swatch { display: grid; gap: 6px; font-size: var(--fs-caption); color: var(--muted); }
+  .gx-swatch b { display: block; height: 34px; border-radius: 7px; border: 1px solid var(--line); }
+  .gx-colors { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+</style>
+</head>
+<body>
+<div class="gx-head">
+  <div>
+    <h1 class="ps-dialog-title" style="font-size:var(--fs-section)">Prime Agent Studio style</h1>
+    <p class="ps-help">Every component of studio.css. Add <span class="ps-code-inline">?theme=light</span> to the URL for the light theme.</p>
+  </div>
+  <span class="ps-badge"><span data-icon="sparkles"></span>Kit 4.3</span>
+</div>
+<div class="gx-grid">
+
+  <section class="gx-cell">
+    <span class="ps-section-label">Surfaces and text</span>
+    <div class="gx-colors">
+      <div class="gx-swatch"><b style="background:var(--sidebar)"></b>--sidebar</div>
+      <div class="gx-swatch"><b style="background:var(--bg)"></b>--bg</div>
+      <div class="gx-swatch"><b style="background:var(--surface)"></b>--surface</div>
+      <div class="gx-swatch"><b style="background:var(--surface-raised)"></b>--surface-raised</div>
+      <div class="gx-swatch"><b style="background:var(--surface-hover)"></b>--surface-hover</div>
+      <div class="gx-swatch"><b style="background:var(--code)"></b>--code</div>
+      <div class="gx-swatch"><b style="background:var(--accent)"></b>--accent</div>
+      <div class="gx-swatch"><b style="background:var(--accent-bg)"></b>--accent-bg</div>
+      <div class="gx-swatch"><b style="background:var(--green)"></b>--green</div>
+      <div class="gx-swatch"><b style="background:var(--blue)"></b>--blue</div>
+      <div class="gx-swatch"><b style="background:var(--amber)"></b>--amber</div>
+      <div class="gx-swatch"><b style="background:var(--red)"></b>--red</div>
+    </div>
+    <p style="margin:16px 0 0;font-size:var(--fs-body)">Primary text <span class="ps-muted">muted text</span> <span class="ps-faint">faint metadata</span> <a href="#">a link</a></p>
+  </section>
+
+  <section class="gx-cell">
+    <span class="ps-section-label">Type scale</span>
+    <div class="gx-stack">
+      <span class="ps-brand-name">prime</span>
+      <span class="ps-stat">42%</span>
+      <span class="ps-dialog-title" style="margin:0">Dialog title, 19 px 550</span>
+      <span class="ps-panel-title">Panel title, 15 px 600</span>
+      <span class="ps-heading">Section heading, 14 px 600</span>
+      <span style="font-size:var(--fs-body)">Reading text, 13 px with line height 1.8 in messages.</span>
+      <span style="font-size:var(--fs-ui)">Default UI text, 12 px: rows, buttons, menus.</span>
+      <span style="font-size:var(--fs-meta)" class="ps-muted">Meta line, 11 px: tabs, descriptions, counts.</span>
+      <span style="font-size:var(--fs-caption)" class="ps-faint">Caption, 10 px: timestamps, versions.</span>
+      <span class="ps-group-title" style="padding:0">Group title</span>
+      <span class="ps-mono ps-faint" style="font-size:var(--fs-micro)">openai-codex/gpt-6-astra</span>
+    </div>
+  </section>
+
+  <section class="gx-cell">
+    <span class="ps-section-label">Buttons</span>
+    <div class="gx-stack">
+      <div class="gx-row">
+        <button class="ps-btn ps-btn--primary">Add a plan</button>
+        <button class="ps-btn ps-btn--secondary">Cancel</button>
+        <button class="ps-btn ps-btn--danger">Remove</button>
+        <button class="ps-btn ps-btn--primary" disabled>Disabled</button>
+        <button class="ps-text-btn">Text button</button>
+      </div>
+      <div class="gx-row">
+        <button class="ps-btn ps-btn--secondary ps-btn--compact">Fetch</button>
+        <button class="ps-btn ps-btn--secondary ps-btn--compact">Pull</button>
+        <button class="ps-btn ps-btn--primary ps-btn--compact">Push</button>
+        <button class="ps-icon-btn" aria-label="Refresh"><span data-icon="refresh"></span></button>
+        <button class="ps-icon-btn ps-icon-btn--sm" aria-label="Add"><span data-icon="plus"></span></button>
+        <button class="ps-icon-btn ps-icon-btn--header is-active" aria-label="Layout"><span data-icon="layout"></span></button>
+      </div>
+      <div class="gx-row">
+        <button class="ps-pill-btn"><span data-icon="map"></span>Roadmap <span class="ps-num">42 %</span></button>
+        <button class="ps-pill-btn ps-pill-btn--sm"><span class="ps-dot" style="width:7px;height:7px"></span>Computer Use</button>
+        <button class="ps-pill-btn ps-pill-btn--sm is-on"><span class="ps-dot ps-dot--connected" style="width:7px;height:7px"></span>Computer Use</button>
+        <button class="ps-send-btn" aria-label="Send"><span data-icon="arrow-up"></span></button>
+        <button class="ps-send-btn ps-send-btn--sm" aria-label="Send" disabled><span data-icon="arrow-up"></span></button>
+      </div>
+      <div style="width:240px" class="gx-stack">
+        <button class="ps-btn ps-btn--tinted"><span data-icon="plus"></span>New session<kbd class="ps-kbd">Ctrl N</kbd></button>
+        <button class="ps-btn ps-btn--quiet"><span data-icon="folder-plus" data-size="14"></span>Add a project</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="gx-cell">
+    <span class="ps-section-label">Labels, badges, status</span>
+    <div class="gx-stack">
+      <div class="gx-row">
+        <span class="ps-tag">Local</span>
+        <kbd class="ps-kbd">Ctrl K</kbd>
+        <span class="ps-badge"><span data-icon="download"></span>Update available</span>
+        <span class="ps-badge ps-badge--solid">This address</span>
+        <span class="ps-status-letter">M</span><span class="ps-status-letter is-added">+</span><span class="ps-status-letter is-deleted">D</span>
+      </div>
+      <div class="gx-row" style="font-size:var(--fs-meta)">
+        <span class="ps-dot ps-dot--running"></span> running
+        <span class="ps-dot ps-dot--unread"></span> unread
+        <span class="ps-dot ps-dot--connected ps-dot--sm"></span> connected
+        <span class="ps-dot ps-dot--attention"></span> attention
+        <span class="ps-dot ps-dot--error"></span> error
+        <span class="ps-dot"></span> idle
+      </div>
+      <div class="gx-row">
+        <span class="ps-status is-working">Working</span>
+        <span class="ps-status">Waiting for subagents</span>
+        <span class="ps-status is-done">Completed</span>
+        <span class="ps-status is-failed">Failed</span>
+        <span class="ps-spinner"></span>
+      </div>
+    </div>
+  </section>
+
+  <section class="gx-cell">
+    <span class="ps-section-label">Inputs</span>
+    <div class="gx-stack">
+      <div><label class="ps-label" for="gx-name">Project name <small>optional</small></label><input id="gx-name" class="ps-input" placeholder="Nimbus API"></div>
+      <label class="ps-search-box"><span data-icon="search"></span><input placeholder="Search by name, provider or identifier..."></label>
+      <label class="ps-search"><span data-icon="search"></span><input placeholder="Search sessions"><kbd class="ps-kbd">Ctrl K</kbd></label>
+      <div class="gx-row">
+        <select class="ps-select"><option>English</option><option>Français</option></select>
+        <select class="ps-select ps-select--bare"><option>Maximum</option><option>High</option></select>
+        <label class="ps-checkbox"><input type="checkbox" checked>Questions</label>
+        <label class="ps-checkbox"><input type="checkbox">Computer Use</label>
+        <input class="ps-switch" type="checkbox" checked aria-label="Enter to send">
+        <input class="ps-switch" type="checkbox" aria-label="Notifications">
+      </div>
+    </div>
+  </section>
+
+  <section class="gx-cell">
+    <span class="ps-section-label">Choices</span>
+    <div class="gx-stack">
+      <div class="ps-segmented" role="radiogroup" aria-label="Agent reasoning">
+        <label><input type="radio" name="gx-r"><span>Hidden</span></label>
+        <label><input type="radio" name="gx-r" checked><span>Preview</span></label>
+        <label><input type="radio" name="gx-r"><span>Expanded</span></label>
+      </div>
+      <div class="ps-choice-cards">
+        <button aria-pressed="true"><span data-icon="moon"></span>Dark</button>
+        <button aria-pressed="false"><span data-icon="sun"></span>Light</button>
+        <button aria-pressed="false"><span data-icon="monitor"></span>System</button>
+      </div>
+      <div class="ps-settings-row">
+        <div><label class="ps-label">Enter to send</label><p class="ps-help">Otherwise, use Ctrl + Enter.</p></div>
+        <input class="ps-switch" type="checkbox" checked aria-label="Enter to send">
+      </div>
+    </div>
+  </section>
+
+  <section class="gx-cell" style="padding:0;overflow:hidden">
+    <div class="ps-tabbar">
+      <div class="ps-tabbar-tabs" role="tablist">
+        <button class="ps-tab has-lock" role="tab" aria-selected="true"><span data-icon="roadmap"></span>Roadmap<span class="ps-tab-lock is-locked" data-icon="lock"></span></button>
+        <button class="ps-tab has-lock" role="tab" aria-selected="false"><span data-icon="session"></span>Session<span class="ps-tab-lock" data-icon="unlock"></span></button>
+        <button class="ps-tab" role="tab" aria-selected="false"><span data-icon="files"></span>Files</button>
+      </div>
+      <button class="ps-chrome-btn" aria-label="Tab actions">⋯</button>
+    </div>
+    <div style="padding:18px" class="gx-stack">
+      <nav class="ps-tabs-underline" style="padding:0" role="tablist">
+        <button role="tab" aria-selected="true">Project</button><button role="tab" aria-selected="false">Session</button><button role="tab" aria-selected="false">Backlog</button>
+      </nav>
+      <div class="ps-tabs-pill" role="tablist">
+        <button role="tab" aria-selected="true">Session</button><button role="tab" aria-selected="false">Agents <span class="ps-faint">3</span></button><button role="tab" aria-selected="false">Files</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="gx-cell" style="background:var(--sidebar)">
+    <span class="ps-section-label">Navigation rows</span>
+    <h2 class="ps-group-label" style="margin-top:0">Pinned</h2>
+    <div class="ps-tree">
+      <div class="ps-tree-head">
+        <button class="ps-disclosure" aria-expanded="true" aria-label="Collapse"><span data-icon="chevron"></span></button>
+        <button class="ps-row is-active" style="--row-color: var(--project-blue)"><span class="ps-folder" data-icon="folder"></span><span class="ps-truncate">Nimbus API</span><span class="ps-dot ps-dot--running"></span><span class="ps-count">4</span></button>
+      </div>
+      <div class="ps-tree-children">
+        <button class="ps-subrow is-active"><span class="ps-truncate">Add rate limiting to the public API</span></button>
+        <button class="ps-subrow"><span class="ps-truncate">Fix flaky integration tests</span><span class="ps-dot ps-dot--unread"></span></button>
+      </div>
+    </div>
+    <div style="margin-top:10px" class="gx-stack">
+      <button class="ps-nav-item" aria-selected="true"><span data-icon="sun"></span>Appearance</button>
+      <button class="ps-nav-item" aria-selected="false"><span data-icon="model"></span>Models &amp; agents</button>
+    </div>
+  </section>
+
+  <section class="gx-cell">
+    <span class="ps-section-label">Cards and options</span>
+    <div class="gx-stack">
+      <button class="ps-card ps-card--interactive">
+        <span class="ps-card-eyebrow">Subagent</span>
+        <span class="ps-card-title">load-tester</span>
+        <span class="ps-status is-working">Working</span>
+        <span class="ps-card-meta">meta/muse-spark-1.3</span>
+        <span style="font-size:var(--fs-ui)">k6 at 5k req/s: p99 +1.4 ms, no errors.</span>
+      </button>
+      <details class="ps-activity">
+        <summary><span data-icon="terminal" class="ps-muted"></span><span><span class="ps-activity-label">Agent activity</span> <span class="ps-activity-count">&nbsp; 2 tool calls · 1 reflection</span></span><span class="ps-activity-state">Done</span><span data-icon="chevron" data-size="14" class="ps-faint"></span></summary>
+        <div class="ps-activity-content">Content</div>
+      </details>
+      <div>
+        <h3 class="ps-group-title">Favorites</h3>
+        <button class="ps-option" aria-selected="true"><span><span class="ps-option-name">GPT-6 Astra</span><span class="ps-option-detail">openai-codex/gpt-6-astra</span></span></button>
+        <button class="ps-option" aria-selected="false"><span><span class="ps-option-name">Claude Opus 5.5</span><span class="ps-option-detail">anthropic/claude-opus-5-5</span></span></button>
+      </div>
+      <button class="ps-starter"><span class="ps-icon-tile"><span data-icon="compass"></span></span><span><strong>Explore the project</strong><small>Understand before building</small></span></button>
+    </div>
+  </section>
+
+  <section class="gx-cell">
+    <span class="ps-section-label">Key and value list</span>
+    <dl class="ps-kv">
+      <dt>Studio version</dt><dd>4.3.2</dd>
+      <dt>Engine</dt><dd class="ps-mono">0.9.8</dd>
+      <dt>Authorized projects</dt><dd>3</dd>
+    </dl>
+    <dl class="ps-kv ps-kv--framed" style="margin-top:16px">
+      <dt>Address</dt><dd class="ps-mono">laptop.tail4c2a.ts.net</dd>
+      <dt>Scopes</dt><dd>read, runs:write</dd>
+      <dt>Token</dt><dd class="ps-mono">•••• 7f2a</dd>
+    </dl>
+  </section>
+
+  <section class="gx-cell">
+    <span class="ps-section-label">Machines (touch list)</span>
+    <ul class="ps-machine-list">
+      <li><a class="ps-machine" href="#" style="--machine-color: var(--device-cyan)">
+        <span class="ps-machine-icon"><span data-icon="machine"></span></span>
+        <span class="ps-machine-body"><span class="ps-machine-name">Workstation <span class="ps-badge ps-badge--solid">This address</span></span><span class="ps-machine-meta">Local network · <code>192.168.1.20:3088</code></span></span>
+      </a></li>
+      <li><a class="ps-machine" href="#" style="--machine-color: var(--device-yellow)">
+        <span class="ps-machine-icon"><span data-icon="machine"></span></span>
+        <span class="ps-machine-body"><span class="ps-machine-name">Laptop</span><span class="ps-machine-meta">Tailscale HTTPS · <code>laptop.tail4c2a.ts.net</code></span></span>
+      </a></li>
+    </ul>
+  </section>
+
+  <section class="gx-cell">
+    <span class="ps-section-label">Menus</span>
+    <div class="gx-row" style="align-items:flex-start">
+      <div class="ps-menu" role="menu">
+        <button role="menuitem"><span data-icon="plus"></span>New conversation</button>
+        <button role="menuitem"><span data-icon="pin"></span>Pin</button>
+        <div class="ps-menu-divider"></div>
+        <div class="ps-menu-label">Folder color</div>
+        <div class="ps-swatches" role="radiogroup" aria-label="Folder color">
+          <button class="ps-swatch is-default" role="radio" aria-checked="false" aria-label="Default"></button>
+          <button class="ps-swatch" role="radio" aria-checked="true" aria-label="Blue" style="--swatch:var(--project-blue)"></button>
+          <button class="ps-swatch" role="radio" aria-checked="false" aria-label="Green" style="--swatch:var(--project-green)"></button>
+          <button class="ps-swatch" role="radio" aria-checked="false" aria-label="Amber" style="--swatch:var(--project-amber)"></button>
+          <button class="ps-swatch" role="radio" aria-checked="false" aria-label="Red" style="--swatch:var(--project-red)"></button>
+          <button class="ps-swatch" role="radio" aria-checked="false" aria-label="Violet" style="--swatch:var(--project-violet)"></button>
+        </div>
+        <div class="ps-menu-divider"></div>
+        <button role="menuitem" class="is-danger"><span data-icon="x"></span>Remove from Studio</button>
+      </div>
+      <div class="ps-context-menu" role="menu">
+        <button role="menuitem">Add Tab</button>
+        <button role="menuitem">Close</button>
+        <button role="menuitem">Close others</button>
+        <hr>
+        <button role="menuitem">Save layout</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="gx-cell">
+    <span class="ps-section-label">Dialog and toast</span>
+    <div class="ps-dialog" role="dialog" aria-labelledby="gx-dt" style="width:100%">
+      <div class="ps-dialog-head">
+        <span class="ps-icon-tile"><span data-icon="model"></span></span>
+        <div style="flex:1"><h2 id="gx-dt" class="ps-dialog-title">Choose a model</h2><p class="ps-dialog-desc">Search for a model or pin your favorite models to the top of the list.</p></div>
+        <button class="ps-icon-btn ps-icon-btn--sm" aria-label="Close"><span data-icon="x"></span></button>
+      </div>
+      <label class="ps-search-box"><span data-icon="search"></span><input placeholder="Search by name, provider or identifier..."></label>
+      <div class="ps-dialog-actions"><button class="ps-btn ps-btn--secondary">Cancel</button><button class="ps-btn ps-btn--primary">Done</button></div>
+    </div>
+    <div class="ps-toast" style="margin-top:14px;animation:none"><span data-icon="check"></span>Folder color updated.</div>
+    <div class="ps-toast is-error" style="margin-top:8px;animation:none"><span data-icon="alert"></span>The machine did not answer. Check its address.</div>
+  </section>
+
+  <section class="gx-cell" style="padding:0;overflow:hidden">
+    <div class="ps-banner"><span>Prime Agent Studio 4.3.2 is available.</span><button>Install and relaunch</button></div>
+    <div class="ps-banner ps-banner--warning"><span>No provider is configured on this machine.</span><button>Open Providers</button></div>
+    <div class="ps-banner ps-banner--error"><span>Sync failed: the bucket refused the request.</span></div>
+    <div class="ps-banner ps-banner--quiet"><span data-icon="shield"></span><span>Read-only access. Ask the PC owner for full control.</span></div>
+    <div style="padding:18px">
+      <div class="ps-progress-label"><span>5/12 tasks checked</span><span class="ps-stat">42%</span></div>
+      <progress class="ps-progress" value="5" max="12" style="margin-top:12px"></progress>
+    </div>
+  </section>
+
+  <section class="gx-cell">
+    <span class="ps-section-label">Plans and tasks</span>
+    <div class="ps-plan has-color" style="--plan-color: var(--plan-teal)">
+      <div class="ps-plan-head"><span class="ps-plan-dot"></span><button class="ps-plan-title" aria-expanded="true">Rate limiting</button><span class="ps-inline-count">4/7 · 57%</span></div>
+      <ul class="ps-steps">
+        <li class="ps-step is-done"><input type="checkbox" checked aria-label="Done"><span class="ps-step-title">Token bucket per API key</span></li>
+        <li class="ps-step"><input type="checkbox" aria-label="To do"><span class="ps-step-title">Load test at 5k req/s</span></li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="gx-cell">
+    <span class="ps-section-label">Conversation</span>
+    <article class="ps-msg ps-msg--user">
+      <div class="ps-msg-head"><span class="ps-avatar"><span data-icon="user"></span></span><span class="ps-msg-author">You</span><span class="ps-msg-time">05:04 PM</span></div>
+      <div class="ps-msg-body">Expose the remaining quota in the response headers.</div>
+    </article>
+    <article class="ps-msg" style="margin-bottom:0">
+      <div class="ps-msg-head"><span class="ps-avatar"><span data-icon="model"></span></span><span class="ps-msg-author">Prime Agent</span><span class="ps-msg-model">gpt-6-astra</span><span class="ps-msg-time">05:05 PM</span></div>
+      <div class="ps-msg-body ps-prose">
+        <p>Clients now see their budget before a <code>429</code>.</p>
+        <table><thead><tr><th>Check</th><th>Result</th></tr></thead><tbody><tr><td>Test suite</td><td>148 passed</td></tr></tbody></table>
+        <div class="ps-code"><div class="ps-code-bar"><span>http</span><button><span data-icon="copy"></span>Copy</button></div>RateLimit-Remaining: 584</div>
+      </div>
+    </article>
+  </section>
+
+  <section class="gx-cell">
+    <span class="ps-section-label">Agent question</span>
+    <form class="ps-question" style="margin:0" onsubmit="return false" aria-labelledby="q-demo">
+      <div class="ps-question-label">Agent question</div>
+      <h3 class="ps-question-title" id="q-demo">Which limit should apply to anonymous clients?</h3>
+      <fieldset>
+        <legend class="ps-sr-only">Which limit should apply to anonymous clients?</legend>
+        <label class="ps-question-option"><input type="radio" name="q-demo" checked><span>60 requests per minute</span></label>
+        <label class="ps-question-option"><input type="radio" name="q-demo"><span>Same limit as signed-in clients</span></label>
+        <textarea class="ps-question-input" rows="2" placeholder="Or write another answer…" aria-label="Or write another answer…"></textarea>
+      </fieldset>
+      <div class="ps-question-actions"><button class="ps-btn ps-btn--primary" type="submit">Send answer</button><button class="ps-btn ps-btn--secondary" type="button">Skip</button></div>
+      <p class="ps-question-status" role="status">The agent is waiting for your answer.</p>
+    </form>
+  </section>
+
+  <section class="gx-cell">
+    <span class="ps-section-label">Composer</span>
+    <form class="ps-composer" onsubmit="return false">
+      <div style="display:flex;gap:10px;align-items:flex-start">
+        <textarea placeholder="What would you like to build?" aria-label="Message"></textarea>
+        <button class="ps-composer-tool" type="button" aria-label="Commands">/</button>
+        <button class="ps-composer-tool" type="button" aria-label="Add a photo"><span data-icon="image"></span></button>
+      </div>
+      <div class="ps-composer-toolbar">
+        <div style="display:flex;align-items:center;gap:10px">
+          <select class="ps-select ps-select--bare" aria-label="Reasoning"><option>Maximum</option></select>
+          <span class="ps-separator"></span>
+          <label class="ps-checkbox"><input type="checkbox" checked>Questions</label>
+        </div>
+        <button class="ps-send-btn" aria-label="Send" disabled><span data-icon="arrow-up"></span></button>
+      </div>
+    </form>
+    <div class="ps-composer-hint">Enter to send · Shift Enter for a new line</div>
+  </section>
+
+</div>
+<div class="ps-toasts"></div>
+<script src="icons.js"></script>
+<script>StudioIcons.mountIcons();</script>
+</body>
+</html>

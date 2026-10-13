@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { isAbsolute, join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { RustDaemonClient } from '../lib/rust-daemon-client.mjs';
+import { terminateProcessTree } from '../lib/agent.mjs';
 
 const binary = process.argv[2];
 assert(isAbsolute(binary || ''), 'Pass an absolute Rust executable path');
@@ -43,6 +44,7 @@ const child = spawn(binary, ['--mode', 'daemon', '--daemon-socket', socketPath, 
   env,
   windowsHide: true,
   shell: false,
+  detached: process.platform !== 'win32',
   stdio: ['ignore', 'ignore', 'pipe'],
 });
 const childExited = new Promise((resolveExit) => {
@@ -140,12 +142,12 @@ try {
 } finally {
   if (owned && !completionAttempted)
     await client?.request({ type: 'complete_owned_session', activeSessionId: owned }, 65000).catch(() => {});
-  await client?.request({ type: 'shutdown', force: true }, 3000).catch(() => {});
+  // taskkill /T must run while the Windows supervisor still owns its worker tree.
+  if (process.platform === 'win32') await terminateProcessTree(child);
+  else await client?.request({ type: 'shutdown', force: true }, 3000).catch(() => {});
   client?.close();
   await Promise.race([childExited, delay(3000)]);
-  if (child.exitCode === null && child.signalCode === null) child.kill('SIGTERM');
-  await Promise.race([childExited, delay(3000)]);
-  if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+  if (child.exitCode === null && child.signalCode === null) await terminateProcessTree(child);
   await Promise.race([childExited, delay(3000)]);
   let cleaned = false;
   for (let attempt = 0; attempt < 50; attempt++) {

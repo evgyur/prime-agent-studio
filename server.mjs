@@ -382,7 +382,8 @@ export function createApp(options = {}) {
     if (!length) throw new HttpError(400, tr('server.la_demande_json_est_invalide'));
     return Buffer.concat(chunks);
   }
-  const rustOptIn = !options.runtime && Boolean(process.env.PRIME_STUDIO_RUST_CLI);
+  const rustOptIn =
+    options.runtime?.engine === 'rust' || (!options.runtime && Boolean(process.env.PRIME_STUDIO_RUST_CLI));
   const runtime =
     options.runtime ||
     createAgentRuntime({
@@ -1069,11 +1070,6 @@ export function createApp(options = {}) {
     }
     const images = validateImages(body.images);
     const files = validateFiles(body.files);
-    if (rustOptIn && files.length)
-      throw Object.assign(
-        new HttpError(409, 'File attachments are unavailable with the official Rust daemon.'),
-        { code: 'rust_file_attachment_unsupported' },
-      );
     if (rustOptIn) {
       const policy = (await subagentDefaults.get(cwd)).effective;
       if (policy.model || policy.thinking)
@@ -1108,7 +1104,7 @@ export function createApp(options = {}) {
       validateCommand(body.message, await commands.list({ cwd }), {
         attachments: images.length + files.length > 0,
       });
-    if (images.length) {
+    if (images.length && !rustOptIn) {
       const catalog = await models();
       const selected = catalog.models?.find((model) => model.id === (body.model || catalog.default?.model));
       // A usable native imageModel routes the image turn on the engine side;
@@ -1116,7 +1112,7 @@ export function createApp(options = {}) {
       if (
         selected?.input &&
         !selected.input.includes('image') &&
-        !(rustOptIn ? false : await imageRouteModel(catalog).catch(() => null))
+        !(await imageRouteModel(catalog).catch(() => null))
       )
         throw new HttpError(400, tr('ui.ce_modele_ne_prend_pas_en_charge_les_images_choisissez_un_modele'));
     }
@@ -1194,6 +1190,15 @@ export function createApp(options = {}) {
       typeof globals?.computerModel === 'string' ? globals.computerModel.trim() : '';
     let selectedModel =
       (pastudioResolved ?? body.model ?? settings?.model ?? existing?.model) || catalog.default?.model;
+    if (rustOptIn && images.length) {
+      const selected = catalog.models?.find((model) => model.id === selectedModel);
+      if (
+        !selected ||
+        selected.availability === 'unavailable' ||
+        (!selected.input?.includes('image') && !(await imageRouteModel(catalog).catch(() => null)))
+      )
+        throw new HttpError(400, tr('ui.ce_modele_ne_prend_pas_en_charge_les_images_choisissez_un_modele'));
+    }
     const computerAuthorizedForModel =
       body.computerUse === true || (existing?.id && computer.status({ sessionId: existing.id }).enabled);
     if (rustOptIn && computerAuthorizedForModel)

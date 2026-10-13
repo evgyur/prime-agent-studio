@@ -40,10 +40,11 @@ async function call(configPath, action, params, extra = {}) {
   });
 }
 
-function runPython(configPath, code) {
+function runPython(configPath, code, extraEnv = {}) {
   const script = `import importlib.util, json, sys\nsys.dont_write_bytecode=True\nspec=importlib.util.spec_from_file_location('prime_studio', sys.argv[1])\nprime_studio=importlib.util.module_from_spec(spec)\nspec.loader.exec_module(prime_studio)\nprime_studio.configure(sys.argv[2])\n${code}`;
   const child = spawn('python', ['-c', script, python, configPath], {
     cwd,
+    env: { ...process.env, ...extraEnv },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let output = '',
@@ -101,6 +102,81 @@ test('unbound identity and invalid bearer are refused; prompt has no bearer', as
     const wrong = await call(bridge.configPath, 'roadmap_read', {}, { token: 'wrong' });
     assert.equal(wrong.ok, false);
   } finally {
+    await bridge.close();
+  }
+});
+
+test('child Roadmap identity requires a native resolver and clears child activity', async () => {
+  const endpoint =
+    process.platform === 'win32'
+      ? `\\\\.\\pipe\\prime-studio-roadmap-child-${randomUUID()}`
+      : join(tmpdir(), `prime-studio-roadmap-child-${randomUUID()}.sock`);
+  const forwarded = [];
+  const server = createHttpServer(async (request, response) => {
+    let body = '';
+    for await (const chunk of request) body += chunk;
+    const payload = JSON.parse(body);
+    forwarded.push(payload);
+    response.end(JSON.stringify({ active: payload.action === 'work', revision: 3 }));
+  });
+  await new Promise((resolveListen) => server.listen(endpoint, resolveListen));
+  const child = { cwd, sessionId: 'child-1', sessionFile: resolve(cwd, 'child-1.jsonl') };
+  const bridge = createRustStudioTools({
+    cwd,
+    roadmapConfig: { socketPath: endpoint, token: 'fixture' },
+    resolveContext: async ({ root, callerSessionId }) => {
+      assert.deepEqual(root, session);
+      return callerSessionId === child.sessionId ? child : null;
+    },
+  });
+  try {
+    await bridge.ready;
+    bridge.bindSession(session);
+    await bridge.beginTurn();
+    const denied = await call(bridge.configPath, 'roadmap_read', {}, { callerSessionId: 'forged-child' });
+    assert.equal(denied.code, 'studio_tool_identity_denied');
+    const childRead = await runPython(bridge.configPath,
+      `print(json.dumps(prime_studio.roadmap_read()))`, { PRIME_STUDIO_SESSION_ID: child.sessionId });
+    assert.equal(childRead.revision, 3);
+    assert.deepEqual(forwarded.at(-1).identity, child);
+    const work = await call(bridge.configPath, 'roadmap_work',
+      { targets: [{ kind: 'plan', planId: 'p1' }] }, { callerSessionId: child.sessionId });
+    assert.equal(work.data.active, true);
+    await bridge.endTurn();
+    assert.ok(forwarded.some((item) => item.action === 'clear' && item.identity.sessionId === child.sessionId));
+    const after = await call(bridge.configPath, 'roadmap_read', {}, { callerSessionId: child.sessionId });
+    assert.equal(after.code, 'studio_tool_inactive');
+  } finally {
+    await bridge.close();
+    await new Promise((resolveClose) => server.close(resolveClose));
+  }
+});
+
+test('a child identity resolved after its turn ends cannot enter the next turn', async () => {
+  let release;
+  let started;
+  const resolving = new Promise((resolveStarted) => { started = resolveStarted; });
+  const bridge = createRustStudioTools({
+    cwd,
+    resolveContext: async () => {
+      started();
+      await new Promise((resolveRelease) => { release = resolveRelease; });
+      return { cwd, sessionId: 'child-1', sessionFile: resolve(cwd, 'child-1.jsonl') };
+    },
+  });
+  try {
+    await bridge.ready;
+    bridge.bindSession(session);
+    await bridge.beginTurn();
+    const pending = call(bridge.configPath, 'roadmap_read', {}, { callerSessionId: 'child-1' });
+    await resolving;
+    await bridge.endTurn();
+    await bridge.beginTurn();
+    release();
+    const result = await pending;
+    assert.equal(result.code, 'studio_tool_inactive');
+  } finally {
+    release?.();
     await bridge.close();
   }
 });
@@ -355,6 +431,82 @@ test('endTurn revokes new calls and cancels a pending Roadmap work request', asy
     const after = await call(bridge.configPath, 'roadmap_read', {});
     assert.equal(after.code, 'studio_tool_inactive');
     assert.deepEqual(seen, ['clear', 'work', 'clear']);
+  } finally {
+    await bridge.close();
+    await new Promise((resolveClose) => server.close(resolveClose));
+  }
+});
+
+test('Roadmap bridge rejects malformed tool arguments before the writer', async () => {
+  const endpoint =
+    process.platform === 'win32'
+      ? `\\\\.\\pipe\\prime-studio-roadmap-contract-${randomUUID()}`
+      : join(tmpdir(), `prime-studio-roadmap-contract-${randomUUID()}.sock`);
+  const forwarded = [];
+  const server = createHttpServer(async (request, response) => {
+    let body = '';
+    for await (const chunk of request) body += chunk;
+    forwarded.push(JSON.parse(body));
+    response.end(JSON.stringify({ revision: 3, active: false }));
+  });
+  await new Promise((resolveListen) => server.listen(endpoint, resolveListen));
+  const bridge = createRustStudioTools({ cwd, roadmapConfig: { socketPath: endpoint, token: 'fixture' } });
+  try {
+    await bridge.ready;
+    bridge.bindSession(session);
+    await bridge.beginTurn();
+    const initial = forwarded.length;
+    const bad = [
+      ['roadmap_read', { target: 'plan', offset: -1 }],
+      ['roadmap_read', { target: 'overview', sessionId: 'forged-child' }],
+      ['roadmap_plan', { action: 'create', title: 'Missing revision' }],
+      ['roadmap_plan', { action: 'steps', expectedRevision: 3, steps: [{ text: 'Task', children: [{ text: 'Subtask', children: [{ text: 'Leaf', children: [{}] }] }] }] }],
+      ['roadmap_check', { expectedRevision: 3, planId: 'p1', done: 'true' }],
+      ['roadmap_backlog', { action: 'add', expectedRevision: 3, number: 0 }],
+      ['roadmap_milestone', { action: 'create', expectedRevision: 3, title: '' }],
+      ['roadmap_work', { targets: [{ kind: 'plan', planId: 'p1', sessionId: 'forged-child' }] }],
+    ];
+    for (const [action, params] of bad) {
+      const result = await call(bridge.configPath, action, params);
+      assert.equal(result.code, 'studio_tool_invalid', action);
+    }
+    assert.equal(forwarded.length, initial);
+    const good = await call(bridge.configPath, 'roadmap_plan', {
+      action: 'create', expectedRevision: 3, title: 'Plan', steps: [{ text: 'Task', children: [{ text: 'Subtask' }] }],
+    });
+    assert.equal(good.ok, true);
+    assert.equal(forwarded.at(-1).params.action, 'plan.create');
+    assert.deepEqual(forwarded.at(-1).identity, session);
+  } finally {
+    await bridge.close();
+    await new Promise((resolveClose) => server.close(resolveClose));
+  }
+});
+
+test('Python exposes explicit Roadmap signatures and omits unset fields', async () => {
+  const endpoint =
+    process.platform === 'win32'
+      ? `\\\\.\\pipe\\prime-studio-roadmap-python-${randomUUID()}`
+      : join(tmpdir(), `prime-studio-roadmap-python-${randomUUID()}.sock`);
+  const forwarded = [];
+  const server = createHttpServer(async (request, response) => {
+    let body = '';
+    for await (const chunk of request) body += chunk;
+    forwarded.push(JSON.parse(body));
+    response.end(JSON.stringify({ revision: 3 }));
+  });
+  await new Promise((resolveListen) => server.listen(endpoint, resolveListen));
+  const bridge = createRustStudioTools({ cwd, roadmapConfig: { socketPath: endpoint, token: 'fixture' } });
+  try {
+    await bridge.ready;
+    bridge.bindSession(session);
+    await bridge.beginTurn();
+    const result = await runPython(bridge.configPath,
+      `import inspect\ntry:\n prime_studio.roadmap_read(sessoinId='forged')\nexcept TypeError:\n rejected=True\nelse:\n rejected=False\nprime_studio.roadmap_plan('create', 3, title='Plan')\nprint(json.dumps({'rejected':rejected,'signature':str(inspect.signature(prime_studio.roadmap_check)),'help':prime_studio.roadmap_work.__doc__}))`);
+    assert.equal(result.rejected, true);
+    assert.match(result.signature, /expectedRevision, planId, done/);
+    assert.match(result.help, /does not launch work/);
+    assert.deepEqual(forwarded.at(-1).params, { expectedRevision: 3, title: 'Plan', action: 'plan.create' });
   } finally {
     await bridge.close();
     await new Promise((resolveClose) => server.close(resolveClose));

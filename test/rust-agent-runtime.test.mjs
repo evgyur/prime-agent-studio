@@ -5,7 +5,65 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setImmediate as nextTick } from 'node:timers/promises';
 import { createAgentRuntime, createEventProjection } from '../lib/agent.mjs';
-import { createRustAgentRuntime } from '../lib/rust-agent-runtime.mjs';
+import { createRustAgentRuntime, parseRustModelList } from '../lib/rust-agent-runtime.mjs';
+
+test('Rust catalogue uses the executable available-model list, excluding JS-only registrations', async () => {
+  assert.deepEqual(
+    parseRustModelList('No models available. Use /login to log into a provider via OAuth or API key.'),
+    [],
+  );
+  assert.throws(() => parseRustModelList('provider model context'), /Invalid Rust model catalogue/);
+  const native = parseRustModelList(
+    'provider       model        context  max-out  thinking  images\n' +
+      'openai         supported    128K     16K      yes       yes   \n' +
+      'custom         native-only  64K      8K       no        no    \n' +
+      'custom         reasoning    64K      8K       yes       no    \n',
+  );
+  let configuredDefault = 'meta/js-only';
+  const metadata = {
+    agentHome: tmpdir(),
+    sessionDir: join(tmpdir(), 'sessions'),
+    close: async () => {},
+    getModels: async () => ({
+      models: [
+        { id: 'meta/js-only', provider: 'meta', name: 'JS only' },
+        { id: 'openai/supported', provider: 'openai', name: 'Supported', input: ['text'] },
+      ],
+      default: { model: configuredDefault, thinking: 'low' },
+    }),
+  };
+  let listings = 0;
+  const runtime = createRustAgentRuntime(
+    { rustCliPath: join(tmpdir(), 'prime-agent') },
+    {
+      metadata,
+      cli: { packageDir: tmpdir() },
+      listNativeModels: async () => {
+        listings++;
+        return native;
+      },
+    },
+  );
+  try {
+    const catalog = await runtime.getModels();
+    assert.deepEqual(
+      catalog.models.map((model) => model.id),
+      ['openai/supported', 'custom/native-only', 'custom/reasoning'],
+    );
+    assert.deepEqual(catalog.models[0].input, ['text', 'image']);
+    assert.equal(catalog.default.model, null);
+    assert.equal(Object.hasOwn(catalog.models[2], 'thinkingLevels'), false);
+    assert.deepEqual(catalog.configuredProviders, ['openai', 'custom']);
+    await runtime.getModels();
+    assert.equal(listings, 1);
+    configuredDefault = 'openai/supported';
+    const refreshed = await runtime.getModels({ refresh: true });
+    assert.equal(refreshed.default.model, 'openai/supported');
+    assert.equal(listings, 2);
+  } finally {
+    await runtime.close();
+  }
+});
 
 test('native tool updates and ends retain names from interleaved starts', () => {
   const project = createEventProjection();
@@ -84,6 +142,7 @@ async function fixture(
     commands = [],
     clients = [];
   let launch,
+    toolsConfig,
     ended = 0,
     closed = 0;
   class Client {
@@ -136,6 +195,31 @@ async function fixture(
           this.rejectPrompt = reject;
         });
       if (command.type === 'wait_for_headless_completion') return { success: true, data: completion };
+      if (command.type === 'list')
+        return {
+          success: true,
+          data: {
+            sessions: [
+              {
+                sessionId: 'session-1',
+                activeSessionId: 'active-1',
+                cwd,
+                sessionFile: join(cwd, 'session-1.jsonl'),
+                rlmDepth: 0,
+              },
+              {
+                sessionId: 'child-1',
+                activeSessionId: 'child-active',
+                cwd,
+                sessionFile: join(cwd, 'child-1.jsonl'),
+                rlmDepth: 1,
+                parentSessionPath: join(cwd, 'session-1.jsonl'),
+                parentSessionId: 'session-1',
+                parentActiveSessionId: 'active-1',
+              },
+            ],
+          },
+        };
       return { success: true, data: {} };
     }
   }
@@ -163,21 +247,24 @@ async function fixture(
           close: async () => {},
         };
       },
-      makeTools: () => ({
-        ready: Promise.resolve(),
-        appendSystemPrompt: (s) => s,
-        bindSession() {},
-        beginTurn: async () => {},
-        respond() {},
-        endTurn: async () => {
-          ended++;
-          await endTurn?.();
-        },
-        close: async () => {
-          closed++;
-          if (cleanupError) throw new Error('cleanup failed');
-        },
-      }),
+      makeTools: (config) => {
+        toolsConfig = config;
+        return {
+          ready: Promise.resolve(),
+          appendSystemPrompt: (s) => s,
+          bindSession() {},
+          beginTurn: async () => {},
+          respond() {},
+          endTurn: async () => {
+            ended++;
+            await endTurn?.();
+          },
+          close: async () => {
+            closed++;
+            if (cleanupError) throw new Error('cleanup failed');
+          },
+        };
+      },
     },
   );
   t.after(async () => {
@@ -192,6 +279,9 @@ async function fixture(
     commands,
     clients,
     launch,
+    get toolsConfig() {
+      return toolsConfig;
+    },
     get closed() {
       return closed;
     },
@@ -205,6 +295,7 @@ test('native completion keeps isolated runtime env and releases the owned worker
   const f = await fixture(t);
   assert.equal((await f.run.done).status, 'completed');
   assert.equal(f.launch.env.DO_NOT_TRACK, '1');
+  assert.equal(f.launch.env.PRIME_STUDIO_SESSION_PREFERENCES, '1');
   assert.equal(f.launch.env.NODE_OPTIONS, undefined);
   assert.equal(f.launch.env.PRIME_AGENT_KERNEL_PYTHON, undefined);
   assert.match(f.launch.env.PRIME_AGENT_KERNEL_VENV, /kernel-venv-rust$/);
@@ -214,6 +305,26 @@ test('native completion keeps isolated runtime env and releases the owned worker
   assert(Array.isArray(f.commands.find((c) => c.type === 'create').config.appendSystemPrompt));
   assert.equal(f.closed, 1);
   assert.equal(f.runtime.getLiveEndpoint().resolveOwner('session-1'), undefined);
+});
+
+test('child helper identity comes from the supervisor-owned session roster', async (t) => {
+  const f = await fixture(t, { holdPrompt: true });
+  const root = {
+    cwd: f.runtime.agentHome,
+    sessionId: 'session-1',
+    sessionFile: join(f.runtime.agentHome, 'session-1.jsonl'),
+  };
+  const child = await f.toolsConfig.resolveContext({ root, callerSessionId: 'child-1' });
+  assert.equal(child.sessionId, 'child-1');
+  assert.equal(child.sessionFile, join(f.runtime.agentHome, 'child-1.jsonl'));
+  assert.deepEqual(
+    f.commands.find((command) => command.type === 'list'),
+    { type: 'list', all: false, includeClientOwned: true },
+  );
+  await assert.rejects(f.toolsConfig.resolveContext({ root, callerSessionId: 'forged' }), {
+    code: 'studio_session_identity',
+  });
+  await f.run.cancel();
 });
 
 test('unsupported Rust-only gaps fail before creating a native session', async (t) => {

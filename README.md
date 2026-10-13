@@ -78,7 +78,7 @@ The opt-in **public API** connects external applications and scripts to projects
 
 Agent work runs on your PC. Model and tool calls can send data to the services you configure; provider fees may apply.
 
-Check updates in **Preferences → Updates**. Repair prepares components; an explicit restart activates them. Updates use Tauri signatures; the installer does not yet have a Windows Authenticode signature. [Installation, data and updates →](docs/en/desktop.md)
+Studio checks for updates at startup and every 30 minutes; **Update available** then appears next to **Preferences**. Repair prepares components; an explicit restart activates them. Updates use Tauri signatures; the installer does not yet have a Windows Authenticode signature. [Installation, data and updates →](docs/en/desktop.md)
 
 <details>
 <summary><strong>Run from source</strong></summary>

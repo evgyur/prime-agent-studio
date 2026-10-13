@@ -711,6 +711,11 @@ export const messages = {
   },
   'updates.check': { fr: 'Vérifier les mises à jour', en: 'Check for updates' },
   'updates.checking': { fr: 'Recherche d’une nouvelle version…', en: 'Checking for a new version…' },
+  'updates.available_footer': { fr: 'Mise à jour disponible', en: 'Update available' },
+  'updates.available_footer_title': {
+    fr: 'Version {version} disponible : ouvrir les mises à jour',
+    en: 'Version {version} available: open Updates',
+  },
   'updates.current': {
     fr: 'L’application installée est à jour.',
     en: 'The installed application is up to date.',

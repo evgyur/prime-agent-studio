@@ -98,7 +98,7 @@ The application and running server have separate versions, shown in technical de
 
 Web links, including Codex sign-in, open in the default browser. File drops use the HTML composer directly, without another file bridge. The components bridge is limited to the main application window at its exact local origin, or the native launcher. The page cannot supply paths, executables or download URLs; the verified policy and native dialogs retain that responsibility. Browsers, other ports and LAN pages do not receive these rights. Preparation buttons are absent for remote or read-only access.
 
-A network error, missing catalog or invalid signature is never reported as “up to date”. You can retry; technical details are in `desktop-update-error.log` in the data folder. The catalog becomes available with the first release containing `latest.json`. Checking is manual, with no periodic background polling.
+A network error, missing catalog or invalid signature is never reported as “up to date”. You can retry; technical details are in `desktop-update-error.log` in the data folder. The catalog becomes available with the first release containing `latest.json`. Studio also checks automatically 10 seconds after startup, then every 30 minutes, on the selected channel (stable, or beta when prereleases are enabled). This check never downloads or installs anything. When a version is available, **Update available** appears at the bottom left, next to **Preferences**: this button opens **Preferences → Updates**. Errors from this automatic check stay silent. Changing the channel hides the button until the next check.
 
 Updates carry a Tauri cryptographic signature. Installers do not yet carry a Windows Authenticode signature, which requires a separate Windows certificate.
 

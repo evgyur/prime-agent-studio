@@ -78,7 +78,7 @@ L’**API publique**, à activer explicitement, relie applications externes et s
 
 Les agents travaillent sur votre PC. Les appels aux modèles et aux outils peuvent transmettre des données aux services configurés ; des frais fournisseurs peuvent s’appliquer.
 
-Vérifiez les mises à jour dans **Préférences → Mises à jour**. La réparation prépare les composants ; un redémarrage explicite les active. Les mises à jour utilisent les signatures Tauri ; l’installateur n’a pas encore de signature Windows Authenticode. [Installation, données et mises à jour →](docs/desktop.md)
+Le Studio vérifie les mises à jour au démarrage et toutes les 30 minutes ; **Mise à jour disponible** s’affiche alors à côté de **Préférences**. La réparation prépare les composants ; un redémarrage explicite les active. Les mises à jour utilisent les signatures Tauri ; l’installateur n’a pas encore de signature Windows Authenticode. [Installation, données et mises à jour →](docs/desktop.md)
 
 <details>
 <summary><strong>Lancer depuis les sources</strong></summary>

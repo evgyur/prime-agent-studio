@@ -150,10 +150,16 @@
           <a id="open-machines" class="sidebar-settings" href="/public/machines.html#list" hidden>
             <span data-icon="monitor"></span><span data-i18n="machines.title">Machines</span>
           </a>
-          <button id="open-settings" class="sidebar-settings">
-            <span data-icon="settings"></span><span data-i18n="ui.preferences">Préférences</span
-            ><span class="settings-shortcut" data-i18n="ui.studio_local">Studio local</span>
-          </button>
+          <div class="sidebar-settings-row">
+            <button id="open-settings" class="sidebar-settings">
+              <span data-icon="settings"></span><span data-i18n="ui.preferences">Préférences</span
+              ><span class="settings-shortcut" data-i18n="ui.studio_local">Studio local</span>
+            </button>
+            <button id="update-available" class="update-available" type="button" hidden>
+              <span data-icon="download"></span
+              ><span data-i18n="updates.available_footer">Mise à jour disponible</span>
+            </button>
+          </div>
         </div>
       </aside>
       <main class="workspace">

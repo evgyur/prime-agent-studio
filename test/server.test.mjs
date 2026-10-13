@@ -19,6 +19,53 @@ test('server health and system settings report the packaged release version', as
   assert.equal((await api('/api/system')).json.studio, version);
 });
 
+test('session goal routes dispatch read, edit, stop and clear to the goal service', async (t) => {
+  const calls = [];
+  const goalService = {
+    get: async (id) => {
+      calls.push(['get', id]);
+      return { goal: null, editable: false };
+    },
+    update: async (id, body) => {
+      calls.push(['update', id, body]);
+      return { goal: null, editable: false };
+    },
+    control: async (id, action, body) => {
+      calls.push(['control', id, action, body]);
+      return { goal: null, editable: false };
+    },
+    busy: () => false,
+  };
+  const { api } = await fixture(t, { goalService });
+  const body = { cwd: 'sample', goalId: 'goal-1', expectedObjective: 'Finish' };
+  assert.equal((await api('/api/sessions/thread-1/goal')).status, 200);
+  assert.equal(
+    (await api('/api/sessions/thread-1/goal', { method: 'PATCH', body: { ...body, objective: 'Ship' } }))
+      .status,
+    200,
+  );
+  assert.equal((await api('/api/sessions/thread-1/goal/stop', { method: 'POST', body })).status, 200);
+  assert.equal((await api('/api/sessions/thread-1/goal/clear', { method: 'POST', body })).status, 200);
+  assert.deepEqual(calls, [
+    ['get', 'thread-1'],
+    ['update', 'thread-1', { ...body, objective: 'Ship' }],
+    ['control', 'thread-1', 'stop', body],
+    ['control', 'thread-1', 'clear', body],
+  ]);
+});
+
+test('ordinary run admission waits while a saved goal mutation owns the session', async (t) => {
+  const goalService = {
+    get: async () => ({ goal: null, editable: false }),
+    update: async () => ({ goal: null, editable: false }),
+    control: async () => ({ goal: null, editable: false }),
+    busy: (id) => id === 'native-session',
+  };
+  const { run, runtime } = await fixture(t, { goalService });
+  assert.equal((await run({ sessionId: 'native-session' })).status, 409);
+  assert.equal(runtime.controls.length, 0);
+});
+
 test('retired model choices are rejected for messages and defaults without switching to a paid model', async (t) => {
   const runtime = fakeRuntime();
   runtime.getModels = async () => ({

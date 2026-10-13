@@ -11,6 +11,12 @@ Depuis la version 3.0.0, les conversations apparaissent directement sous leur pr
 - Un projet déplié affiche d’abord cinq conversations, avec les sessions épinglées en premier puis les plus récentes. **Afficher plus** en ajoute cinq. **Afficher moins** revient à la première page. La conversation sélectionnée reste visible même si elle est plus ancienne.
 - Le choix des projets ouverts ou repliés est enregistré dans ce navigateur. Ouvrir une conversation depuis une autre vue déplie son projet.
 
+## Objectifs persistants
+
+Quand une conversation possède un objectif natif, le bouton **Objectif** dans l’en-tête affiche son état et sa consommation. **Modifier l’objectif** conserve les compteurs. **Arrêter l’objectif** le met en pause et arrête l’exécution en cours après confirmation du moteur. **Effacer l’objectif** retire l’objectif, mais conserve les messages de la conversation. Une modification simultanée demande de recharger l’objectif avant de réessayer.
+
+La modification apparaît si le moteur connecté annonce `goal_objective_edit` ; l’arrêt et l’effacement demandent `goal_lifecycle_control`. En l’absence de connexion au moteur ou avec un moteur plus ancien, l’objectif reste consultable sans commande incompatible. En mode consultation, aucune modification n’est disponible.
+
 ## Naviguer rapidement avec Alt
 
 Maintenez **Alt** pour afficher le menu radial au-dessus de l’espace de travail, y compris des fenêtres de dialogue ouvertes. Il contient jusqu’à six conversations non archivées, choisies selon leur dernière activité tous projets confondus, puis triées par titre. Les noms des projets apparaissent en gras avec leur couleur.

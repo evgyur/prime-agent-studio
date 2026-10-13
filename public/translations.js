@@ -5,6 +5,33 @@ export const languages = [
   { id: 'en', label: 'English' },
 ];
 export const messages = {
+  'goal.title': { en: 'Goal', fr: 'Objectif' },
+  'goal.objective': { en: 'Objective', fr: 'Objectif' },
+  'goal.edit': { en: 'Edit objective', fr: 'Modifier l’objectif' },
+  'goal.stop': { en: 'Stop goal', fr: 'Arrêter l’objectif' },
+  'goal.clear': { en: 'Clear goal', fr: 'Effacer l’objectif' },
+  'goal.tokens': { en: 'Tokens', fr: 'Jetons' },
+  'goal.time': { en: 'Time', fr: 'Temps' },
+  'goal.continuations': { en: 'Continuations', fr: 'Reprises' },
+  'goal.limit': { en: 'Maximum 4,000 characters', fr: '4 000 caractères maximum' },
+  'goal.length': {
+    en: 'Enter an objective of 1 to 4,000 characters.',
+    fr: 'Saisissez un objectif de 1 à 4 000 caractères.',
+  },
+  'goal.conflict': {
+    en: 'This goal changed elsewhere. Your draft is preserved. Reload the latest goal, review it, then save again.',
+    fr: 'Cet objectif a changé ailleurs. Votre brouillon est conservé. Rechargez la dernière version avant d’enregistrer.',
+  },
+  'goal.controlConflict': {
+    en: 'This goal changed elsewhere. Reload the latest goal before trying again.',
+    fr: 'Cet objectif a changé ailleurs. Rechargez la dernière version avant de réessayer.',
+  },
+  'goal.reload': { en: 'Reload latest', fr: 'Recharger' },
+  'goal.status.active': { en: 'active', fr: 'actif' },
+  'goal.status.paused': { en: 'paused', fr: 'en pause' },
+  'goal.status.budget_limited': { en: 'budget limited', fr: 'budget atteint' },
+  'goal.status.complete': { en: 'complete', fr: 'terminé' },
+  'goal.status.error': { en: 'error', fr: 'erreur' },
   'docking.session': { en: 'Session', fr: 'Session' },
   'docking.agents': { en: 'Agents', fr: 'Agents' },
   'docking.files': { en: 'Files', fr: 'Fichiers' },

@@ -412,6 +412,59 @@ test('successful LAN login issues an opaque HttpOnly cookie and enables read-onl
   assert.equal((await api('/api/bootstrap', { headers: { Cookie: 'prime_studio_lan=forged' } })).status, 401);
 });
 
+test('LAN goal controls reach Studio only with full control; consultation can read the goal', async (t) => {
+  for (const readOnly of [false, true]) {
+    const calls = [];
+    const goalService = {
+      get: async (id) => {
+        calls.push(['get', id]);
+        return { goal: { id: 'goal-1', objective: 'Finish' }, editable: !readOnly };
+      },
+      update: async (id, body) => {
+        calls.push(['update', id, body]);
+        return { goal: { id: 'goal-1', objective: body.objective }, editable: true };
+      },
+      control: async (id, action, body) => {
+        calls.push(['control', id, action, body]);
+        return { goal: null, editable: true };
+      },
+      busy: () => false,
+    };
+    const f = await fixture(t, { readOnly }, { goalService });
+    const path = '/api/sessions/native-session/goal';
+    const body = { cwd: f.cwd, goalId: 'goal-1', expectedObjective: 'Finish' };
+    const headers = { Cookie: await f.authenticate(), 'Content-Type': 'application/json' };
+
+    assert.equal((await f.api(path)).status, 401);
+    const current = await f.api(path, { headers });
+    assert.equal(current.status, 200);
+    assert.equal(current.json.goal.objective, 'Finish');
+    assert.deepEqual(calls, [['get', 'native-session']]);
+
+    for (const [method, suffix, data] of [
+      ['PATCH', '', { ...body, objective: 'Ship' }],
+      ['POST', '/stop', body],
+      ['POST', '/clear', body],
+    ]) {
+      const response = await f.api(path + suffix, { method, headers, body: JSON.stringify(data) });
+      assert.equal(response.status, readOnly ? 405 : 200, `${method} ${path + suffix}`);
+    }
+    assert.deepEqual(
+      calls,
+      readOnly
+        ? [['get', 'native-session']]
+        : [
+            ['get', 'native-session'],
+            ['update', 'native-session', { ...body, objective: 'Ship' }],
+            ['control', 'native-session', 'stop', body],
+            ['control', 'native-session', 'clear', body],
+          ],
+    );
+    assert.equal((await f.api(path + '/unknown', { headers })).status, 404);
+    assert.equal((await f.api(path + '/stop', { headers })).status, 404);
+  }
+});
+
 test('LAN login throttles repeated failed codes', async (t) => {
   const { login } = await fixture(t);
   for (let attempt = 0; attempt < 5; attempt++) {

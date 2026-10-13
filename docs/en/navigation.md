@@ -11,6 +11,12 @@ Since version 3.0.0, conversations appear directly beneath their collapsible pro
 - An expanded project initially shows five conversations, with pinned sessions first, followed by the most recent ones. **Show more** adds five. **Show less** returns to the first page. The selected conversation stays visible even when it is older.
 - Expanded and collapsed projects are remembered in this browser. Opening a conversation from another view expands its project.
 
+## Persistent goals
+
+When a conversation has a native goal, the **Goal** button in its header shows status and usage. **Edit objective** keeps the counters. **Stop goal** pauses it and stops the current run after the engine confirms the change. **Clear goal** removes the goal while preserving conversation messages. If another client changed the goal, reload it before retrying.
+
+Editing appears when the connected engine advertises `goal_objective_edit`; stopping and clearing require `goal_lifecycle_control`. With no engine connection, or with an older engine, the goal remains read-only. Consultation mode also hides mutations.
+
 ## Switch quickly with Alt
 
 Hold **Alt** to show the radial switcher above the workspace, including open dialogs. It contains up to six non-archived conversations, chosen by their latest activity across all projects, then sorted alphabetically by title. Project names appear in bold with their assigned color.

@@ -8,7 +8,7 @@
 
 A note below each title explains scope without adding controls: appearance and typing preferences apply to this browser and address; accounts, MCP and model defaults apply to Prime Agent on this PC. Studio subagent defaults can be overridden for a project. The conversation model remains separate from the default model.
 
-**Tools** opens MCP and Skills/Prompts catalogs, with their global and selected-project folders. **Remote access**, restricted to the PC, enables LAN and Tailscale without interrupting agents and provides links and QR codes: see [the mobile guide](lan.md). **System** shows versions, engine availability and the running agent count; copied diagnostics exclude keys and conversations. Opening logs is restricted to the PC.
+**Tools** opens MCP and Skills/Prompts catalogs, with their global and selected-project folders. **Remote access**, available on the PC or from an authenticated remote device with full control, enables LAN and Tailscale without interrupting agents and provides links and QR codes: see [the mobile guide](lan.md). **System** shows versions, engine availability and the running agent count; copied diagnostics exclude keys and conversations. Opening logs is also available remotely with full control; the logs folder opens on the PC.
 
 The **Tailscale HTTPS** card also configures the private address needed for [PWA installation](pwa.md), with a Tailscale approval link when needed and a retry action in the panel. It preserves the PIN and other access channels.
 
@@ -52,7 +52,7 @@ Open **Preferences → Models & agents → Configure** on the PC. The first area
 
 The **Subagents** area, verified with Prime Agent **0.9.7**, defines the default model and reasoning level for all projects. The model button opens the same selector as conversations: identical catalog, integrated search by name, provider or ID, and shared favorites. Available levels depend on the selected model. **Engine default** uses the native default model, or the parent model when none is set. **Parent level** preserves reasoning-level inheritance.
 
-For a specific project, open a conversation and the right panel’s **Agents** tab. Settings are available before the first message, as soon as a project is selected; they are saved for that project without creating a Prime Agent session or starting an agent. In the compact **Project subagents** block, **Global** hides the selectors and uses shared defaults. Choose **This project** to show the model and reasoning level and create a project override. Each change saves immediately. Returning to **Global** removes the override and hides the selectors again. This setting is also available on phones with full control; read-only connections can only view it. Global settings remain desktop-only.
+For a specific project, open a conversation and the right panel’s **Agents** tab. Settings are available before the first message, as soon as a project is selected; they are saved for that project without creating a Prime Agent session or starting an agent. In the compact **Project subagents** block, **Global** hides the selectors and uses shared defaults. Choose **This project** to show the model and reasoning level and create a project override. Each change saves immediately. Returning to **Global** removes the override and hides the selectors again. This setting is also available on phones with full control; read-only connections can only view it. Global settings are also available from authenticated remote devices with full control.
 
 Studio adds a dynamic instruction to the system prompt without replacing `SYSTEM.md`, `APPEND_SYSTEM.md`, project instructions or skills. It also supplies missing values in `rlm.spawn(…, name="…")` calls, so the engine applies the choice. Explicit `model` or `thinking` arguments take priority. When the Studio default is empty, the native default applies before the parent model. Prime Agent checks model authentication and reasoning-level compatibility; if you inherit the parent model while fixing a level, that model must support the level.
 
@@ -60,7 +60,7 @@ Settings are stored in `.local/subagent-defaults.json`, separately from native f
 
 The same screen also adds, edits or removes custom definitions in `~/.prime/agent/models.json`, then refreshes the selector. Existing advanced fields are preserved. For a new provider, enter an environment variable’s **name**, never its secret value. The server accepts only the four protocols documented by Prime Agent and blocks URLs containing credentials, query parameters or fragments. HTTPS is required except for local loopback services. An address associated with existing credentials cannot be replaced from the form, to prevent accidentally sending a key to another server.
 
-Before writing, Studio saves a `models.json.prime-studio.bak` or `settings.json.prime-studio.bak` copy in the same folder. The configurator and its write routes are restricted to `127.0.0.1`; they do not pass through the LAN gateway. Already-configured models remain available in the phone’s selector.
+Before writing, Studio saves a `models.json.prime-studio.bak` or `settings.json.prime-studio.bak` copy in the same folder. The configurator and its write routes are available on the PC and from authenticated remote devices with full control, but not in consultation mode. Already-configured models remain available in the phone’s selector.
 
 ### Advanced models and autonomous budgets (Prime Agent 0.9.7)
 
@@ -78,11 +78,11 @@ The four **default autonomous budgets** (`autonomous.maxContinuations`, `maxTurn
 
 The **native subagent default** (`subagentDefaultModel`) is a separate native field, labeled distinctly so it cannot be confused with Studio settings. Saving this field does not change the Studio preferences in `.local/subagent-defaults.json`. Priority stays: explicit `model`/`thinking` arguments > Studio settings (global or project) > native default > parent model. Clearing this field removes the native default; explicit arguments and Studio preferences still take priority.
 
-Writes go through the native `FileSettingsStorage` lock, merge unknown fields without erasing them, validate every value strictly, and keep a `settings.json.prime-studio.bak` backup. A concurrent change from another tab returns a 409 conflict: reload settings before saving. The `GET`/`POST /api/engine-settings` routes are PC-only (`127.0.0.1`) and absent from the LAN gateway: from remote or read-only access the panel stays viewable but disabled, with no mutation possible.
+Writes go through the native `FileSettingsStorage` lock, merge unknown fields without erasing them, validate every value strictly, and keep a `settings.json.prime-studio.bak` backup. A concurrent change from another tab returns a 409 conflict: reload settings before saving. The `GET`/`POST /api/engine-settings` routes are available on the PC and through the authenticated remote gateway in full-control mode. Consultation mode cannot read or change these settings.
 
 ## Data and configuration
 
-The [Providers panel](providers.md), available only through the PC’s local address, manages native `auth.json` credentials. It offers account flows, API keys and disconnection with confirmation. Stored secrets are not returned to the browser; external settings and MCP credentials are preserved.
+The [Providers panel](providers.md), available on the PC and from authenticated remote devices with full control, manages native `auth.json` credentials. It offers account flows, API keys and disconnection with confirmation. Stored secrets are not returned to the browser; external settings and MCP credentials are preserved.
 
 The [MCP manager](mcp.md), separate from the model configurator, is also available remotely with full control. It edits the native `mcpServers` field in `settings.json` and delegates OAuth credentials to Prime Agent’s `auth.json` storage. Model-default and MCP writes use the same native lock to preserve simultaneous changes.
 

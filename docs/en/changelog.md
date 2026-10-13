@@ -4,6 +4,12 @@
 
 Changes by version. See [GitHub releases](https://github.com/zerr0o/prime-agent-studio/releases) for installers and source archives.
 
+## 4.3.2
+
+- **Update available**: the Windows app checks for updates 10 seconds after startup, then every 30 minutes, on the selected channel (stable or beta). When a version exists, an **Update available** button appears next to **Preferences** and opens **Preferences → Updates**. Nothing is downloaded or installed without your click; errors from this check stay silent.
+- **New conversations always possible**: closed conversations stayed registered and, beyond 24, blocked creation even with few open tabs. Studio now frees the oldest closed conversation without a draft, attachment or running agent. Its history remains available from the sidebar.
+- **README**: new FR/EN landing page with the full presentation film; providers, configuration and navigation guides corrected for full-control remote access.
+
 ## 4.3.1
 
 - **Computer Use in the public API**: `GET /api/v1/computer-use` reads state; `POST` enables or disables authorization for one session or run. The new `computer:write` permission defaults unchecked and is not added to existing tokens. Every write requires the previously read revision, with no takeover of another target's controller and no implicit capture or input. FR/EN guides and OpenAPI are updated.

@@ -2,7 +2,7 @@
 
 **English** · [Français](../providers.md) · [← Back to README](../../README.md)
 
-On the PC running Studio, open **http://127.0.0.1:3088 → Preferences → Models & agents → Manage connections**. This panel is restricted to local PC access: it is unavailable over LAN, Tailscale or the remote PWA, even with full control.
+Open **Preferences → Models & agents → Manage connections** on the PC running Studio or from an authenticated remote device with **full control** (LAN, Tailscale or PWA). Provider management is unavailable in consultation mode.
 
 ## Accounts and API keys
 
@@ -64,6 +64,6 @@ After a successful save, Studio refreshes its model catalog. Prime Agent remains
 
 Keys and tokens stay on the PC in the native `~/.prime/agent/auth.json` file. Writes use Prime Agent’s native lock and verify that the provider’s credentials have not changed in the meantime. Concurrent changes to another provider or an MCP are preserved.
 
-Operations run in a hidden Windows process, independently of agents. Entered keys and codes are not put in launch arguments, logs or browser storage. The remote gateway rejects management routes; hiding the button is not the only restriction.
+Operations run in a hidden Windows process, independently of agents. Entered keys and codes are not put in launch arguments, logs or browser storage. The remote gateway allows management routes only for authenticated full-control access; consultation mode cannot use them.
 
 Automated tests use temporary files and fake keys. Native storage and access restrictions are tested directly; OAuth authorizations are simulated so no personal accounts are connected or disconnected.

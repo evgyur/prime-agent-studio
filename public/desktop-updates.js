@@ -5,7 +5,14 @@ import { createDesktopComponentsPanel, componentsErrorKey, describeProgress } fr
 import { openUpdatesPane } from './desktop-components-action.js';
 import { updateView, operationActive, progressNumbers } from './desktop-update-state.js';
 
-export function createDesktopUpdates({ api, getContext, getElement = null, domId = null, instanceId = '', isPrimary = true } = {}) {
+export function createDesktopUpdates({
+  api,
+  getContext,
+  getElement = null,
+  domId = null,
+  instanceId = '',
+  isPrimary = true,
+} = {}) {
   void domId;
   void instanceId;
   const primary = isPrimary !== false;
@@ -135,6 +142,7 @@ export function createDesktopUpdates({ api, getContext, getElement = null, domId
     if (body) body.replaceChildren();
   }
   function render() {
+    syncBadge();
     const v = view();
     $('native').setAttribute('aria-busy', String(v.busy));
     $('check').disabled = v.busy || !allowed();
@@ -532,6 +540,49 @@ export function createDesktopUpdates({ api, getContext, getElement = null, domId
       render();
     };
   }
+  // Background check: once shortly after startup, then every 30 minutes, on
+  // the selected channel (stable or beta). Silent: errors are ignored and a
+  // busy updater is skipped. Only the primary instance owns the footer badge.
+  const AUTO_CHECK_DELAY_MS = 10_000;
+  const AUTO_CHECK_INTERVAL_MS = 30 * 60_000;
+  let autoTimer = null,
+    autoFlight = false;
+  function syncBadge() {
+    if (!primary) return;
+    const badge = document.getElementById('update-available');
+    if (!badge) return;
+    const show = Boolean(version) && allowed();
+    badge.hidden = !show;
+    badge.closest('.sidebar-settings-row')?.classList.toggle('has-update', show);
+    if (show) badge.title = t('updates.available_footer_title', { version });
+  }
+  async function autoCheck() {
+    if (!primary || autoFlight || !allowed() || view().busy || actionFlight) return;
+    autoFlight = true;
+    const epoch = localEpoch;
+    const want = includePrereleases === true;
+    try {
+      const update = await core.invoke('desktop_update_check', { includePrereleases: want });
+      if (epoch !== localEpoch || want !== (includePrereleases === true)) return;
+      if (want && update?.includePrereleases !== true) return;
+      checked = true;
+      versionChannel = want;
+      version = update?.available ? update.version : undefined;
+      renderNotesInto($('notes-body'), update?.notes || '');
+      $('notes').hidden = !update?.notes;
+      render();
+    } catch {
+      /* Silent: the manual check in Preferences reports errors. */
+    } finally {
+      autoFlight = false;
+    }
+  }
+  if (primary && core) {
+    setTimeout(() => void autoCheck(), AUTO_CHECK_DELAY_MS);
+    autoTimer = setInterval(() => void autoCheck(), AUTO_CHECK_INTERVAL_MS);
+    const badge = document.getElementById('update-available');
+    if (badge) badge.onclick = () => openUpdatesPane();
+  }
   $('check').onclick = async () => {
     if (view().busy || !allowed()) return;
     clearStaleSelection();
@@ -724,6 +775,8 @@ export function createDesktopUpdates({ api, getContext, getElement = null, domId
       localEpoch++;
       if (pollTimer) clearTimeout(pollTimer);
       pollTimer = null;
+      if (autoTimer) clearInterval(autoTimer);
+      autoTimer = null;
       clearRemoteTimer();
       try {
         if (primary) window.removeEventListener('studio:quit-request', onQuitRequest);

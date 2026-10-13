@@ -43,7 +43,7 @@ Les couleurs des projets teintent aussi leurs épingles et celles des conversati
 
 ![Importer des conversations dans le projet fictif Atelier.](screenshots/desktop-project-import.png)
 
-Le format `.pastudio` (v1) transfère des conversations complètes vers un autre projet existant. Fichier transférable sur un autre PC ; export et import depuis le Studio ouvert sur ce PC, pas depuis un navigateur distant (LAN/Tailscale/PWA).
+Le format `.pastudio` (v1) transfère des conversations complètes vers un autre projet existant. L’archive peut être transférée sur un autre PC. L’export et l’import sont disponibles sur le PC hôte et depuis un navigateur distant authentifié en contrôle complet (LAN/Tailscale/PWA), mais pas en mode consultation.
 
 - Contenu transféré : conversations complètes avec leurs sous-agents, ainsi que la Roadmap du projet. Les fichiers du projet, les réglages, les clés des fournisseurs, les mémoires et le moteur ne sont jamais inclus.
 - Import additif : les conversations importées s'ajoutent au projet cible sans rien effacer. Réimporter la même archive est détecté et ignoré ; si la source a changé depuis, de nouvelles copies sont créées, jamais de fusion.
@@ -77,7 +77,7 @@ Le merge demande une confirmation. Pour cette première version, les changements
 
 Vous pouvez conserver le dossier pour reprendre la tâche plus tard. La suppression d’un worktree géré demande une confirmation supplémentaire s’il contient du travail non mergé ou non commité. La branche Git est conservée ; les modifications non commitées supprimées ne sont pas sauvegardées par cette branche.
 
-Les actions de gestion sont réservées au Studio ouvert localement sur le PC. Un worktree n’est **pas une sandbox** : les processus, ports, bases de données et services externes restent partagés. Les projets utilisant des filtres Git exécutables ne sont pas pris en charge par cette V1.
+Les actions de gestion sont disponibles sur le PC et depuis un appareil distant authentifié en contrôle complet, mais pas en mode consultation. Un worktree n’est **pas une sandbox** : les processus, ports, bases de données et services externes restent partagés. Les projets utilisant des filtres Git exécutables ne sont pas pris en charge par cette V1.
 
 ## Images et pièces jointes
 

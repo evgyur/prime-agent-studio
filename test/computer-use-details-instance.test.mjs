@@ -157,3 +157,100 @@ test('visible pinned details keep exactly one existing status poller alive', asy
   ui.destroy();
   assert.equal(clears.mock.callCount(), 1);
 });
+
+
+test('conversation changes retain desktop details but invalidate scoped controls and stale replies', async (t) => {
+  const main = scope(['computer-use', 'allow-computer-use', 'computer-use-toggle', 'computer-use-status']);
+  const pinned = scope(detailIds), following = scope(detailIds);
+  const previous = globalThis.document;
+  globalThis.document = {
+    hidden: false,
+    getElementById: main,
+    createTextNode: (data) => ({ nodeType: 3, data, parentNode: null }),
+  };
+  t.after(() => {
+    if (previous === undefined) delete globalThis.document;
+    else globalThis.document = previous;
+  });
+  const active = { projectCwd: '/A', sessionId: 'sess-a', online: true, readOnly: false };
+  const locked = { ...active };
+  const requests = [], pending = [];
+  const ui = createComputerUse({
+    api: (path, options = {}) => {
+      requests.push({ path, method: options.method || 'GET', signal: options.signal });
+      return new Promise((resolve, reject) => pending.push({ resolve, reject }));
+    },
+    toast: () => assert.fail('No writes or action errors expected'),
+    getContext: () => active,
+    getDetailTargets: () => [
+      { getElement: pinned, getContext: () => locked },
+      { getElement: following, getContext: () => active },
+    ],
+  });
+  t.after(() => ui.destroy());
+  ui.update();
+  assert.equal(pinned('computer-use-warning').textContent, tr('computer.loading'));
+  assert.equal(pinned('computer-use-owner').textContent, '-');
+  const snapshot = {
+    supported: true, enabled: true, owner: { sessionId: 'sess-a', name: 'Alpha' },
+    lastAction: 'Known action', hotkey: 'Esc',
+  };
+  const initial = ui.refresh();
+  pending.shift().resolve(snapshot);
+  await initial;
+  assert.equal(ui.shouldIncludeInRun(), true);
+  const texts = () => detailIds.slice(1).map((id) => pinned(id).textContent);
+  const textBefore = texts();
+  const nodesBefore = detailIds.map((id) => pinned(id).firstChild);
+
+  active.sessionId = 'sess-b';
+  ui.onSessionChange();
+  const bRequest = pending.shift();
+  assert.deepEqual(texts(), textBefore, 'Pinned details must not flash Loading or dashes');
+  detailIds.forEach((id, i) => assert.equal(pinned(id).firstChild, nodesBefore[i]));
+  assert.equal(following('computer-use-owner').textContent, 'Alpha', 'Unlocked owner label follows B');
+  assert.equal(ui.status, null, 'Desktop display is not a scoped authorization cache');
+  assert.equal(ui.shouldIncludeInRun(), false);
+  assert.equal(main('allow-computer-use').checked, false);
+  assert.equal(main('computer-use-toggle').disabled, true);
+  assert.equal(await ui.setEnabled(true), false);
+  assert.equal(await ui.stopComputer(), false);
+
+  active.sessionId = 'sess-c';
+  ui.onSessionChange();
+  const cRequest = pending.shift();
+  assert.equal(requests[1].signal.aborted, true);
+  bRequest.resolve({ ...snapshot, owner: { sessionId: 'sess-b', name: 'Obsolete B' } });
+  await Promise.resolve();
+  assert.deepEqual(texts(), textBefore, 'Obsolete response cannot replace desktop details');
+  assert.equal(ui.status, null);
+  cRequest.reject(new Error('offline fixture'));
+  await Promise.resolve();
+  assert.equal(pinned('computer-use-warning').textContent, tr('computer.statusError'));
+  assert.equal(pinned('computer-use-owner').textContent, tr('computer.ownerMine'));
+  assert.equal(pinned('computer-use-action').textContent, 'Known action');
+  assert.equal(pinned('computer-use-hotkey').textContent, 'Esc');
+  assert.equal(main('computer-use-toggle').disabled, true);
+  assert.equal(ui.shouldIncludeInRun(), false);
+
+  const recovered = ui.refresh();
+  pending.shift().resolve({
+    ...snapshot, enabled: false, owner: { sessionId: 'sess-c', name: 'Gamma' }, lastAction: 'New action',
+  });
+  await recovered;
+  assert.equal(pinned('computer-use-owner').textContent, 'Gamma');
+  assert.equal(following('computer-use-owner').textContent, tr('computer.ownerMine'));
+  assert.equal(pinned('computer-use-action').textContent, 'New action');
+  assert.equal(main('allow-computer-use').checked, false);
+  assert.equal(ui.shouldIncludeInRun(), false);
+  locked.readOnly = active.readOnly = true;
+  ui.update();
+  assert.equal(pinned('computer-use-warning').textContent, tr('computer.readonlyNote'));
+  assert.equal(await ui.setEnabled(true), false);
+  assert.equal(await ui.stopComputer(), false);
+  locked.unavailable = true;
+  ui.update();
+  assert.equal(pinned('computer-use-details').hidden, true, 'Unavailable target never inherits another');
+  assert.ok(requests.every((request) => request.method === 'GET'));
+  assert.equal(requests.length, 4, 'Navigation keeps the single existing fetch path');
+});

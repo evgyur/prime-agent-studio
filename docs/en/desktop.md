@@ -8,7 +8,7 @@ The **Prime Agent Studio** application, built with Tauri 2, opens Studio in a de
 
 ## Installation and first launch
 
-Run [Prime-Agent-Studio_3.8.1_x64-setup.exe](https://github.com/zerr0o/prime-agent-studio/releases/download/v3.8.1/Prime-Agent-Studio_3.8.1_x64-setup.exe). Installation is limited to your Windows user and offers Start menu and desktop shortcuts. Node.js is included. The installer installs WebView2 when needed; this component may require an Internet connection.
+Run [Prime-Agent-Studio_4.3.0_x64-setup.exe](https://github.com/zerr0o/prime-agent-studio/releases/download/v4.3.0/Prime-Agent-Studio_4.3.0_x64-setup.exe). Installation is limited to your Windows user and offers Start menu and desktop shortcuts. Node.js is included. The installer installs WebView2 when needed; this component may require an Internet connection.
 
 Studio downloads **Prime Agent, private npm, uv and Python** on demand. These components are not bundled in the installer. No previous Node, npm or Python installation, PATH changes or terminal commands are needed. An initial network connection is required. **Git Bash remains a separate prerequisite** for engine shell commands; its absence is reported.
 
@@ -52,14 +52,14 @@ To reconnect to a stopped server, open **Studio preferences** from the tray icon
 
 A Windows shortcut can use the `--settings` argument to open application settings directly, including when the app is already running in the background.
 
-## Dockable workspace — 4.3 preview
+## Dockable workspace — 4.3.0
 
-**In the current 4.3 development tree, this mode is on by default on wide screens (over 1080 px).** An existing saved choice takes priority. Use **Layout → Dockable workspace** to return to classic mode. Drop a tab in the center of a region to group it, on an edge to split it, or between tabs to reorder it. Drag separators to resize panels.
+**Since version 4.3.0, this mode is on by default on wide screens (over 1080 px).** An existing saved choice takes priority. Use **Layout → Dockable workspace** to return to classic mode. Drop a tab in the center of a region to group it, on an edge to split it, or between tabs to reorder it. Drag separators to resize panels.
 
 - **Add a tab:** right-click a tab strip or use its **⋯** button. The conversation picker offers a project, an existing session, a parked draft or an empty conversation. Adding a tool reopens its primary panel when no instance is displayed; otherwise, it creates another instance.
 - **Multiple conversations:** up to eight conversation panels can be open. Each keeps its messages, full editor, model controls, draft and attachments. **New conversation** and **Ctrl+N** open a separate tab in dockable mode. Classic and mobile mode use the current conversation surface. Closing a tab neither deletes its content nor stops its run.
 - **Multiple tools:** Roadmap, Session, Agents, Files and Preferences support multiple instances, with up to sixteen open tool panels. Each instance keeps its own selection, forms and dialogs. Links and images in an inactive conversation open on the first click, without a second click to activate it.
-- **Lock a target:** the lock beside a tool tab fixes its conversation and project. An unlocked tool follows the active conversation. Data and permissions stay current; closing the source conversation does not change the target. If the target disappears, the panel shows it as unavailable and never substitutes another conversation. Unlocking resumes focus tracking. Locks survive reloads.
+- **Lock a target:** the lock inside a tool tab fixes its conversation and project. An unlocked tool follows the active conversation. Data and permissions stay current; closing the source conversation does not change the target. If the target disappears, the panel shows it as unavailable and never substitutes another conversation. Unlocking resumes focus tracking. Locks survive reloads.
 - **Preferences:** settings remain global, but each instance owns its selected category and forms. Skills and prompts use that instance’s target. A child dialog returns to its own opener. The main Preferences button still opens a popup; **Add tab → Preferences** opens a docked surface.
 - **Move or close:** drag and drop tabs to move them. The context menu no longer includes a movement submenu. **Close others** only parks siblings in the same group, preserving other groups and drafts. Arrow keys resize a focused separator; Escape cancels a move.
 - **Named layouts:** **Layout** keeps the mode switch, named layouts and reset. The old panel-opening and movement forms have been removed. A named layout stores only panel types, counts and geometry, never sessions, content, drafts or locks. Loading it reuses available instances and starts no run.

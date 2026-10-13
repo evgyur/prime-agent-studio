@@ -4,6 +4,16 @@
 
 Changes by version. See [GitHub releases](https://github.com/zerr0o/prime-agent-studio/releases) for installers and source archives.
 
+## 4.3.0
+
+- **Stable dockable workspace**: arrange up to eight conversations and sixteen tool panels. Each conversation keeps its composer, drafts, attachments and reading position. Classic and mobile layouts remain available.
+- **Independent, lockable tools**: Roadmap, Session, Agents, Files and Preferences can follow the active conversation or stay pinned. Missing targets stay unavailable; permissions remain live. Named layouts save panel types and geometry, never conversations or drafts.
+- **Computer Use flicker fixed**: switching conversations no longer clears the desktop owner, last action and stop shortcut in Session panels, including locked panels. Cached display data never grants the new conversation permission to control the desktop; delayed responses and errors remain guarded.
+- **Faster history and reliable navigation**: paged, virtual history keeps saved data complete. New conversations open distinct tabs; Roadmap loading, Preferences dialogs and first-click links/images are fixed.
+- **Refined tabs and input**: compact tool names, integrated locks, drag-and-drop placement, per-pane slash commands and inline skill expansion.
+- **Other improvements since 4.2.0**: opt-in public API v1 and interactive documentation, Roadmap completion provenance, mobile polish and dependency security updates.
+- **Limits**: native floating windows are not included. Browser Find searches mounted history text only; one very large expanded message can still be expensive. Existing reconnect-navigation and Skills focus-return issues remain tracked separately.
+
 ## 4.3.0-beta.10
 
 - **Clean labels**: tool tabs and the Add tab menu show only Roadmap, Session, Agents, Files or Preferences. The project and conversation remain visible in the panel content.

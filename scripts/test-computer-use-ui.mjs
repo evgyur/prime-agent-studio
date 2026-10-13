@@ -389,7 +389,8 @@ try {
   }));
   if (duringSwitch.status !== null) throw new Error('switch must clear scoped status');
   if (duringSwitch.include !== false) throw new Error('no stale permission reuse during reload');
-  await expect(page.locator('#computer-use-warning')).toHaveText('Chargement');
+  await expect(page.locator('#computer-use-toggle')).toBeDisabled();
+  await expect(page.locator('#computer-use-warning')).not.toHaveText('Chargement');
   await expect(page.locator('#computer-use-owner')).toHaveText('Test Session', { timeout: 10000 });
   await expect(page.locator('#computer-use-toggle')).toHaveAttribute('aria-pressed', 'false');
   await expect(page.locator('#allow-computer-use')).not.toBeChecked();

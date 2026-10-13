@@ -4,6 +4,16 @@
 
 Les changements par version. Retrouvez les installateurs et les archives du code source dans les [releases GitHub](https://github.com/zerr0o/prime-agent-studio/releases).
 
+## 4.3.0
+
+- **Espace modulaire stable** : disposez jusqu’à huit conversations et seize panneaux outils. Chaque conversation conserve son éditeur, ses brouillons, pièces jointes et position de lecture. Les dispositions classique et mobile restent disponibles.
+- **Outils indépendants et verrouillables** : Roadmap, Session, Agents, Fichiers et Préférences suivent la conversation active ou restent attachés à leur cible. Une cible absente reste indisponible ; les droits restent à jour. Les dispositions nommées ne conservent que les types de panneaux et leur géométrie.
+- **Clignotement Computer Use corrigé** : changer de conversation n’efface plus le propriétaire du bureau, la dernière action ni le raccourci d’arrêt dans les panneaux Session, même verrouillés. Ces informations conservées n’accordent aucun droit de contrôle à la nouvelle conversation ; les réponses tardives et les erreurs restent gérées.
+- **Historique et navigation plus fluides** : l’historique paginé et virtualisé conserve toutes les données enregistrées. Les nouvelles conversations ouvrent des onglets distincts ; le chargement Roadmap, les dialogues Préférences et les liens/images au premier clic sont corrigés.
+- **Onglets et saisie affinés** : noms d’outils courts, cadenas intégrés, déplacement par glisser-déposer, commandes slash par panneau et expansion des skills dans le texte.
+- **Autres améliorations depuis 4.2.0** : API publique v1 facultative et documentation interactive, provenance des tâches Roadmap terminées, finition mobile et mises à jour de sécurité des dépendances.
+- **Limites** : les fenêtres natives flottantes ne sont pas incluses. La recherche du navigateur porte sur les messages montés ; un très grand message déplié peut rester coûteux. Les défauts existants de navigation après reconnexion et de retour du focus depuis Skills restent suivis séparément.
+
 ## 4.3.0-beta.10
 
 - **Libellés sobres** : les onglets outils et le menu Ajouter un onglet affichent uniquement Roadmap, Session, Agents, Fichiers ou Préférences. Le projet et la conversation restent indiqués dans le contenu.

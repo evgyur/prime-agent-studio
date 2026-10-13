@@ -139,6 +139,7 @@ export function createComputerUse({ api, getContext, toast, getDetailTargets = n
   // persisted server-side). This module no longer stores a per-session backend
   // choice and never sends one: the server applies the global backend.
   let lastStatus = null;
+  let lastDetailsStatus = null;
   let lastFetchError = null;
   let busyAction = false;
   let stopBusy = false;
@@ -163,8 +164,8 @@ export function createComputerUse({ api, getContext, toast, getDetailTargets = n
     return `${ctx.sessionId || ''}|${ctx.runId || ''}`;
   };
 
-  function isMine(ctx = context()) {
-    const owner = lastStatus?.owner;
+  function isMine(ctx = context(), status = lastStatus) {
+    const owner = status?.owner;
     if (!owner) return false;
     if (ctx.sessionId && owner.sessionId) return owner.sessionId === ctx.sessionId;
     if (ctx.runId && owner.runId) return owner.runId === ctx.runId;
@@ -222,16 +223,16 @@ export function createComputerUse({ api, getContext, toast, getDetailTargets = n
     return tr('computer.off');
   }
 
-  function ownerText(ctx = context()) {
-    if (lastStatus == null) return '-';
-    if (lastStatus.supported === false) return tr('computer.ownerNone');
-    if (isMine(ctx)) return tr('computer.ownerMine');
-    return ownerDisplayName(lastStatus.owner) || tr('computer.ownerNone');
+  function ownerText(ctx, status) {
+    if (status == null) return '-';
+    if (status.supported === false) return tr('computer.ownerNone');
+    if (isMine(ctx, status)) return tr('computer.ownerMine');
+    return ownerDisplayName(status.owner) || tr('computer.ownerNone');
   }
 
-  function actionText() {
-    if (lastStatus == null) return '-';
-    const summary = summarizeComputerAction(lastStatus.lastAction);
+  function actionText(status) {
+    if (status == null) return '-';
+    const summary = summarizeComputerAction(status.lastAction);
     return summary || tr('computer.noAction');
   }
 
@@ -241,31 +242,32 @@ export function createComputerUse({ api, getContext, toast, getDetailTargets = n
     if (!details) return;
     details.hidden = !isVisible(ctx);
     if (details.hidden) return;
-    const known = lastStatus != null;
-    const supported = known ? lastStatus.supported !== false : true;
+    const status = lastStatus || lastDetailsStatus;
+    const known = status != null;
+    const supported = known ? status.supported !== false : true;
     const readOnly = ctx.readOnly === true;
     const warning = $('computer-use-warning');
     if (warning) {
-      if (!known)
-        bindText(warning, () => (lastFetchError ? tr('computer.statusError') : tr('computer.loading')));
+      if (lastFetchError) bindText(warning, () => tr('computer.statusError'));
+      else if (!known) bindText(warning, () => tr('computer.loading'));
       else if (!supported) bindText(warning, () => tr('computer.unsupported'));
-      else if (lastStatus.cleanupFailed === true) bindText(warning, () => tr('computer.cleanupFailed'));
-      else if (lastStatus.cleanupPending === true) bindText(warning, () => tr('computer.cleanupPending'));
+      else if (status.cleanupFailed === true) bindText(warning, () => tr('computer.cleanupFailed'));
+      else if (status.cleanupPending === true) bindText(warning, () => tr('computer.cleanupPending'));
       else if (readOnly) bindText(warning, () => tr('computer.readonlyNote'));
       else bindText(warning, () => tr('computer.warning'));
     }
     const ownerEl = $('computer-use-owner');
-    if (ownerEl) bindText(ownerEl, () => ownerText(ctx));
+    if (ownerEl) bindText(ownerEl, () => ownerText(ctx, status));
     const actionEl = $('computer-use-action');
-    if (actionEl) bindText(actionEl, () => actionText());
+    if (actionEl) bindText(actionEl, () => actionText(status));
     const hotkeyEl = $('computer-use-hotkey');
     if (hotkeyEl)
       bindText(hotkeyEl, () =>
-        lastStatus == null
+        status == null
           ? '-'
-          : lastStatus.hotkeyError
+          : status.hotkeyError
             ? tr('computer.hotkeyUnavailable')
-            : lastStatus.hotkey || '-',
+            : status.hotkey || '-',
       );
   }
 
@@ -468,6 +470,9 @@ export function createComputerUse({ api, getContext, toast, getDetailTargets = n
 
   function onSessionChange() {
     draftEnabled = false;
+    // Desktop details are global; retain them while the new session loads.
+    // Never reuse the old session's enabled flag for controls or run permissions.
+    if (lastStatus != null) lastDetailsStatus = lastStatus;
     lastStatus = null;
     lastFetchError = null;
     generation += 1;

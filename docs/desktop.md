@@ -8,7 +8,7 @@ L’application **Prime Agent Studio**, construite avec Tauri 2, ouvre le Studio
 
 ## Installation et premier lancement
 
-Exécutez l’installateur [Prime-Agent-Studio_3.8.1_x64-setup.exe](https://github.com/zerr0o/prime-agent-studio/releases/download/v3.8.1/Prime-Agent-Studio_3.8.1_x64-setup.exe). L’installation est limitée à votre utilisateur Windows et propose les raccourcis du menu Démarrer et du Bureau. Node.js est inclus. L’installateur installe WebView2 si nécessaire ; une connexion Internet peut être requise pour ce composant.
+Exécutez l’installateur [Prime-Agent-Studio_4.3.0_x64-setup.exe](https://github.com/zerr0o/prime-agent-studio/releases/download/v4.3.0/Prime-Agent-Studio_4.3.0_x64-setup.exe). L’installation est limitée à votre utilisateur Windows et propose les raccourcis du menu Démarrer et du Bureau. Node.js est inclus. L’installateur installe WebView2 si nécessaire ; une connexion Internet peut être requise pour ce composant.
 
 Studio télécharge **Prime Agent, npm privé, uv et Python** à la demande. Ces composants ne sont pas embarqués dans l’installateur. Aucune installation préalable de Node, npm ou Python, modification du PATH ou commande de terminal n’est nécessaire. Une connexion réseau initiale est requise. **Git Bash reste un prérequis séparé** pour les commandes shell du moteur ; son absence est signalée.
 
@@ -52,9 +52,9 @@ Pour retrouver un serveur arrêté, ouvrez **Préférences du Studio** depuis l�
 
 Un raccourci Windows peut utiliser l’argument `--settings` pour ouvrir directement les préférences ou le secours natif, y compris lorsqu’elle fonctionne déjà en arrière-plan.
 
-## Espace modulable — aperçu 4.3
+## Espace modulable — 4.3.0
 
-**Dans l’arbre de développement 4.3, le mode est activé par défaut sur grand écran (plus de 1080 px).** Un choix déjà enregistré reste prioritaire. **Agencement → Espace modulable** permet de revenir au mode classique. Déplacez les onglets au centre d’une zone pour les regrouper, sur un bord pour créer une séparation, ou entre deux onglets pour les réordonner. Faites glisser les séparateurs pour redimensionner les panneaux.
+**Depuis la version 4.3.0, le mode est activé par défaut sur grand écran (plus de 1080 px).** Un choix déjà enregistré reste prioritaire. **Agencement → Espace modulable** permet de revenir au mode classique. Déplacez les onglets au centre d’une zone pour les regrouper, sur un bord pour créer une séparation, ou entre deux onglets pour les réordonner. Faites glisser les séparateurs pour redimensionner les panneaux.
 
 - **Ajouter un onglet :** utilisez le clic droit sur une barre d’onglets ou son bouton **⋯**. Le sélecteur de conversation permet de choisir un projet, une session existante, un brouillon rangé ou une conversation vide. Ajouter un outil rouvre son panneau principal si aucun exemplaire n’est affiché ; sinon, cela crée un nouvel exemplaire.
 - **Conversations multiples :** jusqu’à huit panneaux de conversation peuvent être ouverts. Chaque panneau garde ses messages, son éditeur, ses contrôles de modèle, son brouillon et ses pièces jointes. Le bouton **Nouvelle conversation** et **Ctrl+N** ouvrent un onglet distinct en mode modulable. En mode classique ou mobile, ils utilisent la surface de conversation actuelle. Fermer un onglet ne supprime pas son contenu et n’arrête pas son exécution.

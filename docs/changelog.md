@@ -4,6 +4,11 @@
 
 Les changements par version. Retrouvez les installateurs et les archives du code source dans les [releases GitHub](https://github.com/zerr0o/prime-agent-studio/releases).
 
+## 4.3.4
+
+- **Modèles Muse Code selon votre abonnement** : le sélecteur n’affiche plus que les modèles réellement servis par votre offre. Muse Wonder Full n’apparaît donc plus sur les offres qui ne l’incluent pas, au lieu d’échouer avec « model not found ». La liste est lue chez Meta en lecture seule ; si elle est indisponible, tous les modèles restent affichés.
+- **Muse Wonder Contributor** : nouvelle variante Muse Code (`muse-wonder-1.0-contributor`), servie dans le mode Contributor par défaut des abonnements. Elle donne plus d’usage en échange de l’utilisation des contenus pour l’entraînement.
+
 ## 4.3.3
 
 - **Synchronisation depuis l’API publique** : `GET /api/v1/sync` lit l’état ; `POST /api/v1/projects/{projectId}/sync` synchronise immédiatement via R2 une conversation (même jamais vue sur ce PC) ou lance un cycle complet. Nouvelle permission `sync:write`, décochée par défaut. Une application peut ainsi reprendre sur un PC une conversation terminée sur un autre sans attendre le cycle de cinq minutes.

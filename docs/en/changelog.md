@@ -4,6 +4,10 @@
 
 Changes by version. See [GitHub releases](https://github.com/zerr0o/prime-agent-studio/releases) for installers and source archives.
 
+## 4.3.5
+
+- **Roadmap order syncs**: moving a plan, milestone or backlog entry now reaches other PCs. Before, each PC kept its own order when merging, so two PCs could stay different forever while both showed "synced". The order of the most recently edited roadmap wins; on a tie, every PC picks the same one. On the first cycle after updating, each remote roadmap is merged again once so existing differences heal.
+
 ## 4.3.4
 
 - **Muse Code models match your subscription**: the picker now only shows the models your plan actually serves. Muse Wonder Full no longer appears on plans that do not include it, instead of failing with "model not found". The list is read from Meta (read-only); when it is unavailable, all models stay listed.

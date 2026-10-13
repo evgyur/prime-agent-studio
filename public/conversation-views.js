@@ -1137,12 +1137,40 @@ export function createConversationViews(deps) {
     } catch {}
     return 1;
   }
+  // Frees the oldest CLOSED view (Map order = creation order) so a full
+  // registry never blocks a new conversation. Never evicts the primary, the
+  // focused view, a mounted tab, an active run, or a view whose slot still holds
+  // an unsent draft or attachments. Session histories are server-side and
+  // `session:<id>` drafts stay in storage, so reopening the session restores it.
+  function evictOldestClosed() {
+    const docking = getDocking();
+    const doc = docking?.getLayout?.();
+    if (!doc || !docking?.unregisterPanel) return false;
+    const mounted = new Set(collectMounted(doc));
+    for (const view of views.values()) {
+      if (view.id === PRIMARY_VIEW_ID || view.id === focusedId || mounted.has(view.id)) continue;
+      if (view.viewRunId && isRunActive?.(getRun?.(view.viewRunId))) continue;
+      const key = draftKeyFor(view);
+      if (readDraftKey(key)) continue;
+      const images = peekImages?.(key);
+      if (images && (images.count || images.pending || images.loading)) continue;
+      try {
+        docking.unregisterPanel(view.id);
+      } catch {}
+      views.delete(view.id);
+      try {
+        view.shell?.root?.remove();
+      } catch {}
+      persist();
+      return true;
+    }
+    return false;
+  }
+
   function createView(binding, opts = {}) {
-    // Bound BEFORE any mutation: refusing here keeps every existing record
-    // (and its unsent drafts) intact. Closed conversations stay registered and
-    // are offered for reopen, so reaching this cap means reusing a closed one.
-    // Eviction would also need explicit dock deregistration, which has no API;
-    // never silently discard.
+    // Bound BEFORE any mutation: at the cap, free the oldest safe closed view;
+    // refuse only when every closed view still holds work.
+    if (views.size >= REGISTRY_HARD_CAP) evictOldestClosed();
     if (views.size >= REGISTRY_HARD_CAP) {
       onToast(tr('conversation_view.registry_full', { count: REGISTRY_HARD_CAP }), true);
       return null;
@@ -1167,6 +1195,7 @@ export function createConversationViews(deps) {
   }
 
   function createViewFallback(binding, opts) {
+    if (views.size >= REGISTRY_HARD_CAP) evictOldestClosed();
     if (views.size >= REGISTRY_HARD_CAP) {
       onToast(tr('conversation_view.registry_full', { count: REGISTRY_HARD_CAP }), true);
       return null;

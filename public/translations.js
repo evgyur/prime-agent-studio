@@ -30,8 +30,8 @@ export const messages = {
   'conversation_picker.back': { en: 'Back to projects', fr: 'Retour aux projets' },
   'conversation_picker.close': { en: 'Close', fr: 'Fermer' },
   'conversation_view.registry_full': {
-    en: 'Conversation list is full ({count}). Reuse a closed conversation from the Add Tab menu instead of creating a new one.',
-    fr: 'Liste de conversations pleine ({count}). Réutilisez une conversation fermée depuis le menu Ajouter un onglet au lieu d’en créer une.',
+    en: 'Conversation list is full ({count}): every closed conversation still holds an unsent draft or attachment. Reopen one from the Add Tab menu, then send or clear it.',
+    fr: 'Liste de conversations pleine ({count}) : chaque conversation fermée contient encore un brouillon ou une pièce jointe non envoyés. Rouvrez-en une depuis le menu Ajouter un onglet, puis envoyez-la ou videz-la.',
   },
   'conversation_view.edit_here': { en: 'Edit here', fr: 'Modifier ici' },
   'conversation_view.edit_in_conversation': { en: 'Edit in {title}', fr: 'Modifier dans {title}' },

@@ -42,7 +42,7 @@
     "test:mobile": "node scripts/test-mobile-control.mjs",
     "test:workspace": "node scripts/test-workspace-ui.mjs",
     "test:docking": "node --test test/docking-layout.test.mjs && node scripts/test-docking-ui.mjs",
-    "test:docking:workspace": "node scripts/test-docking-workspace-ui.mjs && node scripts/test-docking-new-conversation-ui.mjs",
+    "test:docking:workspace": "node scripts/test-docking-workspace-ui.mjs && node scripts/test-docking-new-conversation-ui.mjs && node scripts/test-conversation-registry-cap-ui.mjs",
     "test:docking:resize": "node scripts/test-docking-resize-ui.mjs",
     "test:inspector": "node scripts/test-inspector-ui.mjs && node scripts/test-file-context-ui.mjs && node scripts/test-inspector-folder-ui.mjs",
     "test:git-panel": "node scripts/test-git-panel-ui.mjs",

@@ -4,6 +4,12 @@
 
 Changes by version. See [GitHub releases](https://github.com/zerr0o/prime-agent-studio/releases) for installers and source archives.
 
+## 4.3.3
+
+- **Sync from the public API**: `GET /api/v1/sync` reads state; `POST /api/v1/projects/{projectId}/sync` immediately syncs one conversation through R2 (even one this PC has never seen) or runs a full cycle. New `sync:write` permission, unchecked by default. An app can continue on one PC a conversation finished on another without waiting for the five-minute cycle.
+- **Reliable end-of-turn upload**: a conversation sync now waits for a running cycle instead of being skipped.
+- **Muse Wonder**: new Meta model (`muse-wonder-1.0`, preview) with an API key or a Muse Code subscription; **Muse Wonder Full** with a Muse Code subscription (Power Usage and Maximum Usage plans).
+
 ## 4.3.2
 
 - **Update available**: the Windows app checks for updates 10 seconds after startup, then every 30 minutes, on the selected channel (stable or beta). When a version exists, an **Update available** button appears next to **Preferences** and opens **Preferences → Updates**. Nothing is downloaded or installed without your click; errors from this check stay silent.

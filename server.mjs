@@ -1,4 +1,5 @@
 import { formatMessage as tr, requestLanguage } from './public/i18n-core.js';
+import { createVoice } from './lib/voice.mjs';
 import { createServer } from 'node:http';
 import { isModelAvailabilityError } from './lib/model-availability.mjs';
 import { readFile, stat, mkdir } from 'node:fs/promises';
@@ -190,6 +191,7 @@ async function historyJson(req, res, status, value) {
 }
 
 export function createApp(options = {}) {
+  const voice = createVoice(options.voice);
   const agentHome =
     options.agentHome || process.env.PRIME_AGENT_CODING_AGENT_DIR || join(homedir(), '.prime', 'agent');
   const sessionDir = options.sessionDir || process.env.PRIME_AGENT_SESSION_DIR || join(agentHome, 'sessions');
@@ -1443,6 +1445,8 @@ export function createApp(options = {}) {
       }
       if (isPublicApiPath(path)) return await publicApi.handle(req, res, url);
       if (isPublicApiAdminPath(path)) return await publicApi.handleAdmin(req, res, url);
+      if (method === 'GET' && path === '/api/voice') return json(res, 200, voice.status());
+      if (path === '/api/voice/transcribe') return await voice.transcribe(req, res);
       if (method === 'GET' && path === '/api/health')
         return json(res, 200, {
           service: 'prime-agent-gui',

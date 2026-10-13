@@ -12,6 +12,43 @@ import { cwdKey } from '../lib/store.mjs';
 
 const delay = (milliseconds) => new Promise((done) => setTimeout(done, milliseconds));
 
+test('voice routes preserve origin protections and never start a model turn', async (t) => {
+  const calls = [];
+  const f = await fixture(t, {
+    voice: {
+      env: { PRIME_STUDIO_VOICE_PROVIDER: 'groq', GROQ_API_KEY: 'voice-fixture-secret' },
+      fetchImpl: async (url, init) => {
+        calls.push({ url, init });
+        return Response.json({ text: 'A synthetic voice prompt.' });
+      },
+    },
+  });
+  const status = await f.api('/api/voice');
+  assert.equal(status.status, 200);
+  assert.equal(status.json.enabled, true);
+  assert.doesNotMatch(status.text, /voice-fixture-secret|api\.groq\.com/);
+  const rawBody = Buffer.concat([Buffer.from('OggS'), Buffer.alloc(32)]);
+  const request = { method: 'POST', rawBody, headers: { 'Content-Type': 'audio/ogg' } };
+  for (const headers of [
+    { Origin: 'https://untrusted.example' },
+    { 'Sec-Fetch-Site': 'cross-site' },
+    { Host: 'untrusted.example' },
+  ])
+    assert.equal(
+      (await f.api('/api/voice/transcribe', { ...request, headers: { ...request.headers, ...headers } }))
+        .status,
+      403,
+    );
+  assert.equal(calls.length, 0);
+  assert.equal((await f.api('/api/voice/transcribe')).status, 405);
+  const response = await f.api('/api/voice/transcribe', request);
+  assert.equal(response.status, 200, response.text);
+  assert.deepEqual(response.json, { text: 'A synthetic voice prompt.' });
+  assert.equal(calls.length, 1);
+  assert.equal(f.runtime.controls.length, 0);
+  assert.equal((await f.api('/api/voice/transcribe/other', request)).status, 404);
+});
+
 test('server health and system settings report the packaged release version', async (t) => {
   const { version } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
   const { api } = await fixture(t);

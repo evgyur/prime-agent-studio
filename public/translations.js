@@ -5,6 +5,57 @@ export const languages = [
   { id: 'en', label: 'English' },
 ];
 export const messages = {
+  'voice.open': { en: 'Record a voice message', fr: 'Enregistrer un message vocal' },
+  'voice.title': { en: 'Voice message', fr: 'Message vocal' },
+  'voice.cancel': { en: 'Cancel', fr: 'Annuler' },
+  'voice.send': { en: 'Send', fr: 'Envoyer' },
+  'voice.insert': { en: 'Insert text', fr: 'Insérer le texte' },
+  'voice.providerGroq': {
+    en: 'Your recording will be sent to Groq for transcription.',
+    fr: 'Votre enregistrement sera envoyé à Groq pour transcription.',
+  },
+  'voice.providerWhisper': {
+    en: 'Your recording will be transcribed by the configured Whisper service.',
+    fr: 'Votre enregistrement sera transcrit par le service Whisper configuré.',
+  },
+  'voice.requesting': { en: 'Waiting for microphone access…', fr: 'En attente de l’accès au microphone…' },
+  'voice.recording': { en: 'Recording…', fr: 'Enregistrement…' },
+  'voice.transcribing': { en: 'Transcribing…', fr: 'Transcription…' },
+  'voice.changed': {
+    en: 'The conversation or draft changed. Review the text, then insert it explicitly.',
+    fr: 'La conversation ou le brouillon a changé. Vérifiez le texte, puis insérez-le manuellement.',
+  },
+  'voice.denied': {
+    en: 'Microphone access was denied. Allow it in your browser or app settings, then try again.',
+    fr: 'L’accès au microphone a été refusé. Autorisez-le dans les paramètres du navigateur ou de l’application, puis réessayez.',
+  },
+  'voice.unsupported': {
+    en: 'Audio recording is not supported here. Use a current browser or WebView over HTTPS or localhost.',
+    fr: 'L’enregistrement audio n’est pas pris en charge ici. Utilisez un navigateur ou une WebView récente via HTTPS ou localhost.',
+  },
+  'voice.recordFailed': { en: 'Could not record audio.', fr: 'Impossible d’enregistrer le son.' },
+  'voice.transcribeFailed': {
+    en: 'Transcription failed. Your draft was not sent.',
+    fr: 'Échec de la transcription. Votre brouillon n’a pas été envoyé.',
+  },
+  'voice.cancelled': { en: 'Recording cancelled.', fr: 'Enregistrement annulé.' },
+  'voice.empty': { en: 'No speech detected.', fr: 'Aucune parole détectée.' },
+  'voice.limitDuration': {
+    en: 'Five-minute limit reached. Send to transcribe.',
+    fr: 'Limite de cinq minutes atteinte. Envoyez pour transcrire.',
+  },
+  'voice.limitSize': {
+    en: 'Recording exceeds the 10 MB limit.',
+    fr: 'L’enregistrement dépasse la limite de 10 Mo.',
+  },
+  'voice.limitText': {
+    en: 'Transcript exceeds the 32,000-character limit.',
+    fr: 'La transcription dépasse la limite de 32 000 caractères.',
+  },
+  'voice.insertUnavailable': {
+    en: 'The original conversation is no longer available.',
+    fr: 'La conversation d’origine n’est plus disponible.',
+  },
   'docking.session': { en: 'Session', fr: 'Session' },
   'docking.agents': { en: 'Agents', fr: 'Agents' },
   'docking.files': { en: 'Files', fr: 'Fichiers' },

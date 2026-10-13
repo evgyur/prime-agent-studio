@@ -81,7 +81,11 @@ test('contract matches sibling gate and public launcher facts', async () => {
 });
 
 test('models stay subscription scoped with reasoning defaults', () => {
-  assert.equal(MUSE_CODE_MODELS.length, 2);
+  assert.deepEqual(
+    MUSE_CODE_MODELS.map((model) => model.id),
+    ['muse-spark-1.3', 'muse-spark-1.3-contributor', 'muse-wonder-full-1.0', 'muse-wonder-1.0'],
+  );
+  assert.equal(MUSE_CODE_MODELS.find((model) => model.id === 'muse-wonder-full-1.0').thinkingLevelMap.max, 'max');
   for (const model of museCodeModels()) {
     assert.equal(model.reasoning, true);
     assert.equal(model.thinkingLevelMap.off, null);

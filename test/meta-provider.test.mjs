@@ -31,7 +31,8 @@ test('canonical Meta spec matches verified Model API contract', async () => {
   assert.equal(META_BASE_URL, 'https://api.meta.ai/v1');
   assert.equal(META_CREDENTIAL_ENV, 'MODEL_API_KEY');
   assert.ok(MODEL_APIS.includes(META_API), 'canonical api must be Studio-supported');
-  assert.deepEqual(META_MODEL_IDS, ['muse-spark-1.3', 'muse-spark-1.3-contributor']);
+  assert.deepEqual(META_MODEL_IDS, ['muse-spark-1.3', 'muse-spark-1.3-contributor', 'muse-wonder-1.0']);
+  assert.deepEqual(META_MODELS.map((model) => model.id), META_MODEL_IDS);
   assert.equal(META_CONTEXT_WINDOW, 1048576);
   assert.equal(META_MAX_TOKENS, 131072);
   for (const model of META_MODELS) {
@@ -49,6 +50,11 @@ test('canonical Meta spec matches verified Model API contract', async () => {
   assert.deepEqual(META_MODELS[0].cost, { input: 1.25, output: 4.25, cacheRead: 0.15, cacheWrite: 0 });
   assert.deepEqual(META_MODELS[1].cost, { input: 0.1, output: 0.2, cacheRead: 0.002, cacheWrite: 0 });
   assert.match(META_MODELS[1].name, /training allowed/);
+  // Muse Wonder: Standard only on Model API (no Contributor variant), minimal..max.
+  assert.equal(META_MODELS[2].name, 'Muse Wonder');
+  assert.equal(META_MODELS[2].thinkingLevelMap.max, 'max');
+  assert.deepEqual(META_MODELS[2].cost, { input: 4, output: 20, cacheRead: 0.2, cacheWrite: 0 });
+  assert.equal(META_MODEL_IDS.includes('muse-wonder-full-1.0'), false, 'Wonder Full is Muse Code only');
   const { formatMessage } = await import('../public/i18n-core.js');
   for (const language of ['en', 'fr']) {
     const guidance = formatMessage('providers.meta_guidance', {}, language);
@@ -68,7 +74,7 @@ test('provider config carries native-required fields with fresh copies', () => {
   assert.equal(config.baseUrl, META_BASE_URL);
   assert.equal(config.apiKey, META_CREDENTIAL_ENV);
   assert.equal(config.api, META_API);
-  assert.equal(config.models.length, 2);
+  assert.equal(config.models.length, META_MODELS.length);
   for (const model of config.models) {
     assert.ok(typeof model.id === 'string' && model.id);
     assert.ok(typeof model.name === 'string' && model.name);
@@ -161,7 +167,7 @@ test('runtime extension registers canonical provider but skips user overrides', 
     },
   });
   assert.equal(registered?.name, 'meta');
-  assert.equal(registered?.config.models.length, 2);
+  assert.equal(registered?.config.models.length, META_MODELS.length);
 
   await writeFile(
     join(dir, 'models.json'),
@@ -441,7 +447,7 @@ test('provider listing exposes Meta with native auth storage and preserves peers
   const meta = listed.providers.find((entry) => entry.id === 'meta');
   assert.ok(meta, 'meta must appear without manual custom setup');
   assert.ok(meta.methods.includes('api_key'));
-  assert.equal(meta.models, 2);
+  assert.equal(meta.models, META_MODELS.length);
   assert.equal(meta.configured, false);
   assert.doesNotMatch(JSON.stringify(listed), /peer-secret|mcp-private/);
 

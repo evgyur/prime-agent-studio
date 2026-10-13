@@ -4,6 +4,12 @@
 
 Les changements par version. Retrouvez les installateurs et les archives du code source dans les [releases GitHub](https://github.com/zerr0o/prime-agent-studio/releases).
 
+## 4.3.2
+
+- **Mise à jour disponible** : l’application Windows vérifie les mises à jour 10 secondes après le démarrage, puis toutes les 30 minutes, sur le canal choisi (stable ou bêta). Si une version existe, le bouton **Mise à jour disponible** apparaît à côté de **Préférences** et ouvre **Préférences → Mises à jour**. Rien n’est téléchargé ni installé sans votre clic ; les erreurs de cette vérification restent silencieuses.
+- **Nouvelle conversation toujours possible** : les conversations fermées restaient mémorisées et, au-delà de 24, bloquaient la création même avec peu d’onglets ouverts. Le Studio libère maintenant la plus ancienne conversation fermée sans brouillon, pièce jointe ni agent en cours. L’historique reste disponible depuis la barre latérale.
+- **README** : nouvelle page d’accueil FR/EN avec le film de présentation complet ; guides des fournisseurs, de la configuration et de la navigation corrigés pour l’accès distant en contrôle complet.
+
 ## 4.3.1
 
 - **Computer Use dans l’API publique** : `GET /api/v1/computer-use` lit l’état ; `POST` active ou désactive l’autorisation pour une session ou un run. La nouvelle permission `computer:write` est décochée par défaut et n’est pas ajoutée aux anciens jetons. Chaque écriture exige la révision lue, sans reprise du contrôleur d’une autre cible ni capture ou saisie implicite. Documentation FR/EN et OpenAPI à jour.

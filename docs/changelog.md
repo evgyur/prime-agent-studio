@@ -4,6 +4,10 @@
 
 Les changements par version. Retrouvez les installateurs et les archives du code source dans les [releases GitHub](https://github.com/zerr0o/prime-agent-studio/releases).
 
+## 4.3.5
+
+- **Ordre des Roadmaps synchronisé** : déplacer un plan, un jalon ou un élément de backlog se propage maintenant aux autres PC. Auparavant, chaque PC gardait son propre ordre lors d’une fusion : deux PC pouvaient rester différents indéfiniment tout en affichant « synchronisé ». L’ordre de la Roadmap modifiée le plus récemment l’emporte ; en cas d’égalité, tous les PC choisissent le même. Au premier cycle après la mise à jour, chaque Roadmap distante est fusionnée de nouveau une fois pour résorber les écarts existants.
+
 ## 4.3.4
 
 - **Modèles Muse Code selon votre abonnement** : le sélecteur n’affiche plus que les modèles réellement servis par votre offre. Muse Wonder Full n’apparaît donc plus sur les offres qui ne l’incluent pas, au lieu d’échouer avec « model not found ». La liste est lue chez Meta en lecture seule ; si elle est indisponible, tous les modèles restent affichés.

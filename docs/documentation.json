@@ -34,8 +34,8 @@
       "fr": "README.fr.md",
       "en": "README.md",
       "reviewed": {
-        "fr": "5b50e99619a8380354e475cb4bfbe035e3091954e35ccd0115811ad0ebc38921",
-        "en": "b7ba7ad244401b9781f46bacd1397a63c08363d0b1fa09087ef2bbea481b8899"
+        "fr": "5c5e962eef2927253a88d5a30881553aaba5a6f9f081c2fd9cf0653ecbd07d2c",
+        "en": "37271985ed7a4f5de513880fa0b87099ddbb41782ede45825526ba042d03985e"
       }
     },
     {
@@ -43,8 +43,8 @@
       "fr": "docs/changelog.md",
       "en": "docs/en/changelog.md",
       "reviewed": {
-        "fr": "b21df72979d4e055027a5d006624bbe425fc07632242d29069a18caa8950e7f6",
-        "en": "06d4b65ef569663c93afba812514859576d4f912b7a86375241e6d2b40e0b934"
+        "fr": "b7e4996518aecbbe8e598066756c87bf6741be23db31411f7e7a48e48897cec0",
+        "en": "06010c856b60442ec20d1ff92b35c8ec43db8d03b402eb4baebd682e30fc843c"
       }
     },
     {
@@ -61,8 +61,8 @@
       "fr": "docs/configuration.md",
       "en": "docs/en/configuration.md",
       "reviewed": {
-        "fr": "9457cc6f8ce2be532a97a05433c3800481b5f1548eb9592350e233a71dc3ae60",
-        "en": "b7d8be66d4c8ddd5fbaaa11f4f184aafb519aad550aad8f28498ec8da382d2b4"
+        "fr": "2c524dacd075bb081ab8f6ae340fc4e666de9a3c6c2024c189be74b5004ec41c",
+        "en": "5fda251507eff6b73ab50a79bfbb7979cbc1f231741c5a3a947cca610c69bc39"
       }
     },
     {
@@ -151,8 +151,17 @@
       "fr": "docs/api.md",
       "en": "docs/en/api.md",
       "reviewed": {
-        "fr": "79d377df252dcfca51ce1a1ff1bfb617838159c6e57b13f65656ed49bddee85d",
-        "en": "faf6d51f4a65dad7ac16166c9f0dac15077150bf2542098788102b943430ba79"
+        "fr": "cf73218e10914a6047f49c325457ab9de033d3e33db78a06f5ce24316af7129e",
+        "en": "359712b758d5fa716a6af0293bb2ff2f43ecdfb9a425145eaa6df1fc788f5e22"
+      }
+    },
+    {
+      "id": "voice",
+      "fr": "docs/voice.md",
+      "en": "docs/en/voice.md",
+      "reviewed": {
+        "fr": "a89af2b81deab051d39b88fd86471827cace1f161328da992ba87f31417fbe77",
+        "en": "8c2496868c8db0dc707f0573767de9c0345fd4c7775bac71adab6d9d5e5019d6"
       }
     }
   ]

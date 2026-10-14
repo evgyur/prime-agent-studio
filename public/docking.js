@@ -1178,7 +1178,8 @@ export function createDocking({
       if (!dialog.open) focusTab(focusPanel);
     }
   }
-  function openPanel(id, groupId) {
+  // index (optional) inserts a closed panel at that position of groupId.
+  function openPanel(id, groupId, index) {
     if (!active || !isPanelId(id) || !panels[id]) return;
     if (!canOpenPanel(id)) {
       if (isConversationPanel(id)) toast?.(() => tr('docking.conversation_limit'), true);
@@ -1189,7 +1190,7 @@ export function createDocking({
     const target = groupsOf(layout).find((group) => group.id === groupId);
     commit(
       target && target !== group
-        ? movePanel(layout, { panel: id, targetGroupId: target.id })
+        ? movePanel(layout, { panel: id, targetGroupId: target.id, index })
         : group
           ? activatePanel(layout, id)
           : movePanel(layout, { panel: id, targetGroupId: groupsOf(layout)[0].id }),

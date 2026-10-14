@@ -4,6 +4,28 @@
 
 Changes by version. See [GitHub releases](https://github.com/zerr0o/prime-agent-studio/releases) for installers and source archives.
 
+## 4.3.7
+
+- **Voice messages**: a microphone in the composer records a message and transcribes it, then sends the text or adds it to the draft (**Send after transcription**). Turn it on in Preferences › Tools › Voice messages, with **Groq** (the Groq key from Providers, or `GROQ_API_KEY`) or a **local Whisper** server such as whisper.cpp; the setting is per PC. After a temporary failure, **Retry** resends the same recording. Contributed by [@evgyur](https://github.com/evgyur) in [#6](https://github.com/zerr0o/prime-agent-studio/pull/6).
+- **Several questions at once**: the agent can ask 1 to 6 questions in one call. Browse them on one line, ← Question 2/3 →, answer each with an option or your own text, or skip it: a skipped question shows a check and "Question skipped", and pressing again undoes it. Then send all answers together. Free text is always available, including for a single question. The public API accepts `{ values: [...] }` for several questions; a single question keeps its format.
+- **The sidebar no longer replaces an open conversation**: in the modular workspace, picking a conversation, run or project opens it in a new tab right after the active conversation, or focuses its existing tab. At eight open conversations, Studio asks you to close a tab instead of replacing one.
+- **Narrow windows and mobile**: the visible editor always sends. A hidden tab's editor can no longer send stale text.
+- **Every tab**: secondary tabs show the Latest messages button above their composer, and no longer add a redundant "question(s) waiting" bar.
+- **Updates**: the beta option no longer says there is no automatic check.
+
+## 4.3.6-beta.2
+
+- **Voice messages**: a microphone in the composer records a message, transcribes it and sends the text. Turn it on in Preferences › Tools › Voice messages, with **Groq** (the Groq key from Providers, or `GROQ_API_KEY`) or a **local Whisper** server such as whisper.cpp. The setting is specific to each PC. Contributed by [@evgyur](https://github.com/evgyur) in [#6](https://github.com/zerr0o/prime-agent-studio/pull/6).
+- **Send or keep as draft**: turn off **Send after transcription** to add the transcribed text to the draft without sending it, so you can complete it first.
+- **Reliable dictation**: after a temporary failure (rate limit, timeout, service unavailable), **Retry** resends the same recording. If the original conversation is gone, **Copy text** keeps the transcript. The microphone always uses the visible editor, including on mobile.
+
+## 4.3.6-beta.1
+
+- **Several questions at once**: the agent can ask 1 to 6 questions in one call. Browse them on a single line, ← Question 2/3 →, answer each with an option or your own text, skip any, then send all answers together. A free-text answer is always available, including for a single question. The public API accepts `{ values: [...] }` for several questions; a single question keeps its format.
+- **The sidebar no longer replaces an open conversation**: in the modular workspace, picking a conversation, run or project opens it in a new tab right after the active conversation, or focuses its existing tab. At eight open conversations, Studio asks you to close a tab instead of replacing one.
+- **Narrow windows and mobile**: the visible editor always sends. A hidden tab's editor can no longer send stale text.
+- **Latest messages in every tab**: secondary tabs show the same Latest messages button, centered above their composer.
+
 ## 4.3.5
 
 - **Roadmap order syncs**: moving a plan, milestone or backlog entry now reaches other PCs. Before, each PC kept its own order when merging, so two PCs could stay different forever while both showed "synced". The order of the most recently edited roadmap wins; on a tie, every PC picks the same one. On the first cycle after updating, each remote roadmap is merged again once so existing differences heal.

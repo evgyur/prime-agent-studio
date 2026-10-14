@@ -7,6 +7,7 @@ import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { isDirectInvocation } from './scripts/launcher-common.mjs';
 import { randomUUID } from 'node:crypto';
+import { createGoalRecovery, validateRecoveryHistory } from './lib/goal-recovery.mjs';
 import { createStore, HttpError, validateDirectory, cwdKey, validId } from './lib/store.mjs';
 import { parseHistoryLimit, pageHistoryMessages } from './lib/history-page.mjs';
 import { createWorktrees } from './lib/worktrees.mjs';
@@ -559,6 +560,19 @@ export function createApp(options = {}) {
       return liveClient(endpoint);
     },
   });
+  const goalRecovery = runtime.canRecoverGoals
+    ? createGoalRecovery({
+        dataDir,
+        store,
+        isBusy: (id) => closing || sessionLocks.has(id) || conversationSettings.busy(id),
+        startRun: (input, goal, recoveryContext) =>
+          startRun(
+            { ...input, message: 'Continuing interrupted work after Studio restarted.' },
+            { recoveryGoal: goal, recoveryContext },
+          ),
+        onError: (error) => console.error('Goal recovery:', error.message),
+      })
+    : null;
   const liveMessages = createLiveMessages({
     fileStore,
     getCatalog: (context) => commands.list(context),
@@ -585,6 +599,14 @@ export function createApp(options = {}) {
     getRuns: () => [...runs.values()],
   });
   let closing = false;
+  const pendingMetadata = new Set();
+  const sessionSyncTimers = new Set();
+  function persistMetadata(operation) {
+    const pending = Promise.resolve(operation).catch(console.error);
+    pendingMetadata.add(pending);
+    void pending.finally(() => pendingMetadata.delete(pending));
+    return pending;
+  }
   let statusCache,
     modelCache,
     modelRefreshing = false,
@@ -767,6 +789,10 @@ export function createApp(options = {}) {
       .map(withComputerFlag);
   }
   function pushEvent(run, event) {
+    if (event.kind === 'goal' && event.goal?.goalId && run.sessionId && goalRecovery)
+      persistMetadata(
+        goalRecovery.updateGoal({ sessionId: run.sessionId, runId: run.id, goalId: event.goal.goalId }),
+      );
     if (event.kind === 'interaction') {
       run.interactions ||= [];
       const index = run.interactions.findIndex((item) => item.id === event.request.id);
@@ -789,22 +815,28 @@ export function createApp(options = {}) {
       if (run._pendingWorktree?.worktreeId) {
         const pending = run._pendingWorktree;
         delete run._pendingWorktree;
-        void store
-          .bindSessionWorktree({
+        persistMetadata(
+          store.bindSessionWorktree({
             id: event.sessionId,
             worktreeId: pending.worktreeId,
             projectCwd: pending.projectCwd,
-          })
-          .catch(() => {});
+          }),
+        );
       }
       if (run.allowQuestions !== undefined)
-        void store
-          .setConversationSettings(event.sessionId, { allowQuestions: run.allowQuestions })
-          .catch(console.error);
+        persistMetadata(
+          store.setConversationSettings(event.sessionId, {
+            allowQuestions: run.allowQuestions,
+            ...(goalRecovery && run.model ? { model: run.model } : {}),
+            ...(goalRecovery && run.thinking ? { thinking: run.thinking } : {}),
+          }),
+        );
     }
     if (event.kind === 'done') {
       if (run.finished) return;
       run.finished = true;
+      if (run.sessionId && !closing && goalRecovery)
+        persistMetadata(goalRecovery.retire(run.sessionId, run.id));
       roadmapBridge.revokeOwner(run.id);
       void computerBridge.revokeOwner(run.id);
       run.status = event.status || ((event.code ?? 0) === 0 ? 'completed' : 'failed');
@@ -818,8 +850,14 @@ export function createApp(options = {}) {
       }
       if (run.sessionId) sessionLocks.delete(run.sessionId);
       // Send the finished turn right away instead of waiting for the next cycle.
-      if (run.sessionId && !closing)
-        setTimeout(() => void conversationSync.checkSession(run.sessionId).catch(() => {}), 1500).unref();
+      if (run.sessionId && !closing) {
+        const timer = setTimeout(() => {
+          sessionSyncTimers.delete(timer);
+          if (!closing) void conversationSync.checkSession(run.sessionId).catch(() => {});
+        }, 1500);
+        sessionSyncTimers.add(timer);
+        timer.unref();
+      }
     }
     publicApi.noteEvent(run, event);
     const item = { ...event, seq: ++run.seq };
@@ -1012,7 +1050,7 @@ export function createApp(options = {}) {
     );
   }
 
-  async function startRun(body, { authorize, apiRequestId } = {}) {
+  async function startRun(body, { authorize, apiRequestId, recoveryGoal, recoveryContext } = {}) {
     await authorize?.();
     // Admission revision for the Computer Use opt-in: slow validation
     // follows, and a stop landing meanwhile must win. A stale grant is
@@ -1304,6 +1342,7 @@ export function createApp(options = {}) {
       if (pastudioGated && existing?.id && typeof body.model === 'string' && body.model)
         await store.setConversationSettings(existing.id, { model: body.model });
       await authorize?.();
+      if (recoveryContext) validateRecoveryHistory(await store.history(existing.id), recoveryContext);
       run.handle = await runtime.start({
         cwd,
         message: run.prompt,
@@ -1314,6 +1353,31 @@ export function createApp(options = {}) {
         thinking: selectedThinking || undefined,
         allowQuestions,
         computerUse: computerAuthorizedForModel,
+        ...(recoveryGoal !== undefined
+          ? { goalRecovery: { goalId: recoveryGoal?.goalId ?? null, recoveryId: run.id } }
+          : {}),
+        onReady: async (identity) => {
+          if (closing || run.status !== 'running') throw new HttpError(409, 'Run admission was cancelled.');
+          if (recoveryContext) validateRecoveryHistory(await store.history(existing.id), recoveryContext);
+          run.sessionId = identity.sessionId;
+          sessionLocks.add(identity.sessionId);
+          await goalRecovery?.recordRun({
+            runId: run.id,
+            goalId: recoveryGoal?.goalId ?? existing?.goal?.goalId,
+            previousUserId: existing?.messages?.findLast((message) => message.role === 'user')?.id ?? null,
+            acceptedUserId: recoveryContext?.userId ?? null,
+            sessionId: identity.sessionId,
+            cwd,
+            model: selectedModel,
+            thinking: selectedThinking,
+            allowQuestions,
+          });
+          if (run.status !== 'running') {
+            await goalRecovery?.suppress(identity.sessionId);
+            throw new HttpError(409, 'Run admission was cancelled.');
+          }
+          if (closing) throw new HttpError(503, 'Studio is shutting down.');
+        },
         onEvent: (event) => pushEvent(run, event),
       });
       if (existing?.id) await store.consumePastudioModelGate?.(existing.id).catch(() => {});
@@ -1342,7 +1406,9 @@ export function createApp(options = {}) {
       roadmapBridge.revokeOwner(run.id);
       void computerBridge.revokeOwner(run.id);
       runs.delete(run.id);
-      if (existing) sessionLocks.delete(existing.id);
+      if (run.sessionId) sessionLocks.delete(run.sessionId);
+      if (!closing && run.sessionId && goalRecovery && recoveryGoal === undefined)
+        await goalRecovery.retire(run.sessionId, run.id).catch(console.error);
       const failure = new HttpError(error.status || 503, error.message);
       if (typeof error.code === 'string') failure.code = error.code;
       throw failure;
@@ -1362,6 +1428,7 @@ export function createApp(options = {}) {
   worktreeRoutesPlaceholder.current = worktreeRoutes;
   async function stopRun(run) {
     if (!run.finished) {
+      if (run.sessionId) await goalRecovery?.suppress(run.sessionId);
       run.status = 'stopping';
       roadmapBridge.revokeOwner(run.id);
       await computerBridge.revokeOwner(run.id);
@@ -2251,22 +2318,30 @@ export function createApp(options = {}) {
   });
   server.requestTimeout = 30000;
   server.headersTimeout = 15000;
+  server.once('listening', () => {
+    void goalRecovery?.recover().catch((error) => console.error('Goal recovery:', error.message));
+  });
   async function close() {
+    closing = true;
     remoteNetwork.close();
     await publicApi.close();
     directoryPicker.close?.();
     mcp.close?.();
     providers.close?.();
     commands.close?.();
-    closing = true;
     clearInterval(cleanup);
     clearTimeout(syncStartup);
     clearTimeout(syncSoonTimer);
     clearInterval(syncTimer);
+    for (const timer of sessionSyncTimers) clearTimeout(timer);
+    sessionSyncTimers.clear();
+    await goalRecovery?.close();
     await roadmapBridge.close();
     await computerBridge.close();
     await computer.close();
     await runtime.close();
+    while (pendingMetadata.size) await Promise.all([...pendingMetadata]);
+    await store.flush?.();
     await roadmapRoutes.close();
     await roadmap.close();
     for (const run of runs.values()) for (const client of run.clients) client.end();
@@ -2279,6 +2354,7 @@ export function createApp(options = {}) {
     worktrees,
     worktreeRoutes,
     runtime,
+    goalRecovery,
     modelConfig,
     modelDefaults,
     engineSettings,

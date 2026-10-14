@@ -81,6 +81,13 @@ test('idle capabilities come from the supervisor hello without creating a worker
   });
   assert.deepEqual(supported.commands, []);
   assert.equal(supported.instances[0].closed, true);
+  const resume = fixture({ caps: ['client_owned_sessions', 'goal_error_resume'] });
+  assert.deepEqual(await savedGoalCapabilities(options, resume.dependencies), {
+    editable: false,
+    controllable: false,
+    resumable: true,
+  });
+  assert.deepEqual(resume.commands, []);
   const oldEngine = fixture({ caps: ['client_owned_sessions'] });
   assert.deepEqual(await savedGoalCapabilities(options, oldEngine.dependencies), {
     editable: false,

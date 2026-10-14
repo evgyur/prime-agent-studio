@@ -13,9 +13,9 @@ Since version 3.0.0, conversations appear directly beneath their collapsible pro
 
 ## Persistent goals
 
-When a conversation has a native goal, the **Goal** button in its header shows status and usage. **Edit objective** keeps the counters. **Stop goal** pauses it and stops the current run after the engine confirms the change. **Clear goal** removes the goal while preserving conversation messages. If another client changed the goal, reload it before retrying.
+When a conversation has a native goal, the **Goal** button in its header shows status and usage. **Edit objective** keeps the counters. **Stop goal** pauses it and stops the current run after the engine confirms the change. **Clear goal** removes the goal while preserving conversation messages. If a goal ends in **Error**, **Retry goal** starts one visible run of `/goal resume` on that same saved session without resetting its identity or usage. Retry is explicit; an error never starts an automatic retry loop. If another client changed the goal, reload it before retrying.
 
-Editing appears when the connected engine advertises `goal_objective_edit`; stopping and clearing require `goal_lifecycle_control`. With no engine connection, or with an older engine, the goal remains read-only. Consultation mode also hides mutations.
+Editing appears when the connected engine advertises `goal_objective_edit`; stopping and clearing require `goal_lifecycle_control`. Retry additionally requires the `goal_error_resume` capability. With no engine connection, or with an older engine, the goal remains read-only. Consultation mode also hides mutations.
 
 ## Switch quickly with Alt
 

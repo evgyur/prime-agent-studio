@@ -13,9 +13,9 @@ Depuis la version 3.0.0, les conversations apparaissent directement sous leur pr
 
 ## Objectifs persistants
 
-Quand une conversation possède un objectif natif, le bouton **Objectif** dans l’en-tête affiche son état et sa consommation. **Modifier l’objectif** conserve les compteurs. **Arrêter l’objectif** le met en pause et arrête l’exécution en cours après confirmation du moteur. **Effacer l’objectif** retire l’objectif, mais conserve les messages de la conversation. Une modification simultanée demande de recharger l’objectif avant de réessayer.
+Quand une conversation possède un objectif natif, le bouton **Objectif** dans l’en-tête affiche son état et sa consommation. **Modifier l’objectif** conserve les compteurs. **Arrêter l’objectif** le met en pause et arrête l’exécution en cours après confirmation du moteur. **Effacer l’objectif** retire l’objectif, mais conserve les messages de la conversation. En état **Erreur**, **Réessayer l’objectif** lance une seule exécution visible de `/goal resume` dans la même conversation, sans réinitialiser l’identité ni les compteurs. La reprise demande une action explicite. Une modification simultanée demande de recharger l’objectif avant de réessayer.
 
-La modification apparaît si le moteur connecté annonce `goal_objective_edit` ; l’arrêt et l’effacement demandent `goal_lifecycle_control`. En l’absence de connexion au moteur ou avec un moteur plus ancien, l’objectif reste consultable sans commande incompatible. En mode consultation, aucune modification n’est disponible.
+La modification apparaît si le moteur connecté annonce `goal_objective_edit` ; l’arrêt et l’effacement demandent `goal_lifecycle_control`. La reprise exige aussi `goal_error_resume`. En l’absence de connexion au moteur ou avec un moteur plus ancien, l’objectif reste consultable sans commande incompatible. En mode consultation, aucune modification n’est disponible.
 
 ## Naviguer rapidement avec Alt
 

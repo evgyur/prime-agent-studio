@@ -10,6 +10,7 @@ export const messages = {
   'goal.edit': { en: 'Edit objective', fr: 'Modifier l’objectif' },
   'goal.stop': { en: 'Stop goal', fr: 'Arrêter l’objectif' },
   'goal.clear': { en: 'Clear goal', fr: 'Effacer l’objectif' },
+  'goal.retry': { en: 'Retry goal', fr: 'Réessayer l’objectif' },
   'goal.tokens': { en: 'Tokens', fr: 'Jetons' },
   'goal.time': { en: 'Time', fr: 'Temps' },
   'goal.continuations': { en: 'Continuations', fr: 'Reprises' },

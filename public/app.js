@@ -975,7 +975,15 @@ async function api(path, { method = 'GET', body, signal } = {}) {
   }
   return data;
 }
-goalUI = createSessionGoal({ api, t: tr });
+goalUI = createSessionGoal({
+  api,
+  t: tr,
+  onResumed: async (run) => {
+    state.runs.set(run.id, run);
+    await selectRun(run);
+    renderNavigation();
+  },
+});
 function setConnection(online) {
   state.online = online;
   $('connection-dot').className = `status-dot${online ? '' : ' offline'}`;

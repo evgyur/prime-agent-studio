@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
-import { createSessionGoals, validateGoalEdit } from '../lib/session-goals.mjs';
+import { createSessionGoals, validateGoalEdit, validateGoalResume } from '../lib/session-goals.mjs';
 import { publicGoal } from '../lib/goal-state.mjs';
 import { normalizeEvent } from '../lib/agent.mjs';
 
@@ -55,6 +55,51 @@ test('an engine without advertised capabilities shows its saved goal read-only',
   const f = fixture({ getSavedCapabilities: async () => ({ editable: false, controllable: false }) });
   assert.deepEqual(await f.service.get('thread-1'), { goal: original, editable: false });
   assert.equal(f.calls.length, 0);
+});
+
+test('Retry is offered only for an idle Error goal with native support and budget remaining', async () => {
+  const errored = { ...original, status: 'error', active: false };
+  const supported = fixture({
+    store: { history: async () => ({ cwd, goal: errored }) },
+    getSavedCapabilities: async () => ({ editable: true, resumable: true }),
+  });
+  assert.equal((await supported.service.get('thread-1')).resumable, true);
+  assert.equal(
+    (
+      await fixture({
+        store: { history: async () => ({ cwd, goal: errored }) },
+        getSavedCapabilities: async () => ({ editable: true }),
+      }).service.get('thread-1')
+    ).resumable,
+    undefined,
+  );
+  assert.equal(
+    (
+      await fixture({
+        store: { history: async () => ({ cwd, goal: { ...errored, tokensUsed: 1000 } }) },
+        getSavedCapabilities: async () => ({ resumable: true }),
+      }).service.get('thread-1')
+    ).resumable,
+    undefined,
+  );
+  assert.equal(
+    (
+      await fixture({
+        store: { history: async () => ({ cwd, goal: errored }) },
+        getRuns: () => [{ sessionId: 'thread-1', status: 'running' }],
+        getSavedCapabilities: async () => ({ resumable: true }),
+      }).service.get('thread-1')
+    ).resumable,
+    undefined,
+  );
+  assert.equal(validateGoalResume({ cwd, goal: errored }, edit).goalId, original.goalId);
+  for (const changed of [
+    { ...errored, objective: 'Changed elsewhere' },
+    { ...errored, goalId: 'another-goal' },
+    { ...errored, status: 'complete' },
+    { ...errored, tokensUsed: 1000 },
+  ])
+    assert.throws(() => validateGoalResume({ cwd, goal: changed }, edit), { status: 409 });
 });
 
 test('live edits use the existing worker and keep maintenance calls out of active sessions', async () => {

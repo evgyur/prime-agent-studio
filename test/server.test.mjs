@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { PNG_BASE64 } from '../scripts/fixtures/pixel.mjs';
 import { request } from 'node:http';
 import { execFile } from 'node:child_process';
-import { mkdtemp, mkdir, readFile, readdir, realpath, writeFile, rm } from 'node:fs/promises';
+import { appendFile, mkdtemp, mkdir, readFile, readdir, realpath, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { createApp } from '../server.mjs';
@@ -52,6 +52,62 @@ test('session goal routes dispatch read, edit, stop and clear to the goal servic
     ['control', 'thread-1', 'stop', body],
     ['control', 'thread-1', 'clear', body],
   ]);
+});
+
+test('Error goal retry requires the native capability and starts one run on the exact saved session', async (t) => {
+  let nativeSupport = false;
+  const f = await fixture(t, {
+    savedGoalCapabilities: async () => ({ resumable: nativeSupport }),
+  });
+  const saved = {
+    goalId: 'same-goal',
+    objective: 'Continue exact goal',
+    status: 'error',
+    tokensUsed: 72,
+    tokenBudget: 1000,
+    timeUsedSeconds: 40,
+    continuationsUsed: 3,
+  };
+  await appendFile(
+    join(f.sessionDir, '2026-native-session.jsonl'),
+    JSON.stringify({
+      type: 'custom',
+      id: 'goal-state-1',
+      parentId: 'initial-message',
+      customType: 'thread_goal_state',
+      data: saved,
+    }) + '\n',
+  );
+  const path = '/api/sessions/native-session/goal/resume';
+  const body = { cwd: f.cwd, goalId: saved.goalId, expectedObjective: saved.objective };
+  assert.equal((await f.api('/api/sessions/native-session/goal')).json.resumable, undefined);
+  assert.equal((await f.api(path, { method: 'POST', body })).status, 503);
+  assert.equal(f.runtime.controls.length, 0);
+
+  nativeSupport = true;
+  assert.equal((await f.api('/api/sessions/native-session/goal')).json.resumable, true);
+  for (const invalid of [
+    { ...body, goalId: 'other' },
+    { ...body, expectedObjective: 'Other goal' },
+    { ...body, cwd: f.root },
+    { ...body, tokenBudget: 99999 },
+  ]) {
+    assert.equal(
+      (await f.api(path, { method: 'POST', body: invalid })).status,
+      invalid.tokenBudget ? 400 : 409,
+    );
+  }
+  assert.equal(f.runtime.controls.length, 0);
+  const accepted = await f.api(path, { method: 'POST', body });
+  assert.equal(accepted.status, 200, accepted.text);
+  assert.equal(accepted.json.run.sessionId, 'native-session');
+  assert.equal(accepted.json.run.prompt, '/goal resume');
+  assert.equal(f.runtime.controls.length, 1);
+  assert.equal(f.runtime.controls[0].input.message, '/goal resume');
+  assert.equal(f.runtime.controls[0].input.sessionFile, join(f.sessionDir, '2026-native-session.jsonl'));
+  assert.equal((await f.api(path, { method: 'POST', body })).status, 409);
+  assert.equal(f.runtime.controls.length, 1);
+  f.runtime.controls[0].finish();
 });
 
 test('ordinary run admission waits while a saved goal mutation owns the session', async (t) => {

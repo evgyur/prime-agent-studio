@@ -25,6 +25,7 @@ const server = createServer(async (req, res) => {
   res.end(`<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="/public/styles.css"></head><body>${headerButton}${dialog}<script type="module">
     import { createSessionGoal } from '/public/session-goal.js';
     window.requests = [];
+    window.resumedRuns = [];
     const translations = {
       'goal.title': 'Goal', 'goal.tokens': 'Tokens', 'goal.time': 'Time',
       'goal.continuations': 'Continuations', 'goal.length': 'Invalid objective',
@@ -34,6 +35,7 @@ const server = createServer(async (req, res) => {
     };
     window.goalUI = createSessionGoal({
       t: (key) => translations[key] || key,
+      onResumed: (run) => window.resumedRuns.push(run),
       api: (url, options = {}) => new Promise((resolve, reject) => {
         window.requests.push({ url, options, resolve, reject });
       }),
@@ -57,10 +59,11 @@ const goal = (goalId, objective, active = true) => ({
   timeUsedSeconds: 0,
   continuationsUsed: 0,
 });
-const envelope = (value, editable = true, controllable = true) => ({
+const envelope = (value, editable = true, controllable = true, resumable = false) => ({
   goal: value,
   editable,
   controllable,
+  resumable,
 });
 const requestAt = async (index) => {
   await page.waitForFunction((i) => window.requests.length > i, index);
@@ -233,6 +236,43 @@ try {
   }
   if (process.platform === 'win32' && existsSync('R:/TEMP'))
     await page.screenshot({ path: 'R:/TEMP/prime-goal-controls-mobile.png' });
+
+  const errored = { ...goal('g6', 'Keep counters'), active: false, status: 'error', tokensUsed: 72 };
+  await select('unsupported');
+  await requestAt(11);
+  await resolveAt(11, envelope(errored));
+  await page.locator('#session-goal-button').click();
+  assert.equal(await page.locator('#session-goal-resume').isVisible(), false);
+
+  await select('read-only-error', true);
+  await requestAt(12);
+  await resolveAt(12, envelope(errored, true, true, true));
+  await page.locator('#session-goal-button').click();
+  assert.equal(await page.locator('#session-goal-resume').isVisible(), false);
+
+  await select('retry');
+  await requestAt(13);
+  await resolveAt(13, envelope(errored, true, true, true));
+  await page.locator('#session-goal-button').click();
+  await page.evaluate(() => {
+    document.getElementById('session-goal-resume').click();
+    document.getElementById('session-goal-resume').click();
+  });
+  assert.deepEqual(await requestAt(14), {
+    url: '/api/sessions/retry/goal/resume',
+    options: {
+      method: 'POST',
+      body: {
+        cwd: '/workspace',
+        goalId: 'g6',
+        expectedObjective: 'Keep counters',
+      },
+    },
+  });
+  assert.equal(await page.evaluate(() => requests.length), 15, 'double click starts one retry');
+  await resolveAt(14, { ...envelope(errored), resumable: false, run: { id: 'run-1', sessionId: 'retry' } });
+  await page.waitForFunction(() => !document.getElementById('session-goal-dialog').open);
+  assert.equal(await page.evaluate(() => resumedRuns.length), 1);
 
   console.log('Session Goal controls UI: actions, races, and 390px mobile layout passed');
 } finally {

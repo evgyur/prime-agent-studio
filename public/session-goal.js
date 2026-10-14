@@ -1,6 +1,6 @@
 const MAX_OBJECTIVE = 4000;
 
-export function createSessionGoal({ api, t }) {
+export function createSessionGoal({ api, t, onResumed }) {
   const $ = (id) => document.getElementById(id);
   const button = $('session-goal-button');
   const dialog = $('session-goal-dialog');
@@ -10,6 +10,7 @@ export function createSessionGoal({ api, t }) {
   const edit = $('session-goal-edit');
   const stop = $('session-goal-stop');
   const clear = $('session-goal-clear');
+  const resume = $('session-goal-resume');
   const save = $('session-goal-save');
   const reload = $('session-goal-reload');
   const error = $('session-goal-error');
@@ -92,12 +93,15 @@ export function createSessionGoal({ api, t }) {
     const pending = pendingActions.has(opened.id);
     const canEdit = Boolean(current.editable) && !readOnly;
     const canControl = Boolean(current.controllable) && !readOnly;
+    const canResume = current.resumable === true && shown.status === 'error' && !readOnly;
     edit.hidden = editing || !canEdit;
     edit.disabled = pending;
     stop.hidden = editing || !canControl || !shown.active;
     clear.hidden = editing || !canControl;
+    resume.hidden = editing || !canResume;
     stop.disabled = pending;
     clear.disabled = pending;
+    resume.disabled = pending;
     reload.disabled = pending;
     input.hidden = !editing;
     $('session-goal-editor').hidden = !editing;
@@ -253,7 +257,9 @@ export function createSessionGoal({ api, t }) {
       selected?.id !== context.id ||
       editing ||
       !current?.goal ||
-      !current.controllable ||
+      (action === 'resume'
+        ? current.resumable !== true || current.goal.status !== 'error'
+        : !current.controllable) ||
       (action === 'stop' && !current.goal.active) ||
       context.readOnly ||
       selected.readOnly ||
@@ -284,7 +290,15 @@ export function createSessionGoal({ api, t }) {
       if (action === 'clear') drafts.delete(context.id);
       if (opened?.id === context.id && dialog.open && dialogGeneration === generation) {
         setError();
-        render();
+        if (action === 'resume') {
+          dialog.close();
+          // The run was accepted once. Navigation failures never repeat the POST.
+          if (selected?.id === context.id && data.run)
+            try {
+              void Promise.resolve(onResumed?.(data.run, context)).catch(() => {});
+            } catch {}
+          renderHeader();
+        } else render();
       } else if (selected?.id === context.id) {
         renderHeader();
       }
@@ -298,6 +312,7 @@ export function createSessionGoal({ api, t }) {
   }
   stop.addEventListener('click', () => void controlGoal('stop'));
   clear.addEventListener('click', () => void controlGoal('clear'));
+  resume.addEventListener('click', () => void controlGoal('resume'));
   reload.addEventListener('click', async () => {
     if (!opened || selected?.id !== opened.id) return;
     const id = opened.id;

@@ -449,6 +449,8 @@ test('LAN goal controls reach Studio only with full control; consultation can re
       const response = await f.api(path + suffix, { method, headers, body: JSON.stringify(data) });
       assert.equal(response.status, readOnly ? 405 : 200, `${method} ${path + suffix}`);
     }
+    const retry = await f.api(path + '/resume', { method: 'POST', headers, body: JSON.stringify(body) });
+    assert.equal(retry.status, readOnly ? 405 : 409, 'A read-only phone cannot retry a goal');
     assert.deepEqual(
       calls,
       readOnly
@@ -458,6 +460,7 @@ test('LAN goal controls reach Studio only with full control; consultation can re
             ['update', 'native-session', { ...body, objective: 'Ship' }],
             ['control', 'native-session', 'stop', body],
             ['control', 'native-session', 'clear', body],
+            ['get', 'native-session'],
           ],
     );
     assert.equal((await f.api(path + '/unknown', { headers })).status, 404);
@@ -869,7 +872,11 @@ test('LAN full control reaches former local-only routes, consultation stays bloc
     for (const secret of [ACCESS_CODE, full.config.salt, full.config.codeHash])
       assert.equal(text.includes(secret), false);
     // Stored keys are never echoed: only names, revisions and presence flags.
-    assert.equal(/secretAccessKey|secret_access|api_key\s*[:=]\s*[A-Za-z0-9]{8}|passphrase/i.test(text) && text.includes('secretAccessKey":"'), false);
+    assert.equal(
+      /secretAccessKey|secret_access|api_key\s*[:=]\s*[A-Za-z0-9]{8}|passphrase/i.test(text) &&
+        text.includes('secretAccessKey":"'),
+      false,
+    );
     assert.equal(text.includes('sk-'), false);
   };
   // Reads allowed for full control.
@@ -941,13 +948,18 @@ test('LAN full control reaches former local-only routes, consultation stays bloc
     ['POST', '/api/system/logs', '{}'],
     ['POST', '/api/worktrees', '{}'],
   ]) {
-    const response = await full.api(path, { method, headers: fullHeaders, ...(body !== undefined ? { body } : {}) });
+    const response = await full.api(path, {
+      method,
+      headers: fullHeaders,
+      ...(body !== undefined ? { body } : {}),
+    });
     assert.notEqual(response.status, 404, `full ${method} ${path}`);
     noSecrets(response.json ?? response.text);
   }
   // PC-screen actions succeed through stubs (they open on the PC).
   assert.equal(
-    (await full.api('/api/projects/pick-directory', { method: 'POST', headers: fullHeaders, body: '{}' })).status,
+    (await full.api('/api/projects/pick-directory', { method: 'POST', headers: fullHeaders, body: '{}' }))
+      .status,
     200,
   );
   assert.equal(
@@ -955,7 +967,11 @@ test('LAN full control reaches former local-only routes, consultation stays bloc
     200,
   );
   // Provider OAuth job lifecycle stays reachable for full control.
-  const loginJob = await full.api('/api/providers/login', { method: 'POST', headers: fullHeaders, body: '{}' });
+  const loginJob = await full.api('/api/providers/login', {
+    method: 'POST',
+    headers: fullHeaders,
+    body: '{}',
+  });
   assert.notEqual(loginJob.status, 404);
   // Consultation stays read-only exactly as before: writes blocked, former local routes hidden.
   for (const [method, path, body] of [
@@ -981,7 +997,11 @@ test('LAN full control reaches former local-only routes, consultation stays bloc
     ['POST', '/api/system/logs', '{}'],
     ['POST', '/api/worktrees', '{}'],
   ]) {
-    const response = await ro.api(path, { method, headers: roHeaders, ...(body !== undefined ? { body } : {}) });
+    const response = await ro.api(path, {
+      method,
+      headers: roHeaders,
+      ...(body !== undefined ? { body } : {}),
+    });
     assert.ok([404, 405].includes(response.status), `consultation ${method} ${path} got ${response.status}`);
   }
   // Health metadata never leaves the PC, even for full control.

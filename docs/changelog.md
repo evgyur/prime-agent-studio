@@ -4,6 +4,13 @@
 
 Les changements par version. Retrouvez les installateurs et les archives du code source dans les [releases GitHub](https://github.com/zerr0o/prime-agent-studio/releases).
 
+## 4.3.6-beta.1
+
+- **Plusieurs questions à la fois** : l’agent peut poser de 1 à 6 questions en un seul appel. Parcourez-les sur une seule ligne, ← Question 2/3 →, répondez à chacune par une option ou votre propre texte, passez celles que vous voulez, puis envoyez toutes les réponses ensemble. Une réponse libre est toujours possible, y compris pour une question unique. L’API publique accepte `{ values: [...] }` pour plusieurs questions ; une question unique garde son format.
+- **La barre latérale ne remplace plus une conversation ouverte** : en espace modulaire, choisir une conversation, un run ou un projet l’ouvre dans un nouvel onglet juste à droite de la conversation active, ou sélectionne son onglet existant. À huit conversations ouvertes, le Studio demande de fermer un onglet au lieu d’en remplacer un.
+- **Fenêtres étroites et mobile** : c’est toujours l’éditeur visible qui envoie. L’éditeur d’un onglet masqué ne peut plus envoyer un texte périmé.
+- **Derniers messages dans chaque onglet** : les onglets secondaires affichent le même bouton Derniers messages, centré au-dessus de leur zone de saisie.
+
 ## 4.3.5
 
 - **Ordre des Roadmaps synchronisé** : déplacer un plan, un jalon ou un élément de backlog se propage maintenant aux autres PC. Auparavant, chaque PC gardait son propre ordre lors d’une fusion : deux PC pouvaient rester différents indéfiniment tout en affichant « synchronisé ». L’ordre de la Roadmap modifiée le plus récemment l’emporte ; en cas d’égalité, tous les PC choisissent le même. Au premier cycle après la mise à jour, chaque Roadmap distante est fusionnée de nouveau une fois pour résorber les écarts existants.

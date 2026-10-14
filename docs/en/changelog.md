@@ -4,6 +4,13 @@
 
 Changes by version. See [GitHub releases](https://github.com/zerr0o/prime-agent-studio/releases) for installers and source archives.
 
+## 4.3.6-beta.1
+
+- **Several questions at once**: the agent can ask 1 to 6 questions in one call. Browse them on a single line, ← Question 2/3 →, answer each with an option or your own text, skip any, then send all answers together. A free-text answer is always available, including for a single question. The public API accepts `{ values: [...] }` for several questions; a single question keeps its format.
+- **The sidebar no longer replaces an open conversation**: in the modular workspace, picking a conversation, run or project opens it in a new tab right after the active conversation, or focuses its existing tab. At eight open conversations, Studio asks you to close a tab instead of replacing one.
+- **Narrow windows and mobile**: the visible editor always sends. A hidden tab's editor can no longer send stale text.
+- **Latest messages in every tab**: secondary tabs show the same Latest messages button, centered above their composer.
+
 ## 4.3.5
 
 - **Roadmap order syncs**: moving a plan, milestone or backlog entry now reaches other PCs. Before, each PC kept its own order when merging, so two PCs could stay different forever while both showed "synced". The order of the most recently edited roadmap wins; on a tie, every PC picks the same one. On the first cycle after updating, each remote roadmap is merged again once so existing differences heal.

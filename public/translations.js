@@ -927,8 +927,8 @@ export const messages = {
     en: 'Include prereleases (beta)',
   },
   'updates.prereleases_note': {
-    fr: 'Versions beta expérimentales, parfois instables. Aucune vérification automatique.',
-    en: 'Beta versions are experimental and may be unstable. No automatic check.',
+    fr: 'Versions beta expérimentales, parfois instables.',
+    en: 'Beta versions are experimental and may be unstable.',
   },
   'updates.prereleases_unsupported': {
     fr: 'Le moteur natif ne prend pas en charge les versions beta. Mettez à jour l’application pour utiliser ce canal.',

@@ -499,10 +499,17 @@ export function createConversationViews(deps) {
     return id === focusedId;
   }
 
+  // Pane composers are live only while docked. Classic and mobile show the
+  // single host editor, even for a view that kept its pane units.
+  function liveUnits(view) {
+    if (!view?.units) return null;
+    return view.id === PRIMARY_VIEW_ID || dockedActive ? view.units : null;
+  }
+
   function readFocusedText() {
     try {
-      const view = focused();
-      if (view?.units?.text) return view.units.text.get();
+      const units = liveUnits(focused());
+      if (units?.text) return units.text.get();
     } catch {}
     try {
       return getHostText?.() || '';
@@ -512,9 +519,9 @@ export function createConversationViews(deps) {
   }
   function writeFocusedText(text, opts) {
     try {
-      const view = focused();
-      if (view?.units?.text) {
-        view.units.text.set(text, opts);
+      const units = liveUnits(focused());
+      if (units?.text) {
+        units.text.set(text, opts);
         return;
       }
     } catch {}
@@ -537,12 +544,14 @@ export function createConversationViews(deps) {
   }
 
   function restoreDraftFor(view) {
-    if (!view || (!view.units && view.id !== focusedId)) return;
+    if (!view) return;
+    const pane = view.id === focusedId ? liveUnits(view) : view.units;
+    if (!pane && view.id !== focusedId) return;
     // Read-only shows an empty composer, never another view's stored text.
     const text = readonly() ? '' : readDraftKey(draftKeyFor(view));
-    const current = view.units ? view.units.text.get() : readFocusedText();
+    const current = pane ? pane.text.get() : readFocusedText();
     if (current !== text) {
-      if (view.units) view.units.text.set(text, { retainCommand: false });
+      if (pane) pane.text.set(text, { retainCommand: false });
       else writeFocusedText(text, { retainCommand: false });
     }
     afterTextRestore(view);
@@ -970,7 +979,7 @@ export function createConversationViews(deps) {
       captureHostScroll(prev);
       if (prev.kind === 'new') {
         // Scrape the PREVIOUS view's own controls (host shows primary now).
-        const prevNodes = prev.units?.nodes;
+        const prevNodes = liveUnits(prev)?.nodes;
         const controls = prevNodes
           ? {
               model: prev.gen?.model || '',
@@ -1279,6 +1288,7 @@ export function createConversationViews(deps) {
 
   function setDocked(active, visible) {
     markFocusedShell();
+    const wasDocked = dockedActive;
     dockedActive = !!active;
     visibleIds = Array.isArray(visible) ? [...visible] : [];
     if (dockedActive) {
@@ -1309,6 +1319,13 @@ export function createConversationViews(deps) {
       for (const view of views.values()) {
         if (view.shell && view.shell.root.parentNode !== park) park.append(view.shell.root);
       }
+    }
+    // The editor changes with the mode (pane vs host): show the saved draft
+    // there, captured just before the switch by captureForModeChange.
+    if (wasDocked !== dockedActive) {
+      if (dockedActive) {
+        for (const view of views.values()) if (view.units && view.id !== PRIMARY_VIEW_ID) restoreDraftFor(view);
+      } else restoreDraftFor(focused());
     }
   }
 
@@ -1372,6 +1389,7 @@ export function createConversationViews(deps) {
     refreshView,
     adoptLegacyBackup,
     focusView,
+    liveUnits,
     captureFocusedScroll,
     bindHost,
     renderViewNow,

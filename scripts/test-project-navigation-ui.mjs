@@ -17,6 +17,17 @@ try {
   const project = (name) =>
     page.locator('.project-entry').filter({ has: page.locator('.project-label', { hasText: name }) });
   const sound = project('SoundsPerfect');
+  // The focused conversation's composer: its own pane in the docked
+  // workspace (a sidebar pick opens a new tab), #composer in classic/mobile.
+  const composer = async () => {
+    const id = await page.evaluate(() => {
+      const tab = document.querySelector('.dock-tab.is-conversation.is-focused');
+      return tab && tab.offsetParent ? tab.dataset.dockTab : 'conversation';
+    });
+    return id === 'conversation'
+      ? page.locator('#composer')
+      : page.locator(`.cvw-shell[data-view="${id}"] [data-cvw="composer"]`);
+  };
   await expect(sound.locator('.session-row')).toHaveCount(5);
   await expect(page.locator('.project-group-label')).toHaveText(['Épinglés', 'Projets']);
   await expect(project('Documentation').locator('.project-toggle')).toHaveAttribute('aria-expanded', 'false');
@@ -31,12 +42,12 @@ try {
   await expect(sound.locator('.session-row')).toHaveCount(8);
   await sound.locator('[data-session-id="soundsperfect-5"] .session-select').click();
   await expect(page.locator('#header-session')).toContainText('Une ancienne conversation');
-  await page.locator('#composer').fill('Brouillon à conserver');
+  await (await composer()).fill('Brouillon à conserver');
   await sound.getByRole('button', { name: 'Afficher moins', exact: true }).click();
   await expect(sound.locator('[data-session-id="soundsperfect-5"].active')).toBeVisible();
   await expect(sound.locator('.session-row')).toHaveCount(6);
   await sound.locator('.project-toggle').click();
-  await expect(page.locator('#composer')).toHaveValue('Brouillon à conserver');
+  await expect((await composer())).toHaveValue('Brouillon à conserver');
   await expect(page.locator('#header-session')).toContainText('Une ancienne conversation');
   await sound.locator('.project-toggle').click();
   checks.push(
@@ -69,7 +80,7 @@ try {
   checks.push(
     'Activité et non-lus visibles à deux niveaux, un seul élément sélectionné, agent conservé en cours',
   );
-  await page.locator('#composer').click();
+  await (await composer()).click();
   await mkdir(resolve('test-results'), { recursive: true });
   await page.screenshot({
     path: resolve('test-results/project-navigation-desktop.png'),
@@ -88,7 +99,7 @@ try {
   await expect(page.locator('#header-project')).toContainText('Atelier');
   checks.push('Navigation mobile sans débordement, ouverture de la conversation refermant le volet');
   // The project menu targets its own project, not the currently selected one.
-  await page.locator('#composer').fill('Brouillon Atelier à conserver');
+  await (await composer()).fill('Brouillon Atelier à conserver');
   await page.locator('#toggle-sidebar').click();
   await sound.locator('.project-more').click();
   const menu = page.locator('#project-menu');
@@ -99,19 +110,19 @@ try {
   await expect(page.locator('#sidebar')).not.toHaveClass(/mobile-open/);
   await expect(page.locator('#header-project')).toContainText('SoundsPerfect');
   await expect(page.locator('#header-session')).toHaveText('Nouvelle session');
-  await expect(page.locator('#composer')).toBeFocused();
-  await expect(page.locator('#composer')).toHaveValue('');
+  await expect((await composer())).toBeFocused();
+  await expect((await composer())).toHaveValue('');
   await expect(page.locator('.session-row.active')).toHaveCount(0);
   await expect.poll(async () => (await (await fetch(fixture.url + '/api/runs')).json()).runs.length).toBe(1);
   await page.locator('#toggle-sidebar').click();
   await project('Atelier').locator('.session-select').first().click();
-  await expect(page.locator('#composer')).toHaveValue('Brouillon Atelier à conserver');
+  await expect((await composer())).toHaveValue('Brouillon Atelier à conserver');
   await page.setViewportSize({ width: 1440, height: 960 });
   await sound.locator('.project-row').click({ button: 'right' });
   await expect(menu.getByRole('menuitem', { name: 'Nouvelle conversation', exact: true })).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(page.locator('#header-project')).toContainText('SoundsPerfect');
-  await expect(page.locator('#composer')).toBeFocused();
+  await expect((await composer())).toBeFocused();
   checks.push('Nouvelle conversation en tête du menu projet, bon projet sur mobile et au clavier, brouillon et agent en cours conservés');
   expect(errors).toEqual([]);
   console.log(JSON.stringify({ passed: true, checks }));

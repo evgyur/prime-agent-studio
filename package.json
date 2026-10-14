@@ -27,7 +27,7 @@
     "test:activity": "node scripts/test-project-activity-ui.mjs",
     "test:background-activity": "node scripts/test-background-activity-ui.mjs",
     "test:stability": "node scripts/test-session-stability-ui.mjs",
-    "test:navigation": "node scripts/test-project-navigation-ui.mjs",
+    "test:navigation": "node scripts/test-project-navigation-ui.mjs && node scripts/test-sidebar-conversation-selection-ui.mjs",
     "test:session-wheel": "node --test test/session-wheel.test.mjs && node scripts/test-session-wheel-ui.mjs && node scripts/test-session-unread-ui.mjs",
     "test:knowledge": "node scripts/test-knowledge-ui.mjs",
     "test:knowledge:native": "node scripts/test-knowledge-native.mjs",

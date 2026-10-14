@@ -2122,9 +2122,15 @@ a.sidebar-settings {
   height: 10px;
 }
 .active-run-label {
+  min-width: 0;
+  flex: 1;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+.active-run > .spinner,
+.active-run > .question-dot {
+  flex-shrink: 0;
 }
 .popover-menu {
   position: fixed;

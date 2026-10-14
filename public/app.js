@@ -4989,8 +4989,9 @@ function renderToolSession(entry) {
   $('active-runs').replaceChildren();
   for (const run of runs) {
     const button = el('button', 'active-run');
+    // A waiting agent shows the same amber question dot as the sidebar, not a spinner.
     button.append(
-      el('span', 'spinner'),
+      hasPendingQuestion(run) ? activityDot('question') : el('span', 'spinner'),
       el(
         'span',
         'active-run-label',

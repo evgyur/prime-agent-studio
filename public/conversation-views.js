@@ -260,6 +260,15 @@ export function createConversationViews(deps) {
     pill.type = 'button';
     pill.className = 'cvw-pill scroll-bottom';
     pill.hidden = true;
+    // Same pill as the host column: icon and label, centered above this pane's
+    // composer by a zero-height anchor at the scroller's bottom edge.
+    const pillLabel = document.createElement('span');
+    bindText(pillLabel, () => tr('ui.derniers_messages'));
+    bindAttribute(pill, 'aria-label', () => tr('ui.aller_au_dernier_message'));
+    pill.append(rendererDeps.icon('arrow-down'), pillLabel);
+    const pillAnchor = document.createElement('div');
+    pillAnchor.className = 'cvw-pill-anchor';
+    pillAnchor.append(pill);
     pill.onclick = () => {
       view.follow = true;
       scroller.scrollTo({ top: scroller.scrollHeight, behavior: 'instant' });
@@ -279,7 +288,7 @@ export function createConversationViews(deps) {
         } catch {}
       }
     };
-    bg.append(scroller, runline, pill);
+    bg.append(scroller, pillAnchor, runline);
     root.append(slot, bg);
     park.append(root);
     view.shell = { root, slot, bg, scroller, welcome, messages, questions, runline, pill };

@@ -147,10 +147,15 @@
 .cvw-runline[hidden] {
   display: none;
 }
+.cvw-pill-anchor {
+  position: relative;
+  flex: none;
+  height: 0;
+}
 .cvw-pill {
   position: absolute;
   z-index: 5;
-  inset: auto 12px 12px auto;
+  inset: auto auto 12px 50%;
 }
 .cvw-pill[hidden] {
   display: none;

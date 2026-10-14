@@ -62,7 +62,7 @@
     "test:attachments": "node scripts/test-attachments-ui.mjs",
     "test:interactions": "node scripts/test-interactions-ui.mjs",
     "test:interactions:scroll": "node scripts/test-interactions-scroll.mjs",
-    "test:scroll": "node scripts/test-conversation-scroll.mjs && node scripts/test-scroll-bottom-composer.mjs",
+    "test:scroll": "node scripts/test-conversation-scroll.mjs && node scripts/test-scroll-bottom-composer.mjs && node scripts/test-pane-scroll-pill-ui.mjs",
     "test:history": "node --test test/history-*.test.mjs test/conversation-window.test.mjs && node scripts/test-conversation-window.mjs && node scripts/test-history-paging-ui.mjs && node scripts/test-history-stream-ui.mjs",
     "test:interactions:native": "node scripts/test-interactions-native.mjs",
     "check": "node --check server.mjs && node --check public/app.js && node scripts/check-translations.mjs && node scripts/check-docs.mjs",

@@ -261,3 +261,33 @@
   .question-actions { gap: 10px; }
   .question-actions button { min-height: 44px; }
 }
+
+/* Skip is a toggle: pressed, it shows a check and the card's choices fade. */
+.question-skip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.question-skip-icon {
+  display: none;
+}
+.question-skip-icon svg {
+  width: 14px;
+  height: 14px;
+}
+.question-cancel.question-skip[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+  color: var(--accent-text);
+}
+.question-skip[aria-pressed='true'] .question-skip-icon {
+  display: inline-flex;
+}
+.question-card .question-choice,
+.question-card .question-input {
+  transition: opacity 0.15s;
+}
+.question-card.is-skipped .question-choice,
+.question-card.is-skipped .question-input {
+  opacity: 0.5;
+}

@@ -203,10 +203,6 @@ export const messages = {
   },
   'conversation_view.new_conversation': { en: 'New conversation', fr: 'Nouvelle conversation' },
   'conversation_view.conversation': { en: 'Conversation', fr: 'Conversation' },
-  'conversation_view.questions_waiting': {
-    en: '{count} question(s) waiting — focus to answer',
-    fr: '{count} question(s) en attente — cliquez pour répondre',
-  },
   'conversation_view.limit_reached': {
     en: 'Maximum 8 open conversations reached',
     fr: 'Maximum de 8 conversations ouvertes atteint',

@@ -2153,9 +2153,6 @@ convViews = createConversationViews({
   },
   getRun: (id) => state.runs.get(id),
   isRunActive: (run) => isRunning(run),
-  describeRun: (run) => ({
-    pendingQuestions: (run?.interactions || []).filter((item) => item.status === 'pending').length,
-  }),
   getSessionTitle: (id) => session(id)?.title || '',
   getHostText: () => composerText(),
   setHostText: (text, opts) => setComposerText(text, opts),

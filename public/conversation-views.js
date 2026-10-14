@@ -166,7 +166,6 @@ export function createConversationViews(deps) {
     renderer: rendererDeps,
     getRun,
     isRunActive,
-    describeRun,
     getSessionTitle,
     getHostText,
     setHostText,
@@ -395,17 +394,6 @@ export function createConversationViews(deps) {
       view.shell.welcome.hidden = !!(messages.length || view.loading || view.unavailable);
     const windowInfo = view.renderer.render(view.shell.messages, messages, historyRenderOptions?.(view));
     if (windowInfo?.anchorPreserved) view.scrollTop = windowInfo.scrollTop;
-    const run = view.viewRunId ? getRun(view.viewRunId) : null;
-    const described = run ? describeRun(run) : null;
-    view.shell.questions.replaceChildren();
-    if (described?.pendingQuestions && !view.unavailable) {
-      const note = document.createElement('button');
-      note.type = 'button';
-      note.className = 'cvw-questions-note';
-      note.textContent = tr('conversation_view.questions_waiting', { count: described.pendingQuestions });
-      note.onclick = () => focusView(view.id, { reveal: true });
-      view.shell.questions.append(note);
-    }
     if (!messages.length && !view.loading) view.shell.scroller.scrollTop = 0;
     else if (view.follow && !windowInfo?.anchorPreserved)
       view.shell.scroller.scrollTop = view.shell.scroller.scrollHeight;

@@ -64,7 +64,11 @@ export function createQuestions({ root, api, getContext, icon }) {
         const refresh = () => {
           cards.forEach((card, index) => {
             card.fields.hidden = index !== current;
-            card.skip?.setAttribute('aria-pressed', String(drafts[index]?.skipped === true));
+            if (!card.skip) return;
+            const skipped = drafts[index]?.skipped === true;
+            card.skip.setAttribute('aria-pressed', String(skipped));
+            card.fields.classList.toggle('is-skipped', skipped);
+            bindText(card.skipLabel, () => tr(skipped ? 'questions.skipped' : 'questions.skipQuestion'));
           });
           if (drafts.every(Boolean)) error.hidden = true;
           previous.disabled = current === 0;
@@ -153,20 +157,27 @@ export function createQuestions({ root, api, getContext, icon }) {
             };
             card.append(input);
           }
-          let skip;
+          let skip, skipLabel;
           if (batch) {
+            // A toggle: pressed, it reads "Question skipped" with a check and the
+            // choices fade. Press again, pick an option or type to answer after all.
             skip = node('button', 'question-cancel question-skip');
             skip.type = 'button';
-            bindText(skip, () => tr('questions.skipQuestion'));
+            skipLabel = node('span');
+            if (typeof icon === 'function') skip.append(icon('check', 'question-skip-icon'));
+            skip.append(skipLabel);
             skip.onclick = () => {
-              drafts[questionIndex] = { skipped: true };
-              input.value = '';
-              inputs.forEach((radio) => (radio.checked = false));
+              const skipped = drafts[questionIndex]?.skipped === true;
+              drafts[questionIndex] = skipped ? null : { skipped: true };
+              if (!skipped) {
+                input.value = '';
+                inputs.forEach((radio) => (radio.checked = false));
+              }
               refresh();
             };
             card.append(skip);
           }
-          cards.push({ fields: card, heading, skip });
+          cards.push({ fields: card, heading, skip, skipLabel });
           fields.append(card);
         });
         if (request.message) fields.prepend(node('p', '', request.message));

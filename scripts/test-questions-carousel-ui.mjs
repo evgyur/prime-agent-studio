@@ -114,8 +114,25 @@ try {
         await expect(card.locator('h3')).toBeFocused();
         await expect(card.locator('textarea')).toBeVisible();
         await expect(next).toBeDisabled();
-        await card.getByRole('button', { name: 'Passer cette question', exact: true }).click();
+        const skip = card.locator('.question-skip');
+        await expect(skip).toHaveAttribute('aria-pressed', 'false');
+        await expect(skip.locator('.question-skip-icon')).toBeHidden();
+        await skip.click();
+        // Visible feedback: a pressed toggle with a check, and faded choices.
+        await expect(skip).toHaveAttribute('aria-pressed', 'true');
+        await expect(skip).toHaveText('Question passée');
+        await expect(skip.locator('.question-skip-icon')).toBeVisible();
+        await expect(card).toHaveClass(/is-skipped/);
         await expect(form.locator('.question-progress')).toContainText('2 réponse(s) · 1 passée(s)');
+        await form.screenshot({ path: join(out, `batch-skipped-${index ? 'phone-390' : 'desktop-1440'}.png`) });
+        // Pressing again undoes the skip; skip again for the submission below.
+        await skip.click();
+        await expect(skip).toHaveAttribute('aria-pressed', 'false');
+        await expect(skip).toHaveText('Passer cette question');
+        await expect(card).not.toHaveClass(/is-skipped/);
+        await expect(form.locator('.question-progress')).toContainText('2 réponse(s) · 0 passée(s)');
+        await skip.click();
+        await expect(skip).toHaveAttribute('aria-pressed', 'true');
         await previous.click();
         await expect(card.locator('textarea')).toHaveValue('Réponse conservée');
         const bounds = await next.boundingBox();
@@ -134,6 +151,7 @@ try {
         assert.equal(await form.locator(':scope > h3').count(), 0, 'no separate header');
       }
       await form.scrollIntoViewIfNeeded();
+      await expect(page.locator('.cvw-questions-note')).toHaveCount(0);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
       assert.equal(await form.evaluate((element) => element.scrollWidth > element.clientWidth), false);
       await page.screenshot({

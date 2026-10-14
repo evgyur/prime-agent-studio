@@ -62,6 +62,7 @@ await app.store.project({ cwd: project, pinned: true }, true);
 await new Promise((resolve) => app.server.listen(0, '127.0.0.1', resolve));
 const url = `http://127.0.0.1:${app.server.address().port}`;
 let browser;
+const recovery = new Set();
 try {
   browser = await launchStudioBrowser({ headless: true });
   for (const width of [1280, 390]) {
@@ -77,7 +78,14 @@ try {
     let enabled = true;
     await page.route('**/api/voice', (route) =>
       route.fulfill({
-        json: { enabled, provider: 'groq', maxAudioBytes: 10485760, maxDurationMs: 300000, timeoutMs: 90000 },
+        json: {
+          enabled,
+          provider: 'groq',
+          reason: null,
+          maxAudioBytes: 10485760,
+          maxDurationMs: 300000,
+          timeoutMs: 90000,
+        },
       }),
     );
     await page.route('**/api/voice/transcribe', async (route) => {
@@ -86,7 +94,8 @@ try {
         await new Promise((resolve) => {
           delayed.resolve = resolve;
         });
-      if (failTranscribe) return route.fulfill({ status: 503, json: { error: 'fixture unavailable' } });
+      if (failTranscribe)
+        return route.fulfill({ status: 503, json: { error: 'fixture unavailable', code: 'unavailable' } });
       await route.fulfill({ json: { text: transcript } });
     });
     await page.addInitScript(() => {
@@ -247,12 +256,23 @@ try {
     await expect(input).toHaveValue('after\n\nspoken prompt');
     expect(starts.length).toBe(prior);
 
+    // A temporary failure keeps the recording: Retry resends it without the microphone.
     failTranscribe = true;
     await button.click();
     await page.locator('.voice-send').click();
-    await expect(page.locator('.voice-status')).toContainText('Transcription failed');
+    await expect(page.locator('.voice-status')).toContainText('Your recording is kept');
+    await expect(page.locator('.voice-send')).toHaveText('Retry');
+    await expect(page.locator('.voice-send')).toBeEnabled();
     await expect(input).toHaveValue('after\n\nspoken prompt');
+    const failedCalls = transcriptionCalls;
+    const tracksBeforeRetry = await page.evaluate(() => window.__voice.tracksStopped);
+    await page.locator('.voice-send').click();
+    await expect.poll(() => transcriptionCalls).toBe(failedCalls + 1);
+    await expect(page.locator('.voice-send')).toHaveText('Retry');
+    expect(await page.evaluate(() => window.__voice.tracksStopped)).toBe(tracksBeforeRetry);
+    expect(starts.length).toBe(prior);
     await page.locator('.voice-cancel').click();
+    await expect(page.locator('.voice-send')).toHaveText('Send');
     failTranscribe = false;
 
     transcript = 'x'.repeat(32001);
@@ -270,9 +290,21 @@ try {
     await page.evaluate(() => document.getElementById('new-session').click());
     delayed.resolve();
     delayed = null;
+    // Never auto-sent. A still-open origin offers insertion; an origin rebound
+    // to another conversation offers a copy instead of inserting elsewhere.
     await expect(page.locator('.voice-insert')).toBeVisible();
+    if ((await page.locator('.voice-insert').textContent()) === 'Copy text') {
+      recovery.add(`${width}:copy`);
+      await expect(page.locator('.voice-status')).toContainText('no longer available');
+      await page.locator('.voice-insert').click();
+      await expect(page.locator('.voice-status')).toContainText(/Text (copied|selected)/);
+      await page.locator('.voice-cancel').click();
+    } else {
+      recovery.add(`${width}:insert`);
+      await page.locator('.voice-insert').click();
+      await expect(page.locator('.voice-dialog')).toBeHidden();
+    }
     expect(starts.length).toBe(prior);
-    await page.locator('.voice-cancel').click();
 
     await page.evaluate(() => {
       window.__voice.mode = 'deny';
@@ -347,7 +379,7 @@ try {
     });
     await button.click();
     await page.locator('.voice-send').click();
-    await expect(page.locator('.voice-status')).toContainText('10 MB');
+    await expect(page.locator('.voice-status')).toContainText('10 MiB');
     await page.locator('.voice-cancel').click();
     expect(starts.length).toBe(prior);
     await page.evaluate(() => {
@@ -405,6 +437,20 @@ try {
       expect(starts.length).toBe(prior + 1);
     }
 
+    if (width === 1280) {
+      // A secondary conversation focused on desktop, then a narrow layout: the
+      // visible host microphone must open for its own conversation.
+      await page.evaluate(() => document.getElementById('new-session').click());
+      await page.setViewportSize({ width: 390, height: 900 });
+      await expect(page.locator('#composer')).toBeVisible();
+      await page.locator('#composer').fill('host draft');
+      await page.locator('#composer-form .voice-open').click();
+      await expect(page.locator('.voice-status')).toContainText('Recording');
+      await page.locator('.voice-cancel').click();
+      await expect(page.locator('#composer')).toHaveValue('host draft');
+      await page.setViewportSize({ width, height: 900 });
+    }
+
     // Disabled provider omits the capture control on a fresh load.
     enabled = false;
     await page.reload();
@@ -434,8 +480,9 @@ try {
   await expect(readonly.locator('html')).toHaveAttribute('data-read-only', 'true');
   await expect(readonly.locator('.voice-open:visible')).toHaveCount(0);
   await readonly.close();
+  console.log('Voice UI recovery paths:', [...recovery].join(', '));
   console.log(
-    'Voice UI: desktop/mobile send and active-run queue; stale draft/view/model/command/attachment guards; recorder errors, limits, denied/late mic, disabled/read-only passed',
+    'Voice UI: desktop/mobile send and active-run queue; stale draft/view/model/command/attachment guards; retry after failure, copy after rebinding, desktop to mobile host mic, recorder errors, limits, denied/late mic, disabled/read-only passed',
   );
 } finally {
   await browser?.close();

@@ -10,15 +10,15 @@ const MIME_TYPES = [
 
 // A single recording dialog serves every composer, but the origin is captured
 // by the caller. The caller decides whether that exact conversation can send.
-export function createVoiceUI({ capture, current, bindingCurrent, insert, submit, canRecord }) {
+export function createVoiceUI({ activate, capture, current, bindingCurrent, insert, submit, canRecord }) {
   let config = null;
   let operation = null;
   const buttons = new Map();
   const dialog = document.createElement('dialog');
-  dialog.className = 'voice-dialog';
+  dialog.className = 'modal compact voice-dialog';
   dialog.setAttribute('aria-labelledby', 'voice-dialog-title');
   dialog.innerHTML = `
-    <div class="voice-dialog-heading"><h2 id="voice-dialog-title"></h2><span class="voice-elapsed">0:00</span></div>
+    <div class="modal-heading"><h2 id="voice-dialog-title"></h2><span class="voice-elapsed" aria-hidden="true">0:00</span></div>
     <p class="voice-provider"></p>
     <p class="voice-status" role="status" aria-live="polite"></p>
     <p class="voice-preview" hidden></p>
@@ -38,8 +38,13 @@ export function createVoiceUI({ capture, current, bindingCurrent, insert, submit
   const insertButton = dialog.querySelector('.voice-insert');
   bindText(title, () => tr('voice.title'));
   bindText(cancelButton, () => tr('voice.cancel'));
-  bindText(sendButton, () => tr('voice.send'));
-  bindText(insertButton, () => tr('voice.insert'));
+  // Labels follow the operation phase: Send, then Retry after a temporary
+  // failure; Insert text, or Copy text when the origin can no longer take it.
+  const relabel = () => {
+    bindText(sendButton, () => tr(operation?.phase === 'failed' ? 'voice.retry' : 'voice.send'));
+    bindText(insertButton, () => tr(operation?.copyOnly ? 'voice.copy' : 'voice.insert'));
+  };
+  relabel();
 
   function say(key) {
     bindText(status, () => tr(key));
@@ -68,7 +73,11 @@ export function createVoiceUI({ capture, current, bindingCurrent, insert, submit
       }
     }
     if (dialog.open) dialog.close();
+    relabel();
   }
+  // A pane composer belongs to one view. The shared host composer passes a
+  // resolver: it edits whichever view it currently shows.
+  const originOf = (entry) => (typeof entry?.origin === 'function' ? entry.origin() : entry?.origin);
   function refresh() {
     for (const [button, entry] of buttons) {
       if (button.isConnected) entry.everConnected = true;
@@ -77,7 +86,7 @@ export function createVoiceUI({ capture, current, bindingCurrent, insert, submit
         continue;
       }
       button.hidden = !config?.enabled;
-      button.disabled = !config?.enabled || !canRecord(entry.origin);
+      button.disabled = !config?.enabled || !canRecord(originOf(entry));
     }
     if (
       operation &&
@@ -99,16 +108,17 @@ export function createVoiceUI({ capture, current, bindingCurrent, insert, submit
     const button = document.createElement('button');
     button.className = 'voice-open';
     button.type = 'button';
+    button.setAttribute('aria-haspopup', 'dialog');
     button.hidden = !config?.enabled;
     button.innerHTML =
-      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5m-4 0h8"/></svg>';
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5m-4 0h8"/></svg>';
     bindAttribute(button, 'aria-label', () => tr('voice.open'));
     bindAttribute(button, 'title', () => tr('voice.open'));
     const send = form.querySelector('.send-button');
     if (send?.parentElement) send.parentElement.insertBefore(button, send);
     else toolbar.append(button);
     buttons.set(button, { origin, everConnected: button.isConnected });
-    button.addEventListener('click', () => void start(buttons.get(button)?.origin));
+    button.addEventListener('click', () => void start(originOf(buttons.get(button))));
     refresh();
   }
   function updateElapsed(op) {
@@ -133,6 +143,9 @@ export function createVoiceUI({ capture, current, bindingCurrent, insert, submit
   }
   async function start(origin) {
     if (operation || !config?.enabled || !canRecord(origin)) return;
+    // The visible composer owns its microphone: give its conversation the
+    // focus first (a narrow layout can show it while another view is focused).
+    activate?.(origin);
     const snapshot = capture(origin);
     if (!snapshot) return;
     const op = {
@@ -216,22 +229,54 @@ export function createVoiceUI({ capture, current, bindingCurrent, insert, submit
       );
     }
   }
+  // Server error codes (lib/voice.mjs) map to translated messages. Temporary
+  // failures keep the recording so Retry resends it without recording again.
+  const ERRORS = {
+    busy: 'voice.errorBusy',
+    rate_limited: 'voice.errorRateLimited',
+    timeout: 'voice.errorTimeout',
+    unavailable: 'voice.errorUnavailable',
+    auth_failed: 'voice.errorAuth',
+    missing_key: 'voice.errorMissingKey',
+    not_configured: 'voice.errorNotConfigured',
+    unreadable: 'voice.errorUnreadable',
+    no_speech: 'voice.empty',
+    too_long: 'voice.limitText',
+    too_large: 'voice.limitSize',
+  };
+  const RETRYABLE = new Set(['busy', 'rate_limited', 'timeout', 'unavailable', 'network']);
+  function showRecovery(op, text, copyOnly) {
+    op.phase = 'conflict';
+    op.copyOnly = copyOnly;
+    preview.textContent = text;
+    preview.hidden = false;
+    insertButton.hidden = false;
+    relabel();
+    say(copyOnly ? 'voice.originGone' : 'voice.changed');
+  }
   async function send() {
     const op = operation;
-    if (!op || !op.recorder || !['recording', 'ready'].includes(op.phase)) return;
+    if (!op || !op.recorder || !['recording', 'ready', 'failed'].includes(op.phase)) return;
+    const retry = op.phase === 'failed';
     op.phase = 'transcribing';
     sendButton.disabled = true;
+    relabel();
     say('voice.transcribing');
-    const recorder = op.recorder;
-    finishRecording(op);
-    await op.stopped;
-    if (operation !== op || op.phase !== 'transcribing') return;
-    const audio = new Blob(op.chunks, { type: recorder.mimeType });
+    if (!retry) {
+      const recorder = op.recorder;
+      finishRecording(op);
+      await op.stopped;
+      if (operation !== op || op.phase !== 'transcribing') return;
+      op.audio = new Blob(op.chunks, { type: recorder.mimeType });
+      op.chunks = [];
+    }
+    const audio = op.audio;
     if (!audio.size || audio.size > config.maxAudioBytes) {
       op.phase = 'error';
       say(audio.size ? 'voice.limitSize' : 'voice.empty');
       return;
     }
+    let code = 'network';
     try {
       const response = await fetch('/api/voice/transcribe', {
         method: 'POST',
@@ -239,49 +284,57 @@ export function createVoiceUI({ capture, current, bindingCurrent, insert, submit
         body: audio,
         signal: op.abort.signal,
       });
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
       if (operation !== op) return;
-      if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+      if (!response.ok) {
+        code = ERRORS[data?.code] ? data.code : response.status >= 500 ? 'unavailable' : 'unreadable';
+        throw new Error(code);
+      }
+      code = 'unavailable';
       if (typeof data?.text !== 'string') throw new Error('invalid transcript');
       const text = data.text.trim();
-      if (!text) {
+      if (!text || text.length > 32000) {
         op.phase = 'error';
-        say('voice.empty');
-        return;
-      }
-      if (text.length > 32000) {
-        op.phase = 'error';
-        say('voice.limitText');
+        say(text ? 'voice.limitText' : 'voice.empty');
         return;
       }
       op.transcript = text;
-      if (!current(op.origin, op.snapshot)) {
-        op.phase = 'conflict';
-        preview.textContent = text;
-        preview.hidden = false;
-        insertButton.hidden = false;
-        say('voice.changed');
-        return;
-      }
-      if (!insert(op.origin, text, op.snapshot)) {
-        say('voice.changed');
-        return;
-      }
+      op.audio = null;
+      if (!current(op.origin, op.snapshot) || !insert(op.origin, text, op.snapshot))
+        return showRecovery(op, text, !bindingCurrent(op.origin, op.snapshot));
       cancel();
       submit(op.origin);
     } catch (error) {
       if (operation !== op) return;
-      op.phase = 'error';
-      say(error?.name === 'AbortError' ? 'voice.cancelled' : 'voice.transcribeFailed');
+      if (error?.name === 'AbortError') {
+        op.phase = 'error';
+        return say('voice.cancelled');
+      }
+      op.phase = RETRYABLE.has(code) ? 'failed' : 'error';
+      sendButton.disabled = op.phase !== 'failed';
+      relabel();
+      say(ERRORS[code] || 'voice.transcribeFailed');
     }
   }
   cancelButton.addEventListener('click', cancel);
   sendButton.addEventListener('click', () => void send());
-  insertButton.addEventListener('click', () => {
+  insertButton.addEventListener('click', async () => {
     const op = operation;
     if (!op?.transcript) return;
-    if (insert(op.origin, op.transcript, op.snapshot)) cancel();
-    else say('voice.insertUnavailable');
+    if (!op.copyOnly && insert(op.origin, op.transcript, op.snapshot)) return cancel();
+    if (!op.copyOnly) {
+      // The origin changed after the conflict was shown: offer the copy instead.
+      op.copyOnly = true;
+      relabel();
+      return say('voice.originGone');
+    }
+    try {
+      await navigator.clipboard.writeText(op.transcript);
+      say('voice.copied');
+    } catch {
+      getSelection()?.selectAllChildren(preview);
+      say('voice.copyManually');
+    }
   });
   dialog.addEventListener('cancel', (event) => {
     event.preventDefault();
@@ -291,14 +344,19 @@ export function createVoiceUI({ capture, current, bindingCurrent, insert, submit
     if (operation) cancel();
   });
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) cancel();
+    // Release a live microphone in the background; a transcription already
+    // sent keeps running and its result waits in the dialog.
+    if (document.hidden && ['requesting', 'recording', 'ready'].includes(operation?.phase)) cancel();
   });
   window.addEventListener('pagehide', cancel);
-  void fetch('/api/voice')
-    .then(async (response) => {
-      if (response.ok) config = await response.json();
-      refresh();
-    })
-    .catch(() => refresh());
-  return { mount, refresh, cancel };
+  function reload() {
+    return fetch('/api/voice')
+      .then(async (response) => {
+        if (response.ok) config = await response.json();
+      })
+      .catch(() => {})
+      .finally(refresh);
+  }
+  void reload();
+  return { mount, refresh, cancel, reload };
 }

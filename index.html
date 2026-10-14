@@ -1748,6 +1748,62 @@
               </div>
             </div>
             <p id="computer-prefs-error" class="form-error" role="alert" hidden></p>
+            <div id="voice-settings" class="settings-row computer-prefs-row voice-settings-row">
+              <div class="engine-field">
+                <label for="voice-provider" data-i18n="voice.settingsLabel">Messages vocaux</label>
+                <p data-i18n="voice.settingsNote">
+                  Dictez un message depuis le compositeur ; l’agent reçoit le texte transcrit. Réglage propre
+                  à ce PC.
+                </p>
+                <select id="voice-provider" class="voice-settings-select">
+                  <option value="" data-i18n="voice.providerOff">Désactivés</option>
+                  <option value="groq" data-i18n="voice.providerGroqOption">Groq · clé API</option>
+                  <option value="whisper" data-i18n="voice.providerWhisperOption">Whisper local</option>
+                </select>
+                <div id="voice-groq-fields" class="voice-settings-group" hidden>
+                  <label for="voice-groq-model" data-i18n="voice.groqModel">Modèle de transcription</label>
+                  <select id="voice-groq-model">
+                    <option value="whisper-large-v3-turbo" data-i18n="voice.modelTurbo">
+                      Whisper Large V3 Turbo · rapide
+                    </option>
+                    <option value="whisper-large-v3" data-i18n="voice.modelLarge">
+                      Whisper Large V3 · précis
+                    </option>
+                  </select>
+                  <div class="voice-key-row">
+                    <p id="voice-key-status" class="voice-key-status"></p>
+                    <button
+                      id="voice-open-providers"
+                      type="button"
+                      class="secondary-button"
+                      data-i18n="ui.gerer_les_connexions"
+                    >
+                      Gérer les connexions
+                    </button>
+                  </div>
+                </div>
+                <div id="voice-whisper-fields" class="voice-settings-group" hidden>
+                  <label for="voice-whisper-url" data-i18n="voice.whisperUrl"
+                    >Adresse du service Whisper</label
+                  >
+                  <input id="voice-whisper-url" type="url" spellcheck="false" autocomplete="off" />
+                  <p data-i18n="voice.whisperUrlNote">
+                    Point de transcription complet, par exemple un serveur whisper.cpp lancé avec --convert.
+                  </p>
+                </div>
+                <div id="voice-timeout-field" class="voice-settings-group" hidden>
+                  <label for="voice-timeout" data-i18n="voice.timeout">Délai maximal de transcription</label>
+                  <select id="voice-timeout">
+                    <option value="30000">30 s</option>
+                    <option value="90000">90 s</option>
+                    <option value="180000">3 min</option>
+                    <option value="300000">5 min</option>
+                    <option value="600000">10 min</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            <p id="voice-settings-error" class="form-error" role="alert" hidden></p>
             <p id="settings-resource-note" class="settings-footnote" data-i18n="settings.resources_scope"></p>
           </section>
           <section

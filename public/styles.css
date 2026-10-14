@@ -1351,19 +1351,23 @@ a.sidebar-settings {
   display: grid;
   place-items: center;
   flex: 0 0 auto;
-  width: 34px;
-  height: 34px;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  color: var(--text);
-  background: var(--surface);
-  font-size: 17px;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  color: var(--muted);
+  background: transparent;
+  transition:
+    color 0.15s,
+    background 0.15s;
 }
 .voice-open[hidden] {
   display: none;
 }
 .voice-open:hover:not(:disabled) {
-  border-color: var(--accent);
+  color: var(--text);
+  background: var(--surface-hover);
 }
 .voice-open:disabled {
   opacity: 0.4;
@@ -1372,64 +1376,51 @@ a.sidebar-settings {
   width: 19px;
   height: 19px;
 }
-.voice-dialog {
-  width: min(420px, calc(100vw - 28px));
-  max-width: none;
-  margin: auto;
-  padding: 24px;
-  border: 1px solid var(--line);
-  border-radius: 18px;
-  background: var(--surface);
-  color: var(--text);
-  box-shadow: 0 18px 60px #0008;
-}
-.voice-dialog::backdrop {
-  background: #000a;
-}
-.voice-dialog-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-.voice-dialog h2 {
-  margin: 0;
-  font-size: 20px;
+.voice-dialog .modal-heading {
+  margin-bottom: 0;
 }
 .voice-elapsed {
-  color: var(--accent);
-  font-variant-numeric: tabular-nums;
-  font-size: 20px;
-}
-.voice-provider,
-.voice-status {
-  margin: 14px 0 0;
-  line-height: 1.5;
   color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
-.voice-preview {
+.voice-dialog .voice-provider,
+.voice-dialog .voice-status {
+  margin: 10px 0 0;
+}
+.voice-dialog .voice-status {
+  color: var(--text);
+}
+.voice-dialog .voice-preview {
   max-height: 180px;
+  margin: 14px 0 0;
+  padding: 10px 12px;
   overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.8;
   white-space: pre-wrap;
-  word-break: break-word;
+  overflow-wrap: anywhere;
+  user-select: text;
 }
 .voice-actions {
   display: flex;
   justify-content: flex-end;
   flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 26px;
-}
-.voice-actions button {
-  min-height: 44px;
+  gap: 8px;
+  margin-top: 24px;
 }
 @media (max-width: 760px) {
   .voice-open {
     width: 44px;
     height: 44px;
   }
-  .voice-dialog {
-    padding: 20px;
+  .voice-actions button {
+    min-height: 44px;
   }
 }
 .composer-footnote {

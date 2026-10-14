@@ -1,15 +1,27 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, request } from 'node:http';
-import { createVoice, MAX_AUDIO_BYTES, MAX_DURATION_MS } from '../lib/voice.mjs';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createVoice, MAX_AUDIO_BYTES, MAX_DURATION_MS, DEFAULT_WHISPER_URL } from '../lib/voice.mjs';
 
 const webm = Buffer.concat([Buffer.from([0x1a, 0x45, 0xdf, 0xa3]), Buffer.alloc(64)]);
-const groq = { PRIME_STUDIO_VOICE_PROVIDER: 'groq', GROQ_API_KEY: 'fixture-token' };
+const groqAuth = { groq: { type: 'api_key', key: 'fixture-token' } };
+
+async function dirs(t, { settings = { provider: 'groq' }, auth = groqAuth } = {}) {
+  const root = await mkdtemp(join(tmpdir(), 'studio-voice-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  if (settings) await writeFile(join(root, 'voice.json'), JSON.stringify(settings));
+  if (auth) await writeFile(join(root, 'auth.json'), JSON.stringify(auth));
+  return { dataDir: root, agentHome: root };
+}
 
 async function fixture(t, options = {}) {
   const calls = [];
   const voice = createVoice({
-    env: groq,
+    ...(await dirs(t, options)),
+    env: {},
     fetchImpl: async (url, init) => {
       calls.push({ url, init });
       return Response.json({ text: 'Check the current project.' });
@@ -36,53 +48,46 @@ const upload = (url, opts = {}) =>
     ...opts,
   });
 
-test('opt-in status exposes only public limits and disabled or invalid config never calls provider', async (t) => {
-  for (const env of [
-    {},
-    { ...groq, GROQ_API_KEY: '' },
-    { ...groq, GROQ_API_KEY: 'fixture-token\n' },
-    { ...groq, PRIME_STUDIO_VOICE_MODEL: 'custom-model' },
-    { ...groq, PRIME_STUDIO_VOICE_TIMEOUT_MS: '999' },
-    { PRIME_STUDIO_VOICE_PROVIDER: 'other' },
-    { PRIME_STUDIO_VOICE_PROVIDER: 'whisper', PRIME_STUDIO_WHISPER_URL: 'ftp://internal/inference' },
-    {
-      PRIME_STUDIO_VOICE_PROVIDER: 'whisper',
-      PRIME_STUDIO_WHISPER_URL: 'http://user:secret@internal/inference',
-    },
-    {
-      PRIME_STUDIO_VOICE_PROVIDER: 'whisper',
-      PRIME_STUDIO_WHISPER_URL: 'http://internal/inference?token=secret',
-    },
-    { PRIME_STUDIO_VOICE_PROVIDER: 'whisper', PRIME_STUDIO_WHISPER_URL: 'http://internal/inference?' },
-    { PRIME_STUDIO_VOICE_PROVIDER: 'whisper', PRIME_STUDIO_WHISPER_URL: 'http://internal/inference#' },
+test('disabled, keyless or invalid configuration never calls the provider and leaks nothing', async (t) => {
+  for (const [settings, auth, env, reason] of [
+    [null, groqAuth, {}, 'not_configured'],
+    [{ provider: 'other' }, groqAuth, {}, 'not_configured'],
+    [{ provider: 'groq' }, null, {}, 'missing_key'],
+    [{ provider: 'groq' }, { groq: { type: 'api_key', key: '' } }, {}, 'missing_key'],
+    [{ provider: 'groq' }, { groq: { type: 'api_key', key: '!cat secret' } }, {}, 'missing_key'],
+    [{ provider: 'groq' }, { groq: { type: 'oauth', access: 'secret' } }, {}, 'missing_key'],
+    [{ provider: 'groq' }, null, { GROQ_API_KEY: 'secret\n' }, 'missing_key'],
   ]) {
-    const { calls, voice, url } = await fixture(t, { env });
-    assert.equal(voice.status().enabled, false);
+    const { calls, voice, url } = await fixture(t, { settings, auth, env });
+    const status = await voice.status();
+    assert.equal(status.enabled, false);
+    assert.equal(status.reason, reason);
     const response = await upload(url);
     assert.equal(response.status, 503);
+    assert.equal((await response.json()).code, reason);
     assert.equal(calls.length, 0);
-    assert.doesNotMatch(
-      JSON.stringify(voice.status()) + (await response.text()),
-      /secret|fixture-token|internal|GROQ_API_KEY/,
-    );
+    assert.doesNotMatch(JSON.stringify(status), /secret|fixture-token/);
   }
-  const status = createVoice({ env: groq }).status();
-  assert.deepEqual(status, {
+  const { voice } = await fixture(t);
+  assert.deepEqual(await voice.status(), {
     enabled: true,
     provider: 'groq',
+    reason: null,
     maxAudioBytes: MAX_AUDIO_BYTES,
     maxDurationMs: MAX_DURATION_MS,
     timeoutMs: 90_000,
   });
 });
 
-test('Groq uses fixed endpoint, selected allowlisted model, multipart audio, and only server credential', async (t) => {
-  const { url, calls } = await fixture(t, { env: { ...groq, PRIME_STUDIO_VOICE_MODEL: 'whisper-large-v3' } });
+test('Groq reuses the Providers key first, then GROQ_API_KEY, with the selected model', async (t) => {
+  const { url, calls, voice } = await fixture(t, {
+    settings: { provider: 'groq', groqModel: 'whisper-large-v3' },
+    env: { GROQ_API_KEY: 'environment-token' },
+  });
   const response = await upload(url);
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), { text: 'Check the current project.' });
   assert.equal(response.headers.get('cache-control'), 'no-store');
-  assert.equal(calls.length, 1);
   const { url: upstream, init } = calls[0];
   assert.equal(upstream, 'https://api.groq.com/openai/v1/audio/transcriptions');
   assert.equal(init.headers.Authorization, 'Bearer fixture-token');
@@ -91,24 +96,67 @@ test('Groq uses fixed endpoint, selected allowlisted model, multipart audio, and
   assert.equal(init.body.get('response_format'), 'json');
   assert.equal(init.body.get('file').name, 'voice.webm');
   assert.deepEqual(Buffer.from(await init.body.get('file').arrayBuffer()), webm);
+  assert.equal((await voice.settings()).keySource, 'providers');
+  assert.doesNotMatch(JSON.stringify(await voice.settings()), /token/);
+
+  const env = await fixture(t, { auth: null, env: { GROQ_API_KEY: 'environment-token' } });
+  assert.equal((await upload(env.url)).status, 200);
+  assert.equal(env.calls[0].init.headers.Authorization, 'Bearer environment-token');
+  assert.equal(env.calls[0].init.body.get('model'), 'whisper-large-v3-turbo');
+  assert.equal((await env.voice.settings()).keySource, 'environment');
+
+  const named = await fixture(t, {
+    auth: { groq: { type: 'api_key', key: 'MY_GROQ_KEY' } },
+    env: { MY_GROQ_KEY: 'named-token' },
+  });
+  assert.equal((await upload(named.url)).status, 200);
+  assert.equal(named.calls[0].init.headers.Authorization, 'Bearer named-token');
 });
 
-test('Whisper sends complete admin endpoint without Groq key or model', async (t) => {
-  const endpoint = 'http://127.0.0.1:8080/inference';
+test('Whisper sends the configured endpoint without Groq key or model', async (t) => {
+  const endpoint = 'http://127.0.0.1:8181/inference';
   const { url, calls, voice } = await fixture(t, {
-    env: {
-      PRIME_STUDIO_VOICE_PROVIDER: 'whisper',
-      PRIME_STUDIO_WHISPER_URL: endpoint,
-      GROQ_API_KEY: 'secret-key',
-      PRIME_STUDIO_VOICE_MODEL: 'secret-model',
-    },
+    settings: { provider: 'whisper', whisperUrl: endpoint, groqModel: 'whisper-large-v3' },
   });
   assert.equal((await upload(url)).status, 200);
   assert.equal(calls[0].url, endpoint);
   assert.equal(calls[0].init.headers, undefined);
   assert.equal(calls[0].init.body.get('model'), null);
-  assert.equal(calls[0].init.body.get('response_format'), 'json');
-  assert.doesNotMatch(JSON.stringify(voice.status()), /secret|inference|127\.0\.0\.1/);
+  assert.doesNotMatch(JSON.stringify(await voice.status()), /inference|8181|fixture-token/);
+  assert.equal((await voice.settings()).whisperUrl, endpoint);
+});
+
+test('settings validate, persist machine-locally and never return the key', async (t) => {
+  const { voice } = await fixture(t, { settings: null });
+  const initial = await voice.settings();
+  assert.equal(initial.provider, '');
+  assert.equal(initial.whisperUrl, DEFAULT_WHISPER_URL);
+  assert.equal(initial.status.reason, 'not_configured');
+  for (const patch of [
+    {},
+    null,
+    [],
+    { provider: 'openai' },
+    { groqModel: 'custom' },
+    { timeoutMs: 1234 },
+    { whisperUrl: 'ftp://internal/inference' },
+    { whisperUrl: 'http://user:secret@internal/inference' },
+    { whisperUrl: 'http://internal/inference?token=secret' },
+    { whisperUrl: 'http://internal/inference#x' },
+    { key: 'fixture-token' },
+  ])
+    await assert.rejects(voice.updateSettings(patch), (error) => error.status === 400);
+  const saved = await voice.updateSettings({ provider: 'groq', timeoutMs: 300_000 });
+  assert.equal(saved.provider, 'groq');
+  assert.equal(saved.timeoutMs, 300_000);
+  assert.equal(saved.status.enabled, true);
+  assert.equal(saved.keySource, 'providers');
+  assert.doesNotMatch(JSON.stringify(saved), /fixture-token/);
+  await voice.updateSettings({ provider: 'whisper', whisperUrl: 'https://whisper.lan/inference' });
+  const stored = await voice.settings();
+  assert.equal(stored.provider, 'whisper');
+  assert.equal(stored.whisperUrl, 'https://whisper.lan/inference');
+  assert.equal(stored.timeoutMs, 300_000);
 });
 
 test('rejects method, MIME, invalid signatures, declared oversize, and chunked upload before provider', async (t) => {
@@ -142,9 +190,11 @@ test('accepts browser Ogg and MP4 signatures', async (t) => {
 });
 
 test('sanitizes provider errors, bounds response and transcript, and refuses silence', async (t) => {
-  for (const [response, expected] of [
-    [new Response('secret-service-error', { status: 403 }), 503],
-    [new Response('secret-token', { status: 429 }), 429],
+  for (const [response, expected, code] of [
+    [new Response('secret-service-error', { status: 403 }), 503, 'auth_failed'],
+    [new Response('secret-token', { status: 429 }), 429, 'rate_limited'],
+    [new Response('secret-busy', { status: 500 }), 503, 'unavailable'],
+    [new Response('secret-format', { status: 400 }), 422, 'unreadable'],
     [Response.json({ text: '  ' }), 422],
     [new Response('invalid secret-json'), 502],
     [Response.json(null), 502],
@@ -158,6 +208,7 @@ test('sanitizes provider errors, bounds response and transcript, and refuses sil
     assert.equal(result.status, expected);
     const payload = await result.json();
     assert.ok(payload.error);
+    if (code) assert.equal(payload.code, code);
     assert.equal(payload.text, undefined);
     assert.doesNotMatch(payload.error, /secret|token/);
     assert.doesNotMatch(payload.error, /[\u0400-\u04ff]/);
@@ -203,7 +254,9 @@ test('one request at a time, timeout aborts provider, and slot is released', asy
   });
   const first = upload(url);
   await started;
-  assert.equal((await upload(url)).status, 429);
+  const busy = await upload(url);
+  assert.equal(busy.status, 429);
+  assert.equal((await busy.json()).code, 'busy');
   release();
   assert.equal((await first).status, 200);
   assert.equal((await upload(url)).status, 200);
@@ -254,7 +307,7 @@ test('client disconnect aborts upstream without persisting audio', async (t) => 
   controller.abort();
   await assert.rejects(response);
   await ended;
-  // The module has no filesystem or process imports; this test exercises its in-memory route.
+  // Audio stays in memory: only voice.json and auth.json are ever read.
 });
 
 test('aborted upload never calls provider and releases the slot', async (t) => {

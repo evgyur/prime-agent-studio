@@ -19,12 +19,16 @@ test('voice uploads require authenticated full control and preserve bounded bina
   });
   for (const readOnly of [false, true]) {
     const calls = [];
+    const voiceDir = await mkdtemp(join(tmpdir(), 'studio-voice-lan-'));
+    t.after(() => rm(voiceDir, { recursive: true, force: true }));
+    await writeFile(join(voiceDir, 'voice.json'), JSON.stringify({ provider: 'whisper', timeoutMs: 600000 }));
     const f = await fixture(
       t,
       { readOnly },
       {
         voice: {
-          env: { PRIME_STUDIO_VOICE_PROVIDER: 'whisper', PRIME_STUDIO_VOICE_TIMEOUT_MS: '600000' },
+          dataDir: voiceDir,
+          env: {},
           fetchImpl: async (url, init) => {
             calls.push({ url, init });
             return Response.json({ text: 'A synthetic voice prompt.' });
@@ -40,6 +44,15 @@ test('voice uploads require authenticated full control and preserve bounded bina
     assert.equal(status.status, 200);
     assert.equal(status.json.provider, 'whisper');
     assert.doesNotMatch(status.text, /127\.0\.0\.1|inference/);
+    // Settings (with the Whisper URL) are full control only, like other Preferences.
+    const settings = await f.api('/api/voice/settings', { headers: { Cookie } });
+    assert.equal(settings.status, readOnly ? 404 : 200, settings.text);
+    const patch = await f.api('/api/voice/settings', {
+      method: 'PATCH',
+      body: JSON.stringify({ timeoutMs: 600000 }),
+      headers: { Cookie, 'Content-Type': 'application/json' },
+    });
+    assert.equal(patch.status, readOnly ? 405 : 200, patch.text);
     const response = await f.api('/api/voice/transcribe', {
       method: 'POST',
       body,

@@ -12,39 +12,61 @@ import { cwdKey } from '../lib/store.mjs';
 
 const delay = (milliseconds) => new Promise((done) => setTimeout(done, milliseconds));
 
-test('voice routes preserve origin protections and never start a model turn', async (t) => {
+test('voice routes keep origin protections, read Preferences and never start a model turn', async (t) => {
   const calls = [];
+  const voiceDir = await mkdtemp(join(tmpdir(), 'studio-voice-server-'));
+  t.after(() => rm(voiceDir, { recursive: true, force: true }));
+  await writeFile(
+    join(voiceDir, 'auth.json'),
+    JSON.stringify({ groq: { type: 'api_key', key: 'voice-fixture-secret' } }),
+  );
   const f = await fixture(t, {
     voice: {
-      env: { PRIME_STUDIO_VOICE_PROVIDER: 'groq', GROQ_API_KEY: 'voice-fixture-secret' },
+      dataDir: voiceDir,
+      agentHome: voiceDir,
+      env: {},
       fetchImpl: async (url, init) => {
         calls.push({ url, init });
         return Response.json({ text: 'A synthetic voice prompt.' });
       },
     },
   });
+  assert.equal((await f.api('/api/voice')).json.enabled, false);
+  const settings = await f.api('/api/voice/settings', { method: 'PATCH', body: { provider: 'groq' } });
+  assert.equal(settings.status, 200, settings.text);
+  assert.equal(settings.json.keySource, 'providers');
+  assert.equal(
+    (await f.api('/api/voice/settings', { method: 'PATCH', body: { provider: 'x' } })).status,
+    400,
+  );
   const status = await f.api('/api/voice');
   assert.equal(status.status, 200);
   assert.equal(status.json.enabled, true);
-  assert.doesNotMatch(status.text, /voice-fixture-secret|api\.groq\.com/);
+  assert.doesNotMatch(status.text + settings.text, /voice-fixture-secret|api\.groq\.com/);
   const rawBody = Buffer.concat([Buffer.from('OggS'), Buffer.alloc(32)]);
   const request = { method: 'POST', rawBody, headers: { 'Content-Type': 'audio/ogg' } };
   for (const headers of [
     { Origin: 'https://untrusted.example' },
     { 'Sec-Fetch-Site': 'cross-site' },
     { Host: 'untrusted.example' },
-  ])
+  ]) {
     assert.equal(
       (await f.api('/api/voice/transcribe', { ...request, headers: { ...request.headers, ...headers } }))
         .status,
       403,
     );
+    assert.equal(
+      (await f.api('/api/voice/settings', { method: 'PATCH', body: { provider: '' }, headers })).status,
+      403,
+    );
+  }
   assert.equal(calls.length, 0);
   assert.equal((await f.api('/api/voice/transcribe')).status, 405);
   const response = await f.api('/api/voice/transcribe', request);
   assert.equal(response.status, 200, response.text);
   assert.deepEqual(response.json, { text: 'A synthetic voice prompt.' });
   assert.equal(calls.length, 1);
+  assert.equal(calls[0].init.headers.Authorization, 'Bearer voice-fixture-secret');
   assert.equal(f.runtime.controls.length, 0);
   assert.equal((await f.api('/api/voice/transcribe/other', request)).status, 404);
 });

@@ -4,6 +4,12 @@
 
 Les changements par version. Retrouvez les installateurs et les archives du code source dans les [releases GitHub](https://github.com/zerr0o/prime-agent-studio/releases).
 
+## 4.3.6-beta.2
+
+- **Messages vocaux** : un microphone dans le compositeur enregistre un message, le transcrit et envoie le texte. Activez-le dans Préférences › Outils › Messages vocaux, avec **Groq** (la clé Groq des Fournisseurs, ou `GROQ_API_KEY`) ou un serveur **Whisper local** comme whisper.cpp. Ce réglage est propre à chaque PC. Contribution de [@evgyur](https://github.com/evgyur) dans la [#6](https://github.com/zerr0o/prime-agent-studio/pull/6).
+- **Envoyer ou garder en brouillon** : désactivez **Envoyer après la transcription** pour ajouter le texte transcrit au brouillon sans l’envoyer, et le compléter d’abord.
+- **Dictée fiable** : après une erreur temporaire (limite de débit, délai dépassé, service indisponible), **Réessayer** renvoie le même enregistrement. Si la conversation d’origine n’existe plus, **Copier le texte** conserve la transcription. Le microphone utilise toujours l’éditeur visible, y compris sur mobile.
+
 ## 4.3.6-beta.1
 
 - **Plusieurs questions à la fois** : l’agent peut poser de 1 à 6 questions en un seul appel. Parcourez-les sur une seule ligne, ← Question 2/3 →, répondez à chacune par une option ou votre propre texte, passez celles que vous voulez, puis envoyez toutes les réponses ensemble. Une réponse libre est toujours possible, y compris pour une question unique. L’API publique accepte `{ values: [...] }` pour plusieurs questions ; une question unique garde son format.

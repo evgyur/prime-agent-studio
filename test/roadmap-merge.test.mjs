@@ -173,3 +173,38 @@ test('ensureBacklogIds fills stable ids lazily', () => {
   assert.equal(backlog.items[0].updatedAt, 1000);
   assert.equal(ensureBacklogIds(backlog, 5000), false);
 });
+
+test('backlog order converges when two PCs hold the same entries in different orders', () => {
+  const items = [1, 2, 3, 4].map((n) => entry(n, { id: `b-${n}`, updatedAt: 1000 + n }));
+  const pick = (...numbers) => numbers.map((n) => structuredClone(items[n - 1]));
+  // Each PC's base is its own last synced copy (the real situation): same time, different order.
+  const x = doc({ at: 5000, backlog: { items: pick(1, 2, 3, 4), notes: [], nextNumber: 5 } });
+  const y = doc({ at: 5000, backlog: { items: pick(2, 3, 1, 4), notes: [], nextNumber: 5 } });
+  const onX = mergeRoadmaps(x, x, y);
+  const onY = mergeRoadmaps(y, y, x);
+  const order = (d) => d.backlog.items.map((e) => e.number);
+  assert.deepEqual(order(onX), order(onY), 'both PCs pick the same order');
+  assert.equal(roadmapContentHash(onX), roadmapContentHash(onY), 'identical documents');
+  // Stable: merging again changes nothing.
+  assert.deepEqual(order(mergeRoadmaps(onX, onX, onY)), order(onX));
+});
+
+test('a backlog reorder on the newer document propagates', () => {
+  const items = [1, 2, 3].map((n) => entry(n, { id: `b-${n}`, updatedAt: 1000 + n }));
+  const base = doc({ at: 1000, backlog: { items: structuredClone(items), notes: [], nextNumber: 4 } });
+  const moved = doc({ at: 2000, backlog: { items: structuredClone([items[2], items[0], items[1]]), notes: [], nextNumber: 4 } });
+  const merged = mergeRoadmaps(base, base, moved);
+  assert.deepEqual(merged.backlog.items.map((e) => e.number), [3, 1, 2]);
+  // An entry added on the older side joins after the winning order.
+  const added = entry(9, { id: 'b-9', addedAt: 3000, updatedAt: 3000 });
+  const local = doc({ at: 1500, backlog: { items: [...structuredClone(items), added], notes: [], nextNumber: 10 } });
+  assert.deepEqual(mergeRoadmaps(base, local, moved).backlog.items.map((e) => e.number), [3, 1, 2, 9]);
+});
+
+test('a plan reorder on the newer document propagates', () => {
+  const plans = ['plan-a', 'plan-b', 'plan-c'].map((id) => plan(id));
+  const base = doc({ at: 1000, plans: structuredClone(plans) });
+  const moved = doc({ at: 2000, plans: structuredClone([plans[1], plans[2], plans[0]]) });
+  assert.deepEqual(mergeRoadmaps(base, base, moved).plans.map((p) => p.id), ['plan-b', 'plan-c', 'plan-a']);
+  assert.deepEqual(mergeRoadmaps(base, moved, base).plans.map((p) => p.id), ['plan-b', 'plan-c', 'plan-a']);
+});

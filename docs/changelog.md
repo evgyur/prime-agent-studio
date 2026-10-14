@@ -4,6 +4,21 @@
 
 Les changements par version. Retrouvez les installateurs et les archives du code source dans les [releases GitHub](https://github.com/zerr0o/prime-agent-studio/releases).
 
+## 4.3.5
+
+- **Ordre des Roadmaps synchronisé** : déplacer un plan, un jalon ou un élément de backlog se propage maintenant aux autres PC. Auparavant, chaque PC gardait son propre ordre lors d’une fusion : deux PC pouvaient rester différents indéfiniment tout en affichant « synchronisé ». L’ordre de la Roadmap modifiée le plus récemment l’emporte ; en cas d’égalité, tous les PC choisissent le même. Au premier cycle après la mise à jour, chaque Roadmap distante est fusionnée de nouveau une fois pour résorber les écarts existants.
+
+## 4.3.4
+
+- **Modèles Muse Code selon votre abonnement** : le sélecteur n’affiche plus que les modèles réellement servis par votre offre. Muse Wonder Full n’apparaît donc plus sur les offres qui ne l’incluent pas, au lieu d’échouer avec « model not found ». La liste est lue chez Meta en lecture seule ; si elle est indisponible, tous les modèles restent affichés.
+- **Muse Wonder Contributor** : nouvelle variante Muse Code (`muse-wonder-1.0-contributor`), servie dans le mode Contributor par défaut des abonnements. Elle donne plus d’usage en échange de l’utilisation des contenus pour l’entraînement.
+
+## 4.3.3
+
+- **Synchronisation depuis l’API publique** : `GET /api/v1/sync` lit l’état ; `POST /api/v1/projects/{projectId}/sync` synchronise immédiatement via R2 une conversation (même jamais vue sur ce PC) ou lance un cycle complet. Nouvelle permission `sync:write`, décochée par défaut. Une application peut ainsi reprendre sur un PC une conversation terminée sur un autre sans attendre le cycle de cinq minutes.
+- **Envoi fiable en fin de tour** : la synchronisation d’une conversation attend la fin d’un cycle en cours au lieu d’être sautée.
+- **Muse Wonder** : nouveau modèle Meta (`muse-wonder-1.0`, préversion) avec une clé API ou l’abonnement Muse Code ; **Muse Wonder Full** avec l’abonnement Muse Code (offres Power Usage et Maximum Usage).
+
 ## 4.3.2
 
 - **Mise à jour disponible** : l’application Windows vérifie les mises à jour 10 secondes après le démarrage, puis toutes les 30 minutes, sur le canal choisi (stable ou bêta). Si une version existe, le bouton **Mise à jour disponible** apparaît à côté de **Préférences** et ouvre **Préférences → Mises à jour**. Rien n’est téléchargé ni installé sans votre clic ; les erreurs de cette vérification restent silencieuses.

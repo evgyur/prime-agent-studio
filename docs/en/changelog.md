@@ -4,6 +4,21 @@
 
 Changes by version. See [GitHub releases](https://github.com/zerr0o/prime-agent-studio/releases) for installers and source archives.
 
+## 4.3.5
+
+- **Roadmap order syncs**: moving a plan, milestone or backlog entry now reaches other PCs. Before, each PC kept its own order when merging, so two PCs could stay different forever while both showed "synced". The order of the most recently edited roadmap wins; on a tie, every PC picks the same one. On the first cycle after updating, each remote roadmap is merged again once so existing differences heal.
+
+## 4.3.4
+
+- **Muse Code models match your subscription**: the picker now only shows the models your plan actually serves. Muse Wonder Full no longer appears on plans that do not include it, instead of failing with "model not found". The list is read from Meta (read-only); when it is unavailable, all models stay listed.
+- **Muse Wonder Contributor**: new Muse Code variant (`muse-wonder-1.0-contributor`), served in the default Contributor mode of subscriptions. It gives more usage in exchange for using content for training.
+
+## 4.3.3
+
+- **Sync from the public API**: `GET /api/v1/sync` reads state; `POST /api/v1/projects/{projectId}/sync` immediately syncs one conversation through R2 (even one this PC has never seen) or runs a full cycle. New `sync:write` permission, unchecked by default. An app can continue on one PC a conversation finished on another without waiting for the five-minute cycle.
+- **Reliable end-of-turn upload**: a conversation sync now waits for a running cycle instead of being skipped.
+- **Muse Wonder**: new Meta model (`muse-wonder-1.0`, preview) with an API key or a Muse Code subscription; **Muse Wonder Full** with a Muse Code subscription (Power Usage and Maximum Usage plans).
+
 ## 4.3.2
 
 - **Update available**: the Windows app checks for updates 10 seconds after startup, then every 30 minutes, on the selected channel (stable or beta). When a version exists, an **Update available** button appears next to **Preferences** and opens **Preferences → Updates**. Nothing is downloaded or installed without your click; errors from this check stay silent.

@@ -10,15 +10,17 @@ import { t as tr, bindText, bindAttribute, translateKnown, onLanguageChange, get
 const ADMIN_ROOT = '/api/public-api';
 const TOKEN_ROUTE = '/api/public-api/tokens';
 const PROJECT_ID_PATTERN = /^p_[0-9a-fA-F]{32}$/;
-const OPTIONAL_SCOPES = ['runs:write', 'roadmaps:write', 'files:download', 'computer:write'];
+const OPTIONAL_SCOPES = ['runs:write', 'roadmaps:write', 'files:download', 'sync:write', 'computer:write'];
 const SCOPE_LABEL = {
   'computer:write': 'api.scope_computer_write',
+  'sync:write': 'api.scope_sync_write',
   'runs:write': 'api.scope_runs_write',
   'roadmaps:write': 'api.scope_roadmaps_write',
   'files:download': 'api.scope_files_download',
 };
 const SCOPE_INPUT = {
   'computer:write': 'public-api-scope-computer-write',
+  'sync:write': 'public-api-scope-sync-write',
   'runs:write': 'public-api-scope-runs-write',
   'roadmaps:write': 'public-api-scope-roadmaps-write',
   'files:download': 'public-api-scope-files-download',

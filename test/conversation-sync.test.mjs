@@ -342,6 +342,16 @@ test('two machines sync through an encrypted passive store', async (t) => {
   await A.sync.checkSession(sid);
   assert.equal((await B.sync.checkSession(sid)).changed, true);
   assert.deepEqual(context(B), context(A));
+  // A running full cycle never makes the quick check skip: it waits, then syncs.
+  await pause();
+  a.appendMessage(user('pendant un cycle complet'));
+  a.appendMessage(reply('ok'));
+  const cycle = A.sync.run();
+  const during = await A.sync.checkSession(sid);
+  await cycle;
+  assert.equal(during.state, 'synced', 'checked after the cycle, not reported busy');
+  assert.equal((await B.sync.checkSession(sid)).changed, true);
+  assert.deepEqual(context(B), context(A));
   assert.equal((await B.sync.checkSession(sid)).changed, false);
   assert.equal((await A.sync.checkSession(hidden.getSessionId())).state, 'off');
   await A.sync.forget();
@@ -605,4 +615,21 @@ test('roadmaps sync three-way with plan colors, project colors and device colors
   const idB = (await B.sync.status()).devices.find((d) => d.self).id;
   assert.equal((await A.sync.status()).sessionDevices['conv-1'], idB);
   assert.equal((await B.sync.status()).sessionDevices['conv-1'], idB);
+  // A backlog reorder on one PC reaches the other (it used to keep its own order).
+  await A.change('Projet', 'backlog.add', { items: [{ text: 'Troisième' }] });
+  await A.sync.run();
+  await B.sync.run();
+  const numbers = (doc) => doc.backlog.items.map((e) => e.number);
+  const before = numbers(await A.readRaw('Projet'));
+  assert.deepEqual(numbers(await B.readRaw('Projet')), before);
+  await new Promise((r) => setTimeout(r, 5));
+  await A.change('Projet', 'backlog.move', { number: before.at(-1), targetNumber: before[0], position: 'before' });
+  const moved = numbers(await A.readRaw('Projet'));
+  assert.notDeepEqual(moved, before);
+  await A.sync.run();
+  await B.sync.run();
+  assert.deepEqual(numbers(await B.readRaw('Projet')), moved, 'reorder propagates');
+  await A.sync.run();
+  assert.deepEqual(numbers(await A.readRaw('Projet')), moved, 'and stays on A');
 });
+

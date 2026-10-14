@@ -216,7 +216,7 @@ async function enableApi(f, { scopes = FULL_SCOPES, projectIds = ['*'], name = '
   assert.equal(initial.json.enabled, false);
   assert.equal(initial.json.revision, 0);
   assert.deepEqual(initial.json.tokens, []);
-  assert.deepEqual(initial.json.scopes, [...FULL_SCOPES, 'computer:write']);
+  assert.deepEqual(initial.json.scopes, [...FULL_SCOPES, 'computer:write', 'sync:write']);
   const enabled = await f.api('/api/public-api', {
     method: 'PATCH',
     body: { enabled: true, revision: initial.json.revision },
@@ -383,6 +383,7 @@ test('runtime reads expose stable projections with bounded pagination', async (t
     'roadmaps',
     'files',
     'computer-use',
+    'sync',
   ]);
   assert.deepEqual(machine.json.idempotency, { retentionSeconds: 3600, persistent: false });
 

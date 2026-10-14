@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prime Agent Studio style: app shell example</title>
+<link rel="stylesheet" href="studio.css">
+<script src="theme.js"></script>  <!-- dark by default; ?theme=light or ?theme=system to check the others -->
+<style>
+  /* Example-only layout values (the kit has no opinion on your page grid). */
+  .ex-tools { flex: 0 0 373px; }
+  .ex-conv { position: relative; }
+  .ex-row-actions { display: flex; align-items: center; gap: 4px; }
+</style>
+</head>
+<body>
+<div class="ps-app">
+  <!-- Sidebar ---------------------------------------------------------------->
+  <nav class="ps-sidebar" aria-label="Sessions">
+    <a class="ps-brand" href="#">
+      <span class="ps-brand-mark" data-mark></span>
+      <span class="ps-brand-name">prime<span class="ps-brand-sub">Agent Studio</span></span>
+      <span class="ps-tag" style="margin-left:auto">Local</span>
+    </a>
+    <div class="ps-sidebar-top">
+      <button class="ps-btn ps-btn--tinted"><span data-icon="plus"></span>New session<kbd class="ps-kbd">Ctrl N</kbd></button>
+      <button class="ps-btn ps-btn--quiet" style="margin-top:8px"><span data-icon="folder-plus" data-size="14"></span>Add a project</button>
+      <label class="ps-search"><span data-icon="search"></span><input placeholder="Search sessions"><kbd class="ps-kbd">Ctrl K</kbd></label>
+    </div>
+    <div class="ps-sidebar-heading">
+      <span class="ps-section-label">Workspace</span>
+      <span class="ex-row-actions">
+        <button class="ps-icon-btn ps-icon-btn--sm" aria-label="Archived"><span data-icon="archive"></span></button>
+        <button class="ps-icon-btn ps-icon-btn--sm" aria-label="Add a project"><span data-icon="plus"></span></button>
+      </span>
+    </div>
+    <div class="ps-sidebar-scroll">
+      <h2 class="ps-group-label" style="margin-top:4px">Pinned</h2>
+      <div class="ps-tree">
+      <div class="ps-tree-head">
+        <button class="ps-disclosure" aria-expanded="true" aria-label="Collapse Nimbus API"><span data-icon="chevron"></span></button>
+        <button class="ps-row is-active" style="--row-color: var(--project-blue)"><span class="ps-folder" data-icon="folder"></span><span class="ps-truncate">Nimbus API</span><span class="ps-dot ps-dot--unread"></span><span class="ps-count">4</span></button>
+      </div>
+      <div class="ps-tree-children">
+        <button class="ps-subrow is-active"><span class="ps-truncate">Add rate limiting to the public API</span></button>
+        <button class="ps-subrow"><span class="ps-truncate">Fix flaky integration tests</span><span class="ps-dot ps-dot--unread"></span></button>
+        <button class="ps-subrow"><span class="ps-truncate">Migrate auth to OAuth 2.1</span></button>
+        <button class="ps-subrow"><span class="ps-truncate">Profile cold start latency</span></button>
+      </div>
+      </div>
+      <div class="ps-tree">
+      <div class="ps-tree-head">
+        <button class="ps-disclosure" aria-expanded="true" aria-label="Collapse Orbit Web"><span data-icon="chevron"></span></button>
+        <button class="ps-row" style="--row-color: var(--project-violet)"><span class="ps-folder" data-icon="folder"></span><span class="ps-truncate">Orbit Web</span><span class="ps-dot ps-dot--running"></span><span class="ps-count">3</span></button>
+      </div>
+      <div class="ps-tree-children">
+        <button class="ps-subrow"><span class="ps-truncate">Redesign the onboarding flow</span><span class="ps-dot ps-dot--running"></span></button>
+        <button class="ps-subrow"><span class="ps-truncate">Accessibility audit</span></button>
+        <button class="ps-subrow"><span class="ps-truncate">Bundle size budget</span></button>
+      </div>
+      </div>
+      <h2 class="ps-group-label">Projects</h2>
+      <div class="ps-tree">
+      <div class="ps-tree-head">
+        <button class="ps-disclosure" aria-expanded="false" aria-label="Expand Atlas Mobile"><span data-icon="chevron"></span></button>
+        <button class="ps-row" style="--row-color: var(--project-green)"><span class="ps-folder" data-icon="folder"></span><span class="ps-truncate">Atlas Mobile</span><span class="ps-count">3</span></button>
+      </div>
+      </div>
+      <div class="ps-tree">
+      <div class="ps-tree-head">
+        <button class="ps-disclosure" aria-expanded="false" aria-label="Expand Docs Portal"><span data-icon="chevron"></span></button>
+        <button class="ps-row"><span class="ps-folder" data-icon="folder"></span><span class="ps-truncate">Docs Portal</span><span class="ps-count">2</span></button>
+      </div>
+      </div>
+    </div>
+    <div class="ps-sidebar-footer">
+      <div style="display:flex;align-items:center;gap:8px;font-size:var(--fs-caption);color:var(--muted);padding:0 2px 13px">
+        <span class="ps-dot ps-dot--sm ps-dot--connected"></span>Engine connected
+        <span class="ps-mono ps-faint" style="margin-left:auto;font-size:var(--fs-caption)">v0.9.8</span>
+      </div>
+      <button class="ps-nav-item" style="min-height:0;padding:8px 3px"><span data-icon="settings" data-size="15"></span>Preferences<span class="ps-faint" style="margin-left:auto;font-size:var(--fs-caption)">Local Studio</span></button>
+    </div>
+  </nav>
+
+  <!-- Main ------------------------------------------------------------------->
+  <div class="ps-main">
+    <header class="ps-header">
+      <div class="ps-breadcrumb">
+        <span data-icon="folder"></span>
+        <span class="ps-breadcrumb-parent">Nimbus API</span>
+        <span class="ps-breadcrumb-sep">/</span>
+        <span class="ps-breadcrumb-current">Add rate limiting to the public API</span>
+      </div>
+      <div class="ps-header-actions">
+        <button class="ps-pill-btn ps-pill-btn--sm"><span class="ps-dot" style="width:7px;height:7px"></span>Computer Use</button>
+        <button class="ps-pill-btn"><span data-icon="map"></span>Roadmap <span class="ps-num">42 %</span></button>
+        <button class="ps-icon-btn ps-icon-btn--header is-active" aria-label="Layout"><span data-icon="layout"></span></button>
+        <button class="ps-icon-btn ps-icon-btn--header" aria-label="More"><span data-icon="more"></span></button>
+        <button class="ps-icon-btn ps-icon-btn--header" aria-label="Details"><span data-icon="panel"></span></button>
+      </div>
+    </header>
+
+    <div class="ps-body">
+      <!-- Conversation pane -->
+      <section class="ps-pane ex-conv">
+        <div class="ps-tabbar">
+          <div class="ps-tabbar-tabs" role="tablist">
+            <button class="ps-tab" role="tab" aria-selected="true"><span data-icon="conversation"></span>Add rate limiting to the public API</button>
+          </div>
+          <button class="ps-chrome-btn" aria-label="Tab actions">⋯</button>
+          <button class="ps-chrome-btn" aria-label="Close">×</button>
+        </div>
+        <div class="ps-pane-content">
+          <div class="ps-thread">
+            <article class="ps-msg ps-msg--user">
+              <div class="ps-msg-head"><span class="ps-avatar"><span data-icon="user"></span></span><span class="ps-msg-author">You</span><span class="ps-msg-time">05:04 PM</span></div>
+              <div class="ps-msg-body">Also expose the remaining quota in the response headers, so clients can back off early.</div>
+            </article>
+            <article class="ps-msg">
+              <div class="ps-msg-head"><span class="ps-avatar"><span data-icon="model"></span></span><span class="ps-msg-author">Prime Agent</span><span class="ps-msg-model">gpt-6-astra</span><span class="ps-msg-time">05:05 PM</span></div>
+              <div class="ps-msg-body ps-prose">
+                <details class="ps-activity">
+                  <summary><span data-icon="terminal" class="ps-muted"></span>
+                    <span><span class="ps-activity-label">Agent activity</span> <span class="ps-activity-count">&nbsp; 2 tool calls · 1 reflection</span></span>
+                    <span class="ps-activity-state">Done</span><span data-icon="chevron" data-size="14" class="ps-faint"></span></summary>
+                  <div class="ps-activity-content">Standard RateLimit headers on every /v2 response.</div>
+                </details>
+                <h2>Quota headers on every response</h2>
+                <p>Clients can now see their budget before they hit a <code>429</code>:</p>
+                <div class="ps-code"><div class="ps-code-bar"><span>http</span><button><span data-icon="copy"></span>Copy</button></div>RateLimit-Limit: 600
+RateLimit-Remaining: 584
+RateLimit-Reset: 41</div>
+                <p>The values come from the same Redis bucket, so they never disagree with the limiter.</p>
+              </div>
+            </article>
+          </div>
+        </div>
+        <div class="ps-composer-area">
+          <form class="ps-composer" onsubmit="return false">
+            <div style="display:flex;gap:10px;align-items:flex-start">
+              <textarea placeholder="What would you like to build?" aria-label="Message"></textarea>
+              <span class="ex-row-actions"><button class="ps-composer-tool" aria-label="Commands">/</button><button class="ps-composer-tool" aria-label="Add a photo"><span data-icon="image"></span></button><button class="ps-composer-tool" aria-label="Add an attachment"><span data-icon="paperclip"></span></button></span>
+            </div>
+            <div class="ps-composer-toolbar">
+              <div style="display:flex;align-items:center;gap:10px">
+                <button class="ps-pill-btn ps-pill-btn--sm" style="border:0;background:none;padding-left:0"><span data-icon="model"></span><span style="text-align:left;line-height:1.2">GPT-6 Astra<br><small class="ps-faint" style="font-size:var(--fs-micro)">openai-codex</small></span></button>
+                <span class="ps-separator"></span>
+                <select class="ps-select ps-select--bare"><option>Maximum</option></select>
+                <label class="ps-checkbox"><input type="checkbox" checked>Questions</label>
+                <label class="ps-checkbox"><input type="checkbox">Computer Use</label>
+              </div>
+              <button class="ps-send-btn" aria-label="Send" disabled><span data-icon="arrow-up"></span></button>
+            </div>
+          </form>
+          <div class="ps-composer-hint">Enter to send · Shift Enter for a new line</div>
+        </div>
+      </section>
+
+      <!-- Tool pane -->
+      <aside class="ps-pane ex-tools">
+        <div class="ps-tabbar">
+          <div class="ps-tabbar-tabs" role="tablist">
+            <button class="ps-tab has-lock" role="tab" aria-selected="true"><span data-icon="roadmap"></span>Roadmap<span class="ps-tab-lock" data-icon="unlock"></span></button>
+            <button class="ps-tab has-lock" role="tab" aria-selected="false"><span data-icon="session"></span>Session<span class="ps-tab-lock" data-icon="unlock"></span></button>
+            <button class="ps-tab has-lock" role="tab" aria-selected="false"><span data-icon="agents"></span>Agents<span class="ps-tab-lock" data-icon="unlock"></span></button>
+          </div>
+          <button class="ps-chrome-btn" aria-label="Tab actions">⋯</button>
+          <button class="ps-chrome-btn" aria-label="Close">×</button>
+        </div>
+        <div class="ps-pane-content">
+          <div class="ps-pane-head">
+            <h2 class="ps-panel-title">Roadmap</h2>
+            <p>Nimbus API</p>
+          </div>
+          <div class="ps-pane-section" style="padding-bottom:20px">
+            <div class="ps-progress-label"><span>5/12 tasks checked</span><span class="ps-stat">42%</span></div>
+            <progress class="ps-progress" value="5" max="12" style="margin-top:12px"></progress>
+          </div>
+          <nav class="ps-tabs-underline" role="tablist" style="padding:0 18px">
+            <button role="tab" aria-selected="true">Project</button><button role="tab" aria-selected="false">Session</button><button role="tab" aria-selected="false">Backlog</button>
+          </nav>
+          <div class="ps-pane-section" style="padding-top:22px">
+            <div class="ps-plan-head"><h3 class="ps-heading" style="flex:1">Project direction</h3><button class="ps-text-btn">Edit</button></div>
+            <p style="font-size:var(--fs-body);margin:8px 0 26px">A fast, predictable public API for every client.</p>
+            <div class="ps-plan-head" style="margin-bottom:8px"><span class="ps-heading">v2.0 public beta</span><span class="ps-inline-count">5/12</span></div>
+            <div class="ps-plan has-color" style="--plan-color: var(--plan-teal)">
+              <div class="ps-plan-head"><span class="ps-plan-dot"></span><button class="ps-plan-title" aria-expanded="false">Rate limiting</button><span class="ps-inline-count">4/7 · 57%</span></div>
+              <div class="ps-plan-meta">Active</div>
+            </div>
+            <div class="ps-plan has-color" style="--plan-color: var(--plan-indigo)">
+              <div class="ps-plan-head"><span class="ps-plan-dot"></span><button class="ps-plan-title" aria-expanded="false">OAuth 2.1 migration</button><span class="ps-inline-count">1/3 · 33%</span></div>
+              <div class="ps-plan-meta">Active</div>
+            </div>
+            <div class="ps-plan">
+              <div class="ps-plan-head"><button class="ps-plan-title" aria-expanded="false">Observability</button><span class="ps-inline-count">0/2 · 0%</span></div>
+              <div class="ps-plan-meta">Active</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:14px;padding:6px 0 24px">
+              <button class="ps-btn ps-btn--primary" style="padding:10px 15px">Add a plan</button>
+              <button class="ps-text-btn">Add a milestone</button>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div>
+</div>
+<script src="icons.js"></script>
+<script>
+  StudioIcons.mountIcons();
+  for (const node of document.querySelectorAll('[data-mark]')) node.innerHTML = StudioIcons.markSvg(30);
+</script>
+</body>
+</html>

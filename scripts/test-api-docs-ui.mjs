@@ -2,7 +2,7 @@
 // Real HTTP shell with isolated temp profile and fake runtime only.
 // Parent serves GET /api-docs and GET /openapi-v1.json generated from the
 // contract; this script owns ONLY its own file and never edits UI/server.
-// Covers: DOM contract (token/clear/search + 20 operation cards with
+// Covers: DOM contract (token/clear/search + 22 operation cards with
 // path/query/header inputs, request-body textarea, body-variant select,
 // confirm, execute/cancel, status/response/headers/curl), per-operation
 // route stubs for /api/v1/** with exact method/path/auth + query/header/body
@@ -36,7 +36,7 @@ const REQ_WORK = 'req-fixture-work-0123456789';
 const DOWNLOAD_RAW_LEN = 70000;
 const DOWNLOAD_RAW = 'x'.repeat(DOWNLOAD_RAW_LEN);
 
-// All 20 contract operations in spec order.
+// All 22 contract operations in spec order.
 const OPERATIONS = [
   {
     operationId: 'machine',
@@ -60,6 +60,14 @@ const OPERATIONS = [
     path: '/api/v1/computer-use',
     body: { enabled: true, expectedRevision: 0, sessionId: IDS.sessionId },
     needsConfirm: true,
+    snippet: 'machine-fixture-01',
+  },
+  {
+    operationId: 'syncState',
+    method: 'GET',
+    path: '/api/v1/sync',
+    body: null,
+    needsConfirm: false,
     snippet: 'machine-fixture-01',
   },
   {
@@ -151,6 +159,14 @@ const OPERATIONS = [
     snippet: 'accepted',
   },
   {
+    operationId: 'syncProject',
+    method: 'POST',
+    path: '/api/v1/projects/{projectId}/sync',
+    body: { sessionId: IDS.sessionId },
+    needsConfirm: true,
+    snippet: 'machine-fixture-01',
+  },
+  {
     operationId: 'roadmap',
     method: 'GET',
     path: '/api/v1/projects/{projectId}/roadmap',
@@ -207,6 +223,19 @@ const OP_BY_ID = Object.fromEntries(OPERATIONS.map((op) => [op.operationId, op])
 
 function stubFor(operationId) {
   switch (operationId) {
+    case 'syncState':
+    case 'syncProject':
+      return {
+        status: 200,
+        contentType: 'application/json',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          machineId: 'machine-fixture-01',
+          configured: true,
+          running: false,
+          lastSync: { at: '2026-10-13T12:00:00.000Z', ok: true, sent: 1, received: 0 },
+        }),
+      };
     case 'computerUse':
     case 'setComputerUse':
       return {
@@ -632,9 +661,9 @@ try {
   await expect(page.locator('#api-docs-search')).toBeVisible();
   checks.push('dom token/clear/search present');
 
-  // DOM contract: all 20 operation cards.
+  // DOM contract: all 22 operation cards.
   const cards = page.locator('details[data-operation-id]');
-  assert.equal(await cards.count(), 20, 'all 20 operation cards exist');
+  assert.equal(await cards.count(), 22, 'all 22 operation cards exist');
   for (const op of OPERATIONS) {
     const card = page.locator(`details[data-operation-id="${op.operationId}"]`);
     assert.equal(await card.count(), 1, `card ${op.operationId} exists`);
@@ -684,7 +713,7 @@ try {
     );
     assert.ok((await card.locator('pre[data-curl]').count()) >= 1, `${op.operationId} curl`);
   }
-  checks.push('all 20 cards with param/body/variant/confirm/execute/cancel/status/response/headers/curl');
+  checks.push('all 22 cards with param/body/variant/confirm/execute/cancel/status/response/headers/curl');
 
   // Real spec stays wired: /openapi-v1.json generated from the contract.
   const specOps = await page.evaluate(async () => {
@@ -702,9 +731,9 @@ try {
   assert.deepEqual(
     specOps,
     OPERATIONS.map((o) => o.operationId).sort(),
-    'spec lists the same 20 operationIds',
+    'spec lists the same 22 operationIds',
   );
-  checks.push('real /openapi-v1.json lists 20 operations');
+  checks.push('real /openapi-v1.json lists 22 operations');
 
   // No auto fetch on load.
   await page.waitForTimeout(800);
@@ -843,7 +872,7 @@ try {
   }
   assert.equal(externalHosts.length, 0, 'no production/external hosts contacted');
   checks.push(
-    '20/20 stubbed operations with exact method/path/auth/query/header/body plus idle-cancel, completion-gated reads, elapsed status, labelled bodies and redacted curl',
+    '22/22 stubbed operations with exact method/path/auth/query/header/body plus idle-cancel, completion-gated reads, elapsed status, labelled bodies and redacted curl',
   );
 
   // Duplicate POST guard: Execute disables while active, so a double click
@@ -1062,14 +1091,14 @@ try {
     await page.locator('#api-docs-search').fill('');
     assert.equal(
       await page.locator('details[data-operation-id]:visible').count(),
-      20,
+      22,
       'search cleared shows all',
     );
     await page.locator('#api-docs-search').focus();
     await page.keyboard.type('roadmap', { delay: 20 });
     await page.waitForTimeout(400);
     const visible = await page.locator('details[data-operation-id]:visible').count();
-    assert.ok(visible < 20 && visible >= 2, `search filters cards, got ${visible}`);
+    assert.ok(visible < 22 && visible >= 2, `search filters cards, got ${visible}`);
     const visibleIds = await page
       .locator('details[data-operation-id]:visible')
       .evaluateAll((els) => els.map((e) => e.getAttribute('data-operation-id')));
@@ -1081,7 +1110,7 @@ try {
     const hiddenNav = await page
       .locator('#api-docs-nav li[hidden]')
       .evaluateAll((els) => els.map((e) => e.textContent || ''));
-    assert.equal(hiddenNav.length, 20 - visible, `nav items hidden with cards, got ${hiddenNav.length}`);
+    assert.equal(hiddenNav.length, 22 - visible, `nav items hidden with cards, got ${hiddenNav.length}`);
     assert.ok(
       hiddenNav.every((text) => !/roadmap/i.test(text || '')),
       'hidden nav items are the non-matching routes',
@@ -1096,7 +1125,7 @@ try {
     await page.waitForTimeout(300);
     assert.equal(
       await page.locator('details[data-operation-id]:visible').count(),
-      20,
+      22,
       'search reset restores all',
     );
     const summary = page.locator('details[data-operation-id="machine"] summary').first();
@@ -1124,11 +1153,11 @@ try {
       });
     });
     await enPage.goto(`${url}/api-docs`, { waitUntil: 'domcontentloaded' });
-    await expect(enPage.locator('details[data-operation-id]')).toHaveCount(20);
+    await expect(enPage.locator('details[data-operation-id]')).toHaveCount(22);
     const enText = await enPage.locator('body').innerText();
     assert.ok(/token|search|execute|cancel|documentation/i.test(enText), 'EN wording visible');
     await enContext.close();
-    checks.push('FR plus EN wording with 20 cards in both');
+    checks.push('FR plus EN wording with 22 cards in both');
   }
 
   // Screenshot without credentials: safe fixture response, cleared field.
@@ -1319,7 +1348,7 @@ try {
   const missing = OPERATIONS.filter((op) => !(routeCoverage[op.operationId] >= 1)).map(
     (op) => op.operationId,
   );
-  assert.deepEqual(missing, [], `route coverage 20/20, missing: ${missing.join(',')}`);
+  assert.deepEqual(missing, [], `route coverage 22/22, missing: ${missing.join(',')}`);
   console.log(JSON.stringify({ passed: true, checks, routeCoverage }, null, 2));
 } finally {
   clearTimeout(deadline);

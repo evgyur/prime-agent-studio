@@ -19,6 +19,7 @@ import {
   MUSE_API,
   MUSE_ALLOWED_VERIFICATION_HOSTS,
   MUSE_CODE_MODELS,
+  fetchServedMuseModelIds,
   museCodeModels,
   startDeviceAuthorization,
   pollDeviceToken,
@@ -81,7 +82,17 @@ test('contract matches sibling gate and public launcher facts', async () => {
 });
 
 test('models stay subscription scoped with reasoning defaults', () => {
-  assert.equal(MUSE_CODE_MODELS.length, 2);
+  assert.deepEqual(
+    MUSE_CODE_MODELS.map((model) => model.id),
+    [
+      'muse-spark-1.3',
+      'muse-spark-1.3-contributor',
+      'muse-wonder-full-1.0',
+      'muse-wonder-1.0',
+      'muse-wonder-1.0-contributor',
+    ],
+  );
+  assert.equal(MUSE_CODE_MODELS.find((model) => model.id === 'muse-wonder-full-1.0').thinkingLevelMap.max, 'max');
   for (const model of museCodeModels()) {
     assert.equal(model.reasoning, true);
     assert.equal(model.thinkingLevelMap.off, null);
@@ -408,3 +419,23 @@ test('corrupt muse-code credential cannot break listing or leak into paid keys',
   assert.equal(metaKey, paidMetaKey);
 });
 
+
+test('served model ids come from GET /v1/models with the minted key only', async () => {
+  const stored = { type: 'oauth', access: encodeMuseCredential('identity-abc', 'minted-key-123'), refresh: 'identity-abc' };
+  const calls = [];
+  const fetchImpl = async (url, init) => {
+    calls.push({ url, init });
+    return { ok: true, json: async () => ({ object: 'list', data: [{ id: 'muse-wonder-1.0' }, { id: 'muse-spark-1.3' }] }) };
+  };
+  const served = await fetchServedMuseModelIds(stored, { fetchImpl });
+  assert.deepEqual([...served].sort(), ['muse-spark-1.3', 'muse-wonder-1.0']);
+  assert.equal(calls.length, 1, 'read-only: no key minting or refresh');
+  assert.equal(calls[0].url, 'https://api.meta.ai/v1/models');
+  assert.equal(calls[0].init.method, undefined, 'GET');
+  assert.equal(calls[0].init.headers.Authorization, 'Bearer minted-key-123');
+  // Fail open: any failure keeps the full static catalog (null).
+  assert.equal(await fetchServedMuseModelIds(stored, { fetchImpl: async () => ({ ok: false, status: 401 }) }), null);
+  assert.equal(await fetchServedMuseModelIds(stored, { fetchImpl: async () => { throw new Error('offline'); } }), null);
+  assert.equal(await fetchServedMuseModelIds(stored, { fetchImpl: async () => ({ ok: true, json: async () => ({ data: [] }) }) }), null);
+  assert.equal(await fetchServedMuseModelIds({ access: 'not-json' }, { fetchImpl }), null);
+});

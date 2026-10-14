@@ -33,6 +33,8 @@ test('operations: agreed IDs, methods, /api/v1 prefix and scope coverage', () =>
   const expectedScopes = {
     computerUse: ['read'],
     setComputerUse: ['read', 'computer:write'],
+    syncState: ['read'],
+    syncProject: ['read', 'sync:write'],
     machine: ['read'],
     projects: ['read'],
     models: ['read'],

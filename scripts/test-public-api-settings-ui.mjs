@@ -209,7 +209,7 @@ try {
   await expect(docsLink).toContainText('Documentation interactive');
   const [docsPage] = await Promise.all([context.waitForEvent('page'), docsLink.click()]);
   await docsPage.waitForURL(url + '/api-docs');
-  await expect(docsPage.locator('details[data-operation-id]')).toHaveCount(20);
+  await expect(docsPage.locator('details[data-operation-id]')).toHaveCount(22);
   await expect(docsPage.locator('#api-docs-token')).toHaveValue('');
   await docsPage.close();
   await expect(page.locator('#settings-panel-api')).toContainText('outils externes');

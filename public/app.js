@@ -208,6 +208,8 @@ const icons = {
   'arrow-up-right': 'M6 18 18 6M6 6h12v12',
   'arrow-up': 'M12 19V5m-6 6 6-6 6 6',
   'arrow-down': 'M12 5v14m-6-6 6 6 6-6',
+  'arrow-left': 'M19 12H5m6-6-6 6 6 6',
+  'arrow-right': 'M5 12h14m-6-6 6 6-6 6',
   model: 'm12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5',
   stop: 'M6 6h12v12H6V6',
   shield: 'M12 3 3 7v5c0 5 9 9 9 9s9-4 9-9V7l-9-4Zm-4 9 3 3 5-6',
@@ -2653,7 +2655,7 @@ function makeLiveMessages(view, images, text, roots) {
   });
 }
 function makeQuestions(view, root) {
-  return createQuestions({ root, api, getContext: () => questionsContextFor(view) });
+  return createQuestions({ root, api, icon, getContext: () => questionsContextFor(view) });
 }
 // Live per-view composer controllers. Primary keeps the singletons until the
 // enable commit; dynamic views build scoped units on docked focus/mount only,

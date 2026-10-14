@@ -200,25 +200,61 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 12px;
+  width: 100%;
+  margin: 8px 0 4px;
 }
-/* Compact like the other Studio controls; touch screens keep 44 px targets. */
-.question-navigation button {
+.question-navigation .question-position {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.question-navigation.is-resolved .question-position {
+  text-align: left;
+}
+/* Quiet arrows at both ends of the line; touch screens keep 44 px targets. */
+.question-nav-button {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
   min-width: 32px;
   min-height: 32px;
-  font: inherit;
-  font-size: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
   cursor: pointer;
+  transition: color 0.15s, background-color 0.15s;
+}
+.question-nav-button:hover:not(:disabled) {
+  background: var(--surface-raised);
+  color: var(--text);
+}
+.question-nav-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.question-nav-button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.question-nav-button[hidden] {
+  display: none;
+}
+.question-nav-button svg {
+  width: 18px;
+  height: 18px;
 }
 @media (pointer: coarse) {
-  .question-navigation button {
+  .question-nav-button {
     min-width: 44px;
     min-height: 44px;
   }
 }
-.question-navigation button:disabled { opacity: 0.45; cursor: default; }
-.question-counter { font-variant-numeric: tabular-nums; }
-.question-progress { color: var(--muted); font-size: 12px; }
+.question-progress { color: var(--muted); font-size: 12px; text-align: center; margin: 0 0 4px; }
 .question-status { white-space: pre-line; }
 .question-card[hidden], .question-navigation[hidden] { display: none; }
 @container (max-width: 400px) {

@@ -549,9 +549,10 @@ export const messages = {
   'questions.previous': { fr: 'Question précédente', en: 'Previous question' },
   'questions.next': { fr: 'Question suivante', en: 'Next question' },
   'questions.navigation': { fr: 'Parcourir les questions', en: 'Browse questions' },
+  'questions.position': { fr: 'Question {current}/{total}', en: 'Question {current}/{total}' },
   'questions.progress': {
-    fr: '{answered} réponse(s) · {skipped} passée(s) · {total} questions',
-    en: '{answered} answered · {skipped} skipped · {total} questions',
+    fr: '{answered} réponse(s) · {skipped} passée(s)',
+    en: '{answered} answered · {skipped} skipped',
   },
   'questions.requiredAll': {
     fr: 'Répondez à chaque question ou passez-la explicitement avant d’envoyer.',

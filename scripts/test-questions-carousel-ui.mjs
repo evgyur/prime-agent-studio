@@ -77,26 +77,26 @@ try {
       await expect(card.locator('details').first()).toHaveAttribute('open', '');
       if (!batch) {
         await expect(form.locator('.question-navigation')).toHaveCount(0);
-        await expect(form.locator('.question-counter')).toHaveCount(0);
+        await expect(form.locator('.question-position')).toHaveCount(0);
         await card.locator('textarea').fill('Réponse libre seule');
       } else {
         const next = form.getByRole('button', { name: 'Question suivante', exact: true });
         const previous = form.getByRole('button', { name: 'Question précédente', exact: true });
-        const counter = form.locator('.question-counter');
-        await expect(counter).toHaveText('1/3');
+        const counter = form.locator('.question-position');
+        await expect(counter).toHaveText('Question 1/3');
         await expect(previous).toBeDisabled();
         await card.locator('input[type=radio]').first().check();
         await card.locator('input[type=radio]').first().press('ArrowRight');
-        await expect(counter).toHaveText('1/3');
+        await expect(counter).toHaveText('Question 1/3');
         await card.locator('input[type=radio]').first().check();
         await next.focus();
         await next.press('ArrowRight');
-        await expect(counter).toHaveText('2/3');
+        await expect(counter).toHaveText('Question 2/3');
         await expect(card.locator('h3')).toBeFocused();
         await expect(card.locator('textarea')).toBeVisible();
         await card.locator('textarea').fill('Réponse conservée');
         await card.locator('textarea').press('ArrowLeft');
-        await expect(counter).toHaveText('2/3');
+        await expect(counter).toHaveText('Question 2/3');
         await previous.click();
         await expect(card.locator('input[type=radio]').first()).toBeChecked();
         await expect(card.locator('details').first()).toHaveAttribute('open', '');
@@ -109,7 +109,7 @@ try {
         await expect(card.locator('input[type=radio]:checked')).toHaveCount(0);
         await previous.click();
         await form.getByRole('button', { name: 'Envoyer les réponses', exact: true }).click();
-        await expect(counter).toHaveText('3/3');
+        await expect(counter).toHaveText('Question 3/3');
         await expect(form.locator('.question-error')).toBeVisible();
         await expect(card.locator('h3')).toBeFocused();
         await expect(card.locator('textarea')).toBeVisible();
@@ -121,6 +121,17 @@ try {
         const bounds = await next.boundingBox();
         const target = index ? 44 : 32;
         assert.ok(bounds.width >= target && bounds.height >= target, `nav target ${bounds.width}x${bounds.height}`);
+        // One line across the text width: arrows at both ends, position centered, no separate header.
+        const [line, left, middle, field] = await Promise.all([
+          form.locator('.question-navigation').boundingBox(),
+          previous.boundingBox(),
+          counter.boundingBox(),
+          card.locator('textarea').boundingBox(),
+        ]);
+        assert.ok(Math.abs(line.width - field.width) < 2, `line ${line.width} vs text ${field.width}`);
+        assert.ok(left.x - line.x < 1 && line.x + line.width - (bounds.x + bounds.width) < 1, 'arrows at the ends');
+        assert.ok(Math.abs(middle.y + middle.height / 2 - (left.y + left.height / 2)) < 2, 'same line');
+        assert.equal(await form.locator(':scope > h3').count(), 0, 'no separate header');
       }
       await form.scrollIntoViewIfNeeded();
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);

@@ -1,6 +1,6 @@
 import { t as tr, bindText, bindAttribute } from './i18n.js';
 
-export function createQuestions({ root, api, getContext }) {
+export function createQuestions({ root, api, getContext, icon }) {
   const nodes = new Map();
   const prefix = `question-${Math.random().toString(36).slice(2)}`;
   let currentRun;
@@ -37,19 +37,28 @@ export function createQuestions({ root, api, getContext }) {
         const fields = node('fieldset', 'question-fields');
         fields.append(node('legend', 'sr-only', request.title));
         const cards = [], drafts = questions.map(() => null);
-        let current = 0;
+        const multi = questions.length > 1;
+        let current = 0,
+          open = true;
+        // Several questions: one line across the text column, ← Question 2/3 →.
+        // The title itself shows the position, so there is no separate header.
         const navigation = node('div', 'question-navigation');
         navigation.setAttribute('role', 'group');
         bindAttribute(navigation, 'aria-label', () => tr('questions.navigation'));
-        const previous = node('button', 'question-cancel', '‹');
-        previous.type = 'button';
-        bindAttribute(previous, 'aria-label', () => tr('questions.previous'));
-        const counter = node('span', 'question-counter');
-        counter.setAttribute('aria-live', 'polite');
-        const next = node('button', 'question-cancel', '›');
-        next.type = 'button';
-        bindAttribute(next, 'aria-label', () => tr('questions.next'));
-        navigation.append(previous, counter, next);
+        const arrowButton = (name, glyph, key) => {
+          const button = node('button', 'question-nav-button');
+          button.type = 'button';
+          button.append(typeof icon === 'function' ? icon(name) : document.createTextNode(glyph));
+          bindAttribute(button, 'aria-label', () => tr(key));
+          return button;
+        };
+        const previous = arrowButton('arrow-left', '←', 'questions.previous');
+        const next = arrowButton('arrow-right', '→', 'questions.next');
+        if (multi) {
+          title.classList.add('question-position');
+          title.setAttribute('aria-live', 'polite');
+          navigation.append(previous, title, next);
+        }
         const progress = node('p', 'question-progress');
         progress.setAttribute('aria-live', 'polite');
         const refresh = () => {
@@ -60,7 +69,11 @@ export function createQuestions({ root, api, getContext }) {
           if (drafts.every(Boolean)) error.hidden = true;
           previous.disabled = current === 0;
           next.disabled = current === questions.length - 1;
-          bindText(counter, () => `${current + 1}/${questions.length}`);
+          // Resolved: the line keeps the batch title, without arrows.
+          if (multi)
+            bindText(title, () =>
+              open ? tr('questions.position', { current: current + 1, total: questions.length }) : request.title,
+            );
           bindText(progress, () => tr('questions.progress', {
             answered: drafts.filter((answer) => answer && !answer.skipped).length,
             skipped: drafts.filter((answer) => answer?.skipped).length,
@@ -170,11 +183,16 @@ export function createQuestions({ root, api, getContext }) {
         error.setAttribute('role', 'alert');
         error.hidden = true;
         actions.append(submit, cancel);
-        form.append(label, title);
-        if (questions.length > 1) form.append(navigation);
+        form.append(label, multi ? navigation : title);
         if (batch) form.append(progress);
         form.append(fields, actions, status, error);
+        const setOpen = (value) => {
+          if (value === open) return;
+          open = value;
+          refresh();
+        };
         entry = { form, fields, actions, navigation, progress, status, error, pending: false, statusKey: null };
+        Object.assign(entry, { multi, previous, next, setOpen });
         refresh();
         const reply = async (response) => {
           if (entry.pending || entry.statusKey !== 'pending' || getContext().readOnly) return;
@@ -219,7 +237,12 @@ export function createQuestions({ root, api, getContext }) {
       entry.statusKey = pending ? 'pending' : request.status;
       entry.form.classList.toggle('question-resolved', !pending);
       entry.fields.hidden = entry.actions.hidden = !pending;
-      entry.navigation.hidden = entry.progress.hidden = !pending;
+      entry.progress.hidden = !pending;
+      if (entry.multi) {
+        entry.previous.hidden = entry.next.hidden = !pending;
+        entry.navigation.classList.toggle('is-resolved', !pending);
+        entry.setOpen(pending);
+      }
       entry.fields.disabled = !!readOnly || entry.pending;
       entry.actions
         .querySelectorAll('button')

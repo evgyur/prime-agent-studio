@@ -22,19 +22,6 @@ export function pendingQuestionCount(run) {
 
 export const hasPendingQuestion = (run) => pendingQuestionCount(run) > 0;
 
-export function createPendingQuestionMarker(run) {
-  const count = pendingQuestionCount(run);
-  if (!count) return null;
-  const marker = document.createElement('span');
-  marker.className = 'active-run-question';
-  marker.textContent = '❓';
-  marker.dataset.pendingQuestions = String(count);
-  marker.setAttribute('role', 'img');
-  bindAttribute(marker, 'title', () => t('navigation.pendingAnswers', { count }));
-  bindAttribute(marker, 'aria-label', () => t('navigation.pendingAnswers', { count }));
-  return marker;
-}
-
 export function conversationActivity(session, runs, unread = false) {
   const matching = runs.filter(
     (run) => (session.runId && run.id === session.runId) || (session.id && run.sessionId === session.id),

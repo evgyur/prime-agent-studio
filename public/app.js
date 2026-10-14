@@ -40,7 +40,6 @@ import {
   createProjectNavigation,
   conversationActivity,
   hasPendingQuestion,
-  createPendingQuestionMarker,
   PROJECT_FOLDER_COLORS,
   projectFolderColor,
   sessionOriginDevice,
@@ -4990,16 +4989,15 @@ function renderToolSession(entry) {
   $('active-runs').replaceChildren();
   for (const run of runs) {
     const button = el('button', 'active-run');
+    // A waiting agent shows the same amber question dot as the sidebar, not a spinner.
     button.append(
-      el('span', 'spinner'),
+      hasPendingQuestion(run) ? activityDot('question') : el('span', 'spinner'),
       el(
         'span',
         'active-run-label',
         () => session(run.sessionId)?.title || run.prompt?.slice(0, 55) || tr('ui.nouvelle_session'),
       ),
     );
-    const questionMarker = createPendingQuestionMarker(run);
-    if (questionMarker) button.append(questionMarker);
     button.onclick = () => selectRun(run);
     $('active-runs').append(button);
   }

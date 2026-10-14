@@ -2128,12 +2128,8 @@ a.sidebar-settings {
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-.active-run-question {
-  flex: 0 0 auto;
-  font-size: 14px;
-  line-height: 1;
-}
-.active-run > .spinner {
+.active-run > .spinner,
+.active-run > .question-dot {
   flex-shrink: 0;
 }
 .popover-menu {

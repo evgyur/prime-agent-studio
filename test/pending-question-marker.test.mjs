@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { hasPendingQuestion, pendingQuestionCount } from '../public/project-navigation.js';
-import { formatMessage } from '../public/i18n-core.js';
 
 test('only current unanswered pending interactions count on a running run', () => {
   const run = {
@@ -52,17 +51,4 @@ test('finished, stopping and malformed runs never advertise pending answers', ()
     { status: 'running', interactions: [null] },
   ])
     assert.equal(pendingQuestionCount(run), 0);
-});
-
-test('pending answer labels preserve English and French plural forms', () => {
-  assert.equal(formatMessage('navigation.pendingAnswers', { count: 1 }, 'en'), 'Waiting for your answer');
-  assert.equal(
-    formatMessage('navigation.pendingAnswers', { count: 2 }, 'en'),
-    'Waiting for your answer (2 questions)',
-  );
-  assert.equal(formatMessage('navigation.pendingAnswers', { count: 1 }, 'fr'), 'En attente de votre réponse');
-  assert.equal(
-    formatMessage('navigation.pendingAnswers', { count: 2 }, 'fr'),
-    'En attente de votre réponse (2 questions)',
-  );
 });

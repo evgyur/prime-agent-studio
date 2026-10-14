@@ -90,51 +90,49 @@ try {
   await page.waitForFunction(() =>
     document.getElementById('connection-label').textContent.includes('connected'),
   );
-  const marker = page.locator('#active-runs .active-run-question');
+  const marker = page.locator('#active-runs .question-dot');
+  const spinner = page.locator('#active-runs .spinner');
   if (!(await page.locator('#details-panel').isVisible())) await page.locator('#toggle-details').click();
   await marker.waitFor({ state: 'visible' });
-  assert.equal(await marker.innerText(), '❓');
-  assert.equal(await marker.getAttribute('data-pending-questions'), '2');
-  assert.equal(await marker.getAttribute('title'), 'Waiting for your answer (2 questions)');
+  // Same amber question dot as the sidebar, in place of the working spinner.
+  assert.equal(await marker.innerText(), '?');
+  assert.equal(await marker.getAttribute('title'), 'Question awaiting an answer');
+  assert.equal(await spinner.count(), 0);
   const narrow = await marker.evaluate((marker) => {
     const row = marker.parentElement;
     row.style.width = '120px';
     row.querySelector('.active-run-label').textContent = 'Fixture thread with a long descriptive title';
-    const badge = marker.getBoundingClientRect(),
+    const dot = marker.getBoundingClientRect(),
       bounds = row.getBoundingClientRect();
     row.style.width = '';
-    return { width: badge.width, right: badge.right, rowRight: bounds.right };
+    return { width: dot.width, left: dot.left, rowLeft: bounds.left };
   });
-  assert.ok(
-    narrow.width > 0 && narrow.right <= narrow.rowRight,
-    'long titles never push the marker outside the row',
-  );
+  assert.ok(narrow.width > 0 && narrow.left >= narrow.rowLeft, 'long titles never hide the dot');
   await page.evaluate(async () => {
     const { setLanguage } = await import('/public/i18n.js');
     setLanguage('fr');
   });
-  assert.equal(await marker.getAttribute('aria-label'), 'En attente de votre réponse (2 questions)');
+  assert.equal(await marker.getAttribute('aria-label'), 'Question en attente');
   await page.evaluate(async () => {
     const { setLanguage } = await import('/public/i18n.js');
     setLanguage('en');
   });
-  for (const [id, remaining] of [
-    ['q-1', '1'],
-    ['q-2', null],
-  ]) {
-    const form = page.locator(`form[aria-labelledby="question-${id}"]`);
-    await form.locator('input[value="A"]').check();
-    await form.locator('button[type="submit"]').click();
+  // Answer both questions through the real question cards.
+  for (const remaining of [1, 0]) {
+    const form = page.locator('.agent-question:not(.question-resolved)').first();
+    await form.locator('input[type=radio]').first().check();
+    await form.getByRole('button', { name: 'Send answer', exact: true }).click();
     await page.waitForFunction(
-      (expected) => {
-        const marker = document.querySelector('#active-runs .active-run-question');
-        return expected === null ? !marker : marker?.dataset.pendingQuestions === expected;
-      },
+      (remaining) =>
+        document.querySelectorAll('.agent-question:not(.question-resolved)').length === remaining,
       remaining,
-      { timeout: 2000 },
+      { timeout: 5000 },
     );
-    if (remaining === '1') assert.equal(await marker.getAttribute('title'), 'Waiting for your answer');
   }
+  await page.waitForFunction(() => !document.querySelector('#active-runs .question-dot'), null, {
+    timeout: 2000,
+  });
+  assert.equal(await spinner.count(), 1, 'the working spinner comes back after answering');
   assert.equal(answers, 2);
   assert.equal(await marker.count(), 0);
   assert.equal(
@@ -149,7 +147,7 @@ try {
   assert.equal(await marker.count(), 0, 'replaying answered interactions never resurrects the marker');
   assert.deepEqual(errors, []);
   console.log(
-    'Full Studio RUNNING marker: two real UI answers via HTTP+SSE remove the badge immediately, thread remains running.',
+    'Full Studio running list: question dot replaces the spinner, two real UI answers via HTTP+SSE restore it, thread remains running.',
   );
 } finally {
   await browser.close();

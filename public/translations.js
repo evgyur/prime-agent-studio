@@ -5,10 +5,6 @@ export const languages = [
   { id: 'en', label: 'English' },
 ];
 export const messages = {
-  'navigation.pendingAnswers': {
-    en: { one: 'Waiting for your answer', other: 'Waiting for your answer ({count} questions)' },
-    fr: { one: 'En attente de votre réponse', other: 'En attente de votre réponse ({count} questions)' },
-  },
   'voice.transcribe': { en: 'Transcribe', fr: 'Transcrire' },
   'voice.limitDurationInsert': {
     en: 'Five-minute limit reached. Press Transcribe to add the text to your draft.',

@@ -4,6 +4,15 @@
 
 Les changements par version. Retrouvez les installateurs et les archives du code source dans les [releases GitHub](https://github.com/zerr0o/prime-agent-studio/releases).
 
+## 4.3.7
+
+- **Messages vocaux** : un microphone dans le compositeur enregistre un message et le transcrit, puis envoie le texte ou l’ajoute au brouillon (**Envoyer après la transcription**). Activez-le dans Préférences › Outils › Messages vocaux, avec **Groq** (la clé Groq des Fournisseurs, ou `GROQ_API_KEY`) ou un serveur **Whisper local** comme whisper.cpp ; ce réglage est propre à chaque PC. Après une erreur temporaire, **Réessayer** renvoie le même enregistrement. Contribution de [@evgyur](https://github.com/evgyur) dans la [#6](https://github.com/zerr0o/prime-agent-studio/pull/6).
+- **Plusieurs questions à la fois** : l’agent peut poser de 1 à 6 questions en un seul appel. Parcourez-les sur une seule ligne, ← Question 2/3 →, répondez à chacune par une option ou votre propre texte, ou passez-la : une question passée affiche une coche et « Question passée », et un second clic annule. Envoyez ensuite toutes les réponses ensemble. Une réponse libre est toujours possible, y compris pour une question unique. L’API publique accepte `{ values: [...] }` pour plusieurs questions ; une question unique garde son format.
+- **La barre latérale ne remplace plus une conversation ouverte** : en espace modulaire, choisir une conversation, un run ou un projet l’ouvre dans un nouvel onglet juste à droite de la conversation active, ou sélectionne son onglet existant. À huit conversations ouvertes, le Studio demande de fermer un onglet au lieu d’en remplacer un.
+- **Fenêtres étroites et mobile** : c’est toujours l’éditeur visible qui envoie. L’éditeur d’un onglet masqué ne peut plus envoyer un texte périmé.
+- **Dans chaque onglet** : les onglets secondaires affichent le bouton Derniers messages au-dessus de leur zone de saisie, et n’ajoutent plus de barre « question(s) en attente » redondante.
+- **Mises à jour** : l’option beta n’indique plus qu’il n’y a aucune vérification automatique.
+
 ## 4.3.6-beta.2
 
 - **Messages vocaux** : un microphone dans le compositeur enregistre un message, le transcrit et envoie le texte. Activez-le dans Préférences › Outils › Messages vocaux, avec **Groq** (la clé Groq des Fournisseurs, ou `GROQ_API_KEY`) ou un serveur **Whisper local** comme whisper.cpp. Ce réglage est propre à chaque PC. Contribution de [@evgyur](https://github.com/evgyur) dans la [#6](https://github.com/zerr0o/prime-agent-studio/pull/6).

@@ -2046,9 +2046,19 @@ a.sidebar-settings {
   height: 10px;
 }
 .active-run-label {
+  min-width: 0;
+  flex: 1;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+.active-run-question {
+  flex: 0 0 auto;
+  font-size: 14px;
+  line-height: 1;
+}
+.active-run > .spinner {
+  flex-shrink: 0;
 }
 .popover-menu {
   position: fixed;

@@ -5,6 +5,10 @@ export const languages = [
   { id: 'en', label: 'English' },
 ];
 export const messages = {
+  'navigation.pendingAnswers': {
+    en: { one: 'Waiting for your answer', other: 'Waiting for your answer ({count} questions)' },
+    fr: { one: 'En attente de votre réponse', other: 'En attente de votre réponse ({count} questions)' },
+  },
   'docking.session': { en: 'Session', fr: 'Session' },
   'docking.agents': { en: 'Agents', fr: 'Agents' },
   'docking.files': { en: 'Files', fr: 'Fichiers' },

@@ -40,6 +40,7 @@ import {
   createProjectNavigation,
   conversationActivity,
   hasPendingQuestion,
+  createPendingQuestionMarker,
   PROJECT_FOLDER_COLORS,
   projectFolderColor,
   sessionOriginDevice,
@@ -4911,6 +4912,8 @@ function renderToolSession(entry) {
         () => session(run.sessionId)?.title || run.prompt?.slice(0, 55) || tr('ui.nouvelle_session'),
       ),
     );
+    const questionMarker = createPendingQuestionMarker(run);
+    if (questionMarker) button.append(questionMarker);
     button.onclick = () => selectRun(run);
     $('active-runs').append(button);
   }

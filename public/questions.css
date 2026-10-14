@@ -1,5 +1,8 @@
 .questions {
   max-width: 880px;
+  min-width: 0;
+  box-sizing: border-box;
+  container-type: inline-size;
   margin: 0 auto;
   padding: 0 39px 0 73px;
 }
@@ -7,6 +10,8 @@
   padding: 24px 0;
   margin: 12px 0;
   font-size: 14px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .question-label,
 .question-status {
@@ -84,6 +89,7 @@
 }
 .question-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 18px;
   align-items: center;
   margin-top: 16px;
@@ -188,4 +194,34 @@
   .inline-image-open img {
     max-height: 320px;
   }
+}
+
+.question-navigation {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+/* Compact like the other Studio controls; touch screens keep 44 px targets. */
+.question-navigation button {
+  min-width: 32px;
+  min-height: 32px;
+  font: inherit;
+  font-size: 16px;
+  cursor: pointer;
+}
+@media (pointer: coarse) {
+  .question-navigation button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+.question-navigation button:disabled { opacity: 0.45; cursor: default; }
+.question-counter { font-variant-numeric: tabular-nums; }
+.question-progress { color: var(--muted); font-size: 12px; }
+.question-status { white-space: pre-line; }
+.question-card[hidden], .question-navigation[hidden] { display: none; }
+@container (max-width: 400px) {
+  .question-actions { gap: 10px; }
+  .question-actions button { min-height: 44px; }
 }

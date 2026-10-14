@@ -94,8 +94,12 @@ jq -n --arg sessionId "$SESSION_ID" --argjson revision "$REVISION" \
 - `GET /api/v1/runs` et `GET /api/v1/runs/{runId}` exposent les champs `{ id, sessionId, projectId, machineId, status, startedAt, endedAt, error, model, thinking, allowQuestions, interactions, requestId? }`. Un run expiré de la mémoire se consulte via la conversation conservée.
 - `GET /api/v1/runs/{runId}/events` diffuse les événements en `text/event-stream` (`id: <seq>` + `data: <événement>`, commentaires `: heartbeat`). Reprenez avec l’en-tête `Last-Event-ID` ou le curseur `?after=` : les événements tamponnés plus récents sont rejoués, précédés d’un marqueur `replay_truncated` si le tampon a avancé, et le flux se termine à la fin du run.
 - `POST /api/v1/runs/{runId}/stop` demande l’arrêt avec un corps JSON vide obligatoire `{}` et répond `{ stopped: true, ...run }`.
-- `POST /api/v1/runs/{runId}/interactions` répond avec `{ id, response }`, où `response` vaut exactement `{ cancelled: true }`, `{ confirmed: booléen }` ou `{ value: chaîne }`.
+- `POST /api/v1/runs/{runId}/interactions` répond avec `{ id, response }`, où `response` vaut exactement `{ cancelled: true }`, `{ confirmed: booléen }`, `{ value: chaîne }` ou `{ values: [...] }` pour un lot de questions.
 - `POST /api/v1/sessions/{sessionId}/messages` envoie `{ requestId, mode: steer | follow_up, message }` au run actif de la conversation.
+
+Un lot de questions possède `kind: "questions"`, `allowCustom: true` et `questions: [{id: "q1", question, options: [{id: "o1", label, description}]}]` dans les interactions du run et les événements SSE. Le titre et le champ indicatif restent lisibles. Envoyez une entrée par question, dans l’ordre : exactement `{option: 0}` (indice à partir de zéro), `{text: "Réponse libre"}` (1 à 1000 caractères, non vide après retrait des espaces) ou `{skipped: true}`. Le tableau contient 1 à 6 entrées ; son nombre et les indices doivent correspondre à la demande. Exemple : `{"id":"…","response":{"values":[{"option":1},{"text":"Mon choix"},{"skipped":true}]}}`.
+
+`{value: "[...]"}` reste accepté pour un lot si la chaîne est le même tableau JSON valide. Une question seule conserve le protocole `{value}` existant, y compris le texte libre. `{values}` est refusé hors lot et `{confirmed}` est refusé pour un lot. `{cancelled:true}` passe tout le lot. Après confirmation native, l’interaction expose `answers: [{question, answer, wasCustom, skipped}]` ; l’annulation donne des réponses nulles et `skipped: true`. Le POST renvoie l’interaction mise à jour, pas le résultat final de l’outil. Un doublon, une demande fermée ou une confirmation incertaine ne doit jamais être réessayé automatiquement.
 
 ## Roadmaps
 

@@ -1912,16 +1912,15 @@ function renderTool(t, messageId, cwd) {
     } catch {
       /* Pending native result. */
     }
-    content.append(el('p', '', () => result?.question || t.args?.question || tr('questions.title')));
-    content.append(
-      el('p', '', () =>
-        result
-          ? result.answer
-            ? `${tr('questions.answered')} ${result.answer}`
-            : tr('questions.closed')
-          : tr('questions.waiting'),
-      ),
-    );
+    const questions = result?.questions || t.args?.questions || [{ question: result?.question || t.args?.question }];
+    questions.forEach((question, index) => {
+      const answer = result?.answers?.[index] || (index === 0 ? result : null);
+      content.append(el('p', '', () => question.question || tr('questions.title')));
+      content.append(el('p', '', () => answer
+        ? answer.skipped ? tr('questions.skipped') : answer.answer
+          ? `${tr('questions.answered')} ${answer.answer}` : tr('questions.closed')
+        : ['pending', 'running'].includes(t.status) ? tr('questions.waiting') : tr('questions.closed')));
+    });
     d.append(content);
     return d;
   }

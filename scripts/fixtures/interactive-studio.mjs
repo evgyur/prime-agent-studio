@@ -7,7 +7,7 @@ import { createApp } from '../../server.mjs';
 
 // Isolated real Prime Agent + deterministic loopback provider. No user account,
 // production server, real project, or paid model is involved.
-export async function interactiveStudio({ beforeQuestion } = {}) {
+export async function interactiveStudio({ beforeQuestion, questions } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'prime-interactive-'));
   const cwd = join(root, 'Atelier visuel'),
     agentHome = join(root, 'agent'),
@@ -51,7 +51,7 @@ export async function interactiveStudio({ beforeQuestion } = {}) {
               type: 'function',
               function: {
                 name: 'question',
-                arguments: JSON.stringify({
+                arguments: JSON.stringify({ questions: questions || [{
                   question: 'Quelle présentation préférez-vous pour la page d’accueil ?',
                   options: [
                     {
@@ -61,7 +61,7 @@ export async function interactiveStudio({ beforeQuestion } = {}) {
                     { label: 'Vue détaillée', description: 'Davantage de contexte pour chaque élément.' },
                     { label: 'Vue en liste', description: 'Une lecture simple, ligne par ligne.' },
                   ],
-                }),
+                }] }),
               },
             },
           ],

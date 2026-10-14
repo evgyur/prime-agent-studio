@@ -74,3 +74,20 @@ test('native question tools render answered and pending historical records', () 
   );
   assert.match(textOf(pending), /questions.waiting/);
 });
+
+
+test('batch question history renders labels, answers and explicit skipped entries', () => {
+  const questions = [{ question: 'First?' }, { question: 'Second?' }];
+  const result = { questions, answers: [
+    { question: 'First?', answer: 'Option A', wasCustom: false, skipped: false },
+    { question: 'Second?', answer: null, wasCustom: false, skipped: true },
+  ] };
+  const text = textOf(renderTool({ name: 'question', status: 'done', args: { questions }, result: JSON.stringify(result) }, 'batch'));
+  assert.match(text, /First\?/);
+  assert.match(text, /Option A/);
+  assert.match(text, /Second\?/);
+  assert.match(text, /questions.skipped/);
+  const interrupted = textOf(renderTool({ name: 'question', status: 'error', args: { questions } }, 'interrupted'));
+  assert.match(interrupted, /questions.closed/);
+  assert.doesNotMatch(interrupted, /questions.waiting/);
+});

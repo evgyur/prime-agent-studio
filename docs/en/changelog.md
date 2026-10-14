@@ -4,6 +4,10 @@
 
 Changes by version. See [GitHub releases](https://github.com/zerr0o/prime-agent-studio/releases) for installers and source archives.
 
+## 4.3.8-beta.1
+
+- **Waiting agents are visible in the Session panel**: in "Running agents", an agent waiting for your answer shows the amber question dot used in the sidebar and tabs, in place of the spinner. The spinner comes back once you answer. Contributed by [@evgyur](https://github.com/evgyur) in [#7](https://github.com/zerr0o/prime-agent-studio/pull/7).
+
 ## 4.3.7
 
 - **Voice messages**: a microphone in the composer records a message and transcribes it, then sends the text or adds it to the draft (**Send after transcription**). Turn it on in Preferences › Tools › Voice messages, with **Groq** (the Groq key from Providers, or `GROQ_API_KEY`) or a **local Whisper** server such as whisper.cpp; the setting is per PC. After a temporary failure, **Retry** resends the same recording. Contributed by [@evgyur](https://github.com/evgyur) in [#6](https://github.com/zerr0o/prime-agent-studio/pull/6).

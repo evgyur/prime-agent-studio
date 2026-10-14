@@ -4,6 +4,10 @@
 
 Les changements par version. Retrouvez les installateurs et les archives du code source dans les [releases GitHub](https://github.com/zerr0o/prime-agent-studio/releases).
 
+## 4.3.8-beta.1
+
+- **Agents en attente visibles dans le panneau Session** : dans « Agents en cours », un agent qui attend votre réponse affiche le point ambre de question utilisé dans la barre latérale et les onglets, à la place de l’indicateur de chargement. L’indicateur revient une fois la réponse envoyée. Contribution de [@evgyur](https://github.com/evgyur) dans la [#7](https://github.com/zerr0o/prime-agent-studio/pull/7).
+
 ## 4.3.7
 
 - **Messages vocaux** : un microphone dans le compositeur enregistre un message et le transcrit, puis envoie le texte ou l’ajoute au brouillon (**Envoyer après la transcription**). Activez-le dans Préférences › Outils › Messages vocaux, avec **Groq** (la clé Groq des Fournisseurs, ou `GROQ_API_KEY`) ou un serveur **Whisper local** comme whisper.cpp ; ce réglage est propre à chaque PC. Après une erreur temporaire, **Réessayer** renvoie le même enregistrement. Contribution de [@evgyur](https://github.com/evgyur) dans la [#6](https://github.com/zerr0o/prime-agent-studio/pull/6).

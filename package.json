@@ -60,6 +60,7 @@
     "test:folders": "node scripts/test-folder-ui.mjs && node scripts/test-project-folder-color-ui.mjs",
     "test:layout": "node scripts/test-mobile-layout.mjs",
     "test:attachments": "node scripts/test-attachments-ui.mjs",
+    "test:voice": "node --test test/voice.test.mjs && node --test --test-name-pattern=voice test/server.test.mjs test/lan.test.mjs && node scripts/test-voice-ui.mjs",
     "test:interactions": "node scripts/test-interactions-ui.mjs && node scripts/test-questions-carousel-ui.mjs",
     "test:interactions:scroll": "node scripts/test-interactions-scroll.mjs",
     "test:scroll": "node scripts/test-conversation-scroll.mjs && node scripts/test-scroll-bottom-composer.mjs && node scripts/test-pane-scroll-pill-ui.mjs",

@@ -62,6 +62,7 @@ import { createConversationViews, PRIMARY_VIEW_ID, originSessionId } from './con
 import { createConversationPicker } from './conversation-picker.js';
 import { bindInlineImages } from './inline-images.js';
 import { createPasskeySettings } from './passkeys.js';
+import { createVoiceUI } from './voice.js';
 import { createQuestions } from './questions.js';
 import { createComputerUse } from './computer-use.js';
 import { createPushSettings } from './push.js';
@@ -91,6 +92,7 @@ let roadmapUI;
 let dockingUI;
 let toolViews = null;
 let convViews = null;
+let voiceUI = null;
 const viewHistoryPages = new WeakMap();
 let settingsDockApi = null;
 let conversationPicker = null;
@@ -1171,6 +1173,8 @@ function updateComposer(view = null) {
   const runStatus = node('run-status', 'runStatus');
   const runStatusLabel = node('run-status-label', 'runLabel');
   const composerInput = node('composer', 'textarea');
+  voiceUI?.mount(node('composer-form', 'form'), N?.form ? target : hostVoiceOrigin);
+  voiceUI?.refresh();
   if (!sendButton || !stopButton) return;
   if (!view || convViews?.isFocused(target?.id)) renderConfigurationWarning();
   IMG?.update();
@@ -2713,6 +2717,7 @@ function ensureViewUnits(view) {
   });
   nodes.modelBtn.addEventListener('click', () => openModelDialogFor(view));
   view.units = { scope, text, images, live, commands, questions, nodes };
+  voiceUI?.mount(nodes.form, view);
   if (state.initialized) convViews.restoreDraftFor(view);
   resizeComposer(nodes.textarea, view);
   return view.units;
@@ -5177,6 +5182,7 @@ function makeToolPreferences(entry, scope) {
     instanceId: entry.id,
     isPrimary: entry.id === 'preferences',
     onStudioPreferences: applyStudioPreferences,
+    onVoiceSettings: () => voiceUI?.reload(),
     onEngineSettings: async () => {
       try {
         await modelCatalogRequest?.catch(() => {});
@@ -6207,6 +6213,112 @@ subscribeSync((snapshot) => {
   renderSyncHeader();
 });
 enableLiveComposers();
+// The editor a view types into right now: its pane while docked, the shared
+// host composer in classic and mobile layouts (same rule as updateComposer).
+function voiceUnits(view) {
+  return (convViews?.isFocused(view.id) ? convViews.liveUnits(view) : view.units) || null;
+}
+// The host composer shows the focused view, except while docked where it is
+// the primary pane and secondary views type into their own panes.
+function hostVoiceOrigin() {
+  const focused = convViews?.focused();
+  return focused && focused.id !== PRIMARY_VIEW_ID && convViews.liveUnits(focused)
+    ? convViews.byId(PRIMARY_VIEW_ID)
+    : focused;
+}
+function voiceSnapshot(view) {
+  if (!view || convViews?.byId(view.id) !== view || !convViews.isFocused(view.id)) return null;
+  const units = voiceUnits(view);
+  const images = units?.images || imageComposer;
+  const text = units?.text || { get: composerText, command: composerCommand };
+  const imageDraft = images?.snapshot();
+  return {
+    id: view.id,
+    token: view.token,
+    nonce: view.nonce,
+    sessionId: view.sessionId,
+    projectCwd: view.projectCwd,
+    execCwd: view.execCwd,
+    triple: JSON.stringify(tripleForView(view)),
+    allowQuestions: tripleForView(view).allowQuestions,
+    runId: runForView(view)?.id || null,
+    runStatus: runForView(view)?.status || null,
+    draft: text.get(),
+    command: JSON.stringify(text.command()),
+    images: JSON.stringify(imageDraft?.ids || []),
+    imageKey: imageDraft?.key || '',
+    computerUse: !!(units?.nodes?.allowCU || $('allow-computer-use')).checked,
+  };
+}
+voiceUI = createVoiceUI({
+  activate(view) {
+    if (view && convViews?.byId(view.id) === view && !convViews.isFocused(view.id))
+      convViews.focusView(view.id, { reveal: true });
+  },
+  focusDraft(view) {
+    const textarea = voiceUnits(view)?.nodes?.textarea || $('composer');
+    textarea.focus({ preventScroll: true });
+    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+  },
+  capture: voiceSnapshot,
+  current(view, snapshot) {
+    const now = voiceSnapshot(view);
+    return now && Object.keys(snapshot).every((key) => now[key] === snapshot[key]);
+  },
+  bindingCurrent(view, snapshot) {
+    return !!(
+      view &&
+      convViews?.byId(view.id) === view &&
+      view.token === snapshot.token &&
+      view.nonce === snapshot.nonce &&
+      view.sessionId === snapshot.sessionId &&
+      view.projectCwd === snapshot.projectCwd &&
+      view.execCwd === snapshot.execCwd
+    );
+  },
+  insert(view, text, snapshot) {
+    if (
+      !view ||
+      state.readOnly ||
+      convViews?.byId(view.id) !== view ||
+      view.token !== snapshot.token ||
+      view.nonce !== snapshot.nonce ||
+      view.sessionId !== snapshot.sessionId ||
+      view.projectCwd !== snapshot.projectCwd
+    )
+      return false;
+    if (!convViews.isFocused(view.id)) convViews.focusView(view.id, { reveal: true });
+    if (!convViews.isFocused(view.id)) return false;
+    const textarea = voiceUnits(view)?.nodes?.textarea || $('composer');
+    const existing = textarea.value;
+    textarea.value = existing ? `${existing.trimEnd()}\n\n${text}` : text;
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    textarea.focus({ preventScroll: true });
+    return true;
+  },
+  submit(view) {
+    if (!state.readOnly && convViews?.byId(view.id) === view && convViews.isFocused(view.id))
+      (voiceUnits(view)?.nodes?.form || $('composer-form')).requestSubmit();
+  },
+  canRecord(view) {
+    return !!(
+      state.initialized &&
+      !state.readOnly &&
+      state.online &&
+      view &&
+      convViews?.byId(view.id) === view &&
+      !view.loading &&
+      view.projectCwd &&
+      state.version?.available !== false &&
+      !!modelForView(view) &&
+      project()?.exists !== false &&
+      !(view.id === PRIMARY_VIEW_ID && state.projectOverview)
+    );
+  },
+});
+voiceUI.mount($('composer-form'), hostVoiceOrigin);
+for (const view of convViews.views.values())
+  if (view.units?.nodes?.form && view.units.nodes.form !== $('composer-form')) voiceUI.mount(view.units.nodes.form, view);
 if ($('sync-footer')) $('sync-footer').onclick = () => openSyncPreferences();
 bindToolSession(toolViews.entries.get('session'), $);
 void bootstrap();

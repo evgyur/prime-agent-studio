@@ -76,6 +76,7 @@ test('disabled, keyless or invalid configuration never calls the provider and le
     maxAudioBytes: MAX_AUDIO_BYTES,
     maxDurationMs: MAX_DURATION_MS,
     timeoutMs: 90_000,
+    autoSend: true,
   });
 });
 
@@ -144,6 +145,7 @@ test('settings validate, persist machine-locally and never return the key', asyn
     { whisperUrl: 'http://internal/inference?token=secret' },
     { whisperUrl: 'http://internal/inference#x' },
     { key: 'fixture-token' },
+    { autoSend: 'no' },
   ])
     await assert.rejects(voice.updateSettings(patch), (error) => error.status === 400);
   const saved = await voice.updateSettings({ provider: 'groq', timeoutMs: 300_000 });
@@ -153,6 +155,9 @@ test('settings validate, persist machine-locally and never return the key', asyn
   assert.equal(saved.keySource, 'providers');
   assert.doesNotMatch(JSON.stringify(saved), /fixture-token/);
   await voice.updateSettings({ provider: 'whisper', whisperUrl: 'https://whisper.lan/inference' });
+  const draftMode = await voice.updateSettings({ autoSend: false });
+  assert.equal(draftMode.autoSend, false);
+  assert.equal((await voice.status()).autoSend, false);
   const stored = await voice.settings();
   assert.equal(stored.provider, 'whisper');
   assert.equal(stored.whisperUrl, 'https://whisper.lan/inference');

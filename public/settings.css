@@ -970,3 +970,17 @@
 .voice-key-row .voice-key-status.voice-key-missing {
   color: var(--amber);
 }
+
+.voice-switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+.voice-settings-row .engine-field .voice-switch-row label {
+  margin: 0 0 5px;
+  color: var(--text);
+}
+.voice-settings-row .engine-field .voice-switch-row p {
+  margin: 0;
+}

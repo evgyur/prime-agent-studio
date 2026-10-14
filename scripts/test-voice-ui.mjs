@@ -76,6 +76,7 @@ try {
     let failTranscribe = false;
     let transcriptionCalls = 0;
     let enabled = true;
+    let autoSend = true;
     await page.route('**/api/voice', (route) =>
       route.fulfill({
         json: {
@@ -85,6 +86,7 @@ try {
           maxAudioBytes: 10485760,
           maxDurationMs: 300000,
           timeoutMs: 90000,
+          autoSend,
         },
       }),
     );
@@ -451,6 +453,25 @@ try {
       await page.setViewportSize({ width, height: 900 });
     }
 
+    // Draft mode: the transcript joins the draft, unsent, even after a draft change.
+    autoSend = false;
+    await page.reload();
+    await expect(page.locator('#connection-label')).toContainText(/connect/i, { timeout: 15000 });
+    const draftForm = page.locator('.composer-form:visible').first();
+    const draftInput = draftForm.locator('textarea');
+    await draftInput.fill('to complete');
+    const beforeDraft = starts.length;
+    const queuedBeforeDraft = queued.length;
+    await draftForm.locator('.voice-open').click();
+    await expect(page.locator('.voice-send')).toHaveText('Transcribe');
+    await page.locator('.voice-send').click();
+    await expect(page.locator('.voice-dialog')).toBeHidden();
+    await expect(draftInput).toHaveValue('to complete\n\nspoken prompt');
+    await expect(draftInput).toBeFocused();
+    expect(starts.length).toBe(beforeDraft);
+    expect(queued.length).toBe(queuedBeforeDraft);
+    autoSend = true;
+
     // Disabled provider omits the capture control on a fresh load.
     enabled = false;
     await page.reload();
@@ -482,7 +503,7 @@ try {
   await readonly.close();
   console.log('Voice UI recovery paths:', [...recovery].join(', '));
   console.log(
-    'Voice UI: desktop/mobile send and active-run queue; stale draft/view/model/command/attachment guards; retry after failure, copy after rebinding, desktop to mobile host mic, recorder errors, limits, denied/late mic, disabled/read-only passed',
+    'Voice UI: desktop/mobile send and active-run queue; stale draft/view/model/command/attachment guards; retry after failure, copy after rebinding, desktop to mobile host mic, draft mode without sending, recorder errors, limits, denied/late mic, disabled/read-only passed',
   );
 } finally {
   await browser?.close();

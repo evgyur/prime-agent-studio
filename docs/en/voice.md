@@ -30,6 +30,10 @@ In **Preferences › Tools › Voice messages**, choose **Local Whisper**. The d
 
 "Local" means the machine running the Studio server. In Docker, loopback belongs to the container. Increase the **maximum transcription time** on slow hardware: from 30 s to 10 min, 90 s by default.
 
+## Automatic send or draft
+
+By default, **Send** transcribes and then sends the message. Turn off **Send after transcription** in **Preferences › Tools › Voice messages** to stay in control: the button becomes **Transcribe**, the text is added to the original conversation's draft without being sent, and the cursor moves there so you can complete it before sending.
+
 ## Recording
 
 - Use a browser or WebView that supports microphone capture and MediaRecorder. Capture requires a secure context: localhost on the host PC, or HTTPS on a remote device.

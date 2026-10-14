@@ -63,6 +63,10 @@ export function createVoiceSettings({
     $('voice-groq-fields').hidden = provider !== 'groq';
     $('voice-whisper-fields').hidden = provider !== 'whisper';
     $('voice-timeout-field').hidden = !provider;
+    $('voice-auto-send-field').hidden = !provider;
+    const autoSend = $('voice-auto-send');
+    autoSend.disabled = disabled;
+    autoSend.checked = data?.autoSend !== false;
     const status = $('voice-key-status');
     if (status) {
       status.classList.toggle('voice-key-missing', provider === 'groq' && !data?.keySource);
@@ -113,6 +117,7 @@ export function createVoiceSettings({
     $('voice-provider').onchange = (event) => void save({ provider: event.target.value });
     $('voice-groq-model').onchange = (event) => void save({ groqModel: event.target.value });
     $('voice-timeout').onchange = (event) => void save({ timeoutMs: Number(event.target.value) });
+    $('voice-auto-send').onchange = (event) => void save({ autoSend: event.target.checked });
     const url = $('voice-whisper-url');
     const commit = () => {
       const value = url.value.trim();

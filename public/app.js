@@ -6255,6 +6255,11 @@ voiceUI = createVoiceUI({
     if (view && convViews?.byId(view.id) === view && !convViews.isFocused(view.id))
       convViews.focusView(view.id, { reveal: true });
   },
+  focusDraft(view) {
+    const textarea = voiceUnits(view)?.nodes?.textarea || $('composer');
+    textarea.focus({ preventScroll: true });
+    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+  },
   capture: voiceSnapshot,
   current(view, snapshot) {
     const now = voiceSnapshot(view);

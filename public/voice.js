@@ -10,7 +10,16 @@ const MIME_TYPES = [
 
 // A single recording dialog serves every composer, but the origin is captured
 // by the caller. The caller decides whether that exact conversation can send.
-export function createVoiceUI({ activate, capture, current, bindingCurrent, insert, submit, canRecord }) {
+export function createVoiceUI({
+  activate,
+  focusDraft,
+  capture,
+  current,
+  bindingCurrent,
+  insert,
+  submit,
+  canRecord,
+}) {
   let config = null;
   let operation = null;
   const buttons = new Map();
@@ -40,8 +49,11 @@ export function createVoiceUI({ activate, capture, current, bindingCurrent, inse
   bindText(cancelButton, () => tr('voice.cancel'));
   // Labels follow the operation phase: Send, then Retry after a temporary
   // failure; Insert text, or Copy text when the origin can no longer take it.
+  const autoSend = () => config?.autoSend !== false;
   const relabel = () => {
-    bindText(sendButton, () => tr(operation?.phase === 'failed' ? 'voice.retry' : 'voice.send'));
+    bindText(sendButton, () =>
+      tr(operation?.phase === 'failed' ? 'voice.retry' : autoSend() ? 'voice.send' : 'voice.transcribe'),
+    );
     bindText(insertButton, () => tr(operation?.copyOnly ? 'voice.copy' : 'voice.insert'));
   };
   relabel();
@@ -127,7 +139,7 @@ export function createVoiceUI({ activate, capture, current, bindingCurrent, inse
     elapsed.textContent = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
     if (ms >= config.maxDurationMs && op.recorder?.state === 'recording') {
       finishRecording(op);
-      say('voice.limitDuration');
+      say(autoSend() ? 'voice.limitDuration' : 'voice.limitDurationInsert');
     }
   }
   function finishRecording(op) {
@@ -175,6 +187,7 @@ export function createVoiceUI({ activate, capture, current, bindingCurrent, inse
     sendButton.disabled = true;
     elapsed.textContent = '0:00';
     bindText(provider, () => tr(config.provider === 'groq' ? 'voice.providerGroq' : 'voice.providerWhisper'));
+    relabel();
     say('voice.requesting');
     dialog.showModal();
     try {
@@ -300,6 +313,14 @@ export function createVoiceUI({ activate, capture, current, bindingCurrent, inse
       }
       op.transcript = text;
       op.audio = null;
+      if (!autoSend()) {
+        // Draft mode: the text joins the original draft, unsent, to be completed.
+        if (!bindingCurrent(op.origin, op.snapshot) || !insert(op.origin, text, op.snapshot))
+          return showRecovery(op, text, !bindingCurrent(op.origin, op.snapshot));
+        cancel();
+        // Closing the modal returns focus to the microphone: hand it back to the draft.
+        return focusDraft?.(op.origin);
+      }
       if (!current(op.origin, op.snapshot) || !insert(op.origin, text, op.snapshot))
         return showRecovery(op, text, !bindingCurrent(op.origin, op.snapshot));
       cancel();

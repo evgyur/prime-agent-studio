@@ -1801,6 +1801,18 @@
                     <option value="600000">10 min</option>
                   </select>
                 </div>
+                <div id="voice-auto-send-field" class="voice-settings-group voice-switch-row" hidden>
+                  <div>
+                    <label for="voice-auto-send" data-i18n="voice.autoSend"
+                      >Envoyer après la transcription</label
+                    >
+                    <p data-i18n="voice.autoSendNote">
+                      Désactivé : le texte est ajouté au brouillon, sans envoi, pour que vous puissiez le
+                      compléter.
+                    </p>
+                  </div>
+                  <input id="voice-auto-send" class="switch" type="checkbox" role="switch" checked />
+                </div>
               </div>
             </div>
             <p id="voice-settings-error" class="form-error" role="alert" hidden></p>

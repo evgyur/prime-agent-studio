@@ -5,6 +5,16 @@ export const languages = [
   { id: 'en', label: 'English' },
 ];
 export const messages = {
+  'voice.transcribe': { en: 'Transcribe', fr: 'Transcrire' },
+  'voice.limitDurationInsert': {
+    en: 'Five-minute limit reached. Press Transcribe to add the text to your draft.',
+    fr: 'Limite de cinq minutes atteinte. Appuyez sur Transcrire pour ajouter le texte au brouillon.',
+  },
+  'voice.autoSend': { en: 'Send after transcription', fr: 'Envoyer après la transcription' },
+  'voice.autoSendNote': {
+    en: 'Off: the text is added to the draft, unsent, so you can complete it.',
+    fr: 'Désactivé : le texte est ajouté au brouillon, sans envoi, pour que vous puissiez le compléter.',
+  },
   'voice.open': { en: 'Record a voice message', fr: 'Enregistrer un message vocal' },
   'voice.title': { en: 'Voice message', fr: 'Message vocal' },
   'voice.cancel': { en: 'Cancel', fr: 'Annuler' },

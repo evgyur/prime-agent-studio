@@ -30,6 +30,10 @@ Dans **Préférences › Outils › Messages vocaux**, choisissez **Whisper loca
 
 « Local » désigne la machine qui exécute le serveur Studio. Avec Docker, le bouclage appartient au conteneur. Augmentez le **délai maximal de transcription** si votre matériel est lent : de 30 s à 10 min, 90 s par défaut.
 
+## Envoi automatique ou brouillon
+
+Par défaut, **Envoyer** transcrit puis envoie le message. Désactivez **Envoyer après la transcription** dans **Préférences › Outils › Messages vocaux** pour garder la main : le bouton devient **Transcrire**, le texte est ajouté au brouillon de la conversation d’origine sans être envoyé, et le curseur s’y place pour que vous puissiez le compléter avant d’envoyer.
+
 ## Enregistrement
 
 - Utilisez un navigateur ou une WebView prenant en charge le microphone et MediaRecorder. La capture exige un contexte sécurisé : localhost sur le PC hôte, ou HTTPS sur un appareil distant.

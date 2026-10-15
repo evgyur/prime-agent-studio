@@ -63,6 +63,7 @@ import { createConversationViews, PRIMARY_VIEW_ID, originSessionId } from './con
 import { createConversationPicker } from './conversation-picker.js';
 import { bindInlineImages } from './inline-images.js';
 import { createPasskeySettings } from './passkeys.js';
+import { createVoiceUI } from './voice.js';
 import { createQuestions } from './questions.js';
 import { createComputerUse } from './computer-use.js';
 import { createPushSettings } from './push.js';
@@ -93,6 +94,7 @@ let goalUI;
 let dockingUI;
 let toolViews = null;
 let convViews = null;
+let voiceUI = null;
 const viewHistoryPages = new WeakMap();
 let settingsDockApi = null;
 let conversationPicker = null;
@@ -210,6 +212,8 @@ const icons = {
   'arrow-up-right': 'M6 18 18 6M6 6h12v12',
   'arrow-up': 'M12 19V5m-6 6 6-6 6 6',
   'arrow-down': 'M12 5v14m-6-6 6 6 6-6',
+  'arrow-left': 'M19 12H5m6-6-6 6 6 6',
+  'arrow-right': 'M5 12h14m-6-6 6 6-6 6',
   model: 'm12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5',
   stop: 'M6 6h12v12H6V6',
   shield: 'M12 3 3 7v5c0 5 9 9 9 9s9-4 9-9V7l-9-4Zm-4 9 3 3 5-6',
@@ -432,9 +436,10 @@ function restoreGenerationSettings(history = session(), run = activeRun()) {
   selectedGeneration = { ...settings, ...pending?.settings };
   const live = convViews?.composerLive?.();
   const focused = live ? convViews.focused() : null;
-  if (live && focused && focused.id !== PRIMARY_VIEW_ID && focused.units?.nodes) {
+  const focusedNodes = focused && convViews.liveUnits(focused)?.nodes;
+  if (live && focused && focused.id !== PRIMARY_VIEW_ID && focusedNodes) {
     // Dynamic origin owns its nodes; the host column keeps primary truth.
-    writeTripleToNodes(focused.units.nodes, selectedGeneration);
+    writeTripleToNodes(focusedNodes, selectedGeneration);
     writeTripleToNodes(hostComposerNodes(), tripleForView(convViews.byId(PRIMARY_VIEW_ID)));
   } else {
     setSelectedModel(selectedGeneration.model, false);
@@ -480,7 +485,8 @@ async function saveGenerationSettings(patch, view = null) {
     if (!convViews || !origin) return hostComposerNodes();
     const current = convViews.byId(origin.id);
     if (!current || current.token !== originToken) return null;
-    return current.units?.nodes || hostComposerNodes();
+    const units = convViews.isFocused(current.id) ? convViews.liveUnits(current) : current.units;
+    return units?.nodes || hostComposerNodes();
   };
   if (convViews && origin && convViews.isFocused(origin.id)) selectedGeneration = { ...previous, ...patch };
   if (!id) {
@@ -530,10 +536,9 @@ function setSelectedModel(value, persist = false, render = true, view = null) {
   const live = convViews?.composerLive?.();
   // Post-enable the host column is the primary panel: host writes are
   // primary writes. A dynamic origin writes its own nodes instead.
+  const targetUnits = target && (convViews.isFocused(target.id) ? convViews.liveUnits(target) : target.units);
   const nodes =
-    live && target && target.id !== PRIMARY_VIEW_ID && target.units?.nodes
-      ? target.units.nodes
-      : hostComposerNodes();
+    live && target && target.id !== PRIMARY_VIEW_ID && targetUnits?.nodes ? targetUnits.nodes : hostComposerNodes();
   // No primary fallback: a dynamic pane without its own hidden select simply
   // skips option bookkeeping (its picker resolves through the triple).
   const select = nodes.modelSelect;
@@ -1154,7 +1159,8 @@ function resizeComposer(textarea = null, view = null) {
 // back to the host singletons, which mirror the focused view — identical.
 function updateComposer(view = null) {
   const target = view || convViews?.focused();
-  const units = target?.units || null;
+  // The focused view uses its live editor: its pane while docked, the host otherwise.
+  const units = (target && convViews?.isFocused(target.id) ? convViews.liveUnits(target) : target?.units) || null;
   const N = units?.nodes || null;
   const node = (hostId, role) => (N && N[role]) || document.getElementById(hostId);
   const IMG = units?.images || imageComposer;
@@ -1178,6 +1184,8 @@ function updateComposer(view = null) {
   const runStatus = node('run-status', 'runStatus');
   const runStatusLabel = node('run-status-label', 'runLabel');
   const composerInput = node('composer', 'textarea');
+  voiceUI?.mount(node('composer-form', 'form'), N?.form ? target : hostVoiceOrigin);
+  voiceUI?.refresh();
   if (!sendButton || !stopButton) return;
   if (!view || convViews?.isFocused(target?.id)) renderConfigurationWarning();
   IMG?.update();
@@ -1926,16 +1934,15 @@ function renderTool(t, messageId, cwd) {
     } catch {
       /* Pending native result. */
     }
-    content.append(el('p', '', () => result?.question || t.args?.question || tr('questions.title')));
-    content.append(
-      el('p', '', () =>
-        result
-          ? result.answer
-            ? `${tr('questions.answered')} ${result.answer}`
-            : tr('questions.closed')
-          : tr('questions.waiting'),
-      ),
-    );
+    const questions = result?.questions || t.args?.questions || [{ question: result?.question || t.args?.question }];
+    questions.forEach((question, index) => {
+      const answer = result?.answers?.[index] || (index === 0 ? result : null);
+      content.append(el('p', '', () => question.question || tr('questions.title')));
+      content.append(el('p', '', () => answer
+        ? answer.skipped ? tr('questions.skipped') : answer.answer
+          ? `${tr('questions.answered')} ${answer.answer}` : tr('questions.closed')
+        : ['pending', 'running'].includes(t.status) ? tr('questions.waiting') : tr('questions.closed')));
+    });
     d.append(content);
     return d;
   }
@@ -2162,15 +2169,13 @@ convViews = createConversationViews({
   },
   getRun: (id) => state.runs.get(id),
   isRunActive: (run) => isRunning(run),
-  describeRun: (run) => ({
-    pendingQuestions: (run?.interactions || []).filter((item) => item.status === 'pending').length,
-  }),
   getSessionTitle: (id) => session(id)?.title || '',
   getHostText: () => composerText(),
   setHostText: (text, opts) => setComposerText(text, opts),
   afterTextRestore: (view) => {
-    (view?.units?.commands || commandsUI)?.restoreDraft();
-    resizeComposer(view?.units?.nodes.textarea, view);
+    const units = view && convViews?.isFocused(view.id) ? convViews.liveUnits(view) : view?.units;
+    (units?.commands || commandsUI)?.restoreDraft();
+    resizeComposer(units?.nodes.textarea, view);
   },
   getControls: () => ({
     model: $('model-select').value,
@@ -2194,7 +2199,7 @@ convViews = createConversationViews({
   restoreHostScrollState: (saved) => restoreHostScrollState(saved),
   onToast: (message, error) => toast(message, error),
   afterFocus: (view) => {
-    const units = view?.units;
+    const units = convViews?.liveUnits(view);
     (units?.images || imageComposer)?.update();
     (units?.commands || commandsUI)?.update();
     (units?.live || liveMessagesUI)?.update();
@@ -2515,11 +2520,24 @@ function newSession(execCwd, projectCwd = state.projectCwd) {
   closeSidebar();
   computerUseUI?.onSessionChange();
   if (!state.projectCwd) openProjectDialog();
-  else (view?.units?.nodes?.textarea || $('composer')).focus();
+  // A pane composer exists only while docked; classic and mobile use the host editor.
+  else ((dockingUI?.active && view?.units?.nodes?.textarea) || $('composer')).focus();
 }
 function selectProject(cwd) {
   saveDraft();
-  if (convViews) {
+  if (convViews && dockingUI?.active) {
+    // Docked: the overview opens in its own tab (a mounted session-less view of
+    // this project is reused), never in place of a conversation.
+    const anchor = dockAnchor();
+    let view = [...convViews.views.values()].find(
+      (v) => anchor.mounted.includes(v.id) && !v.sessionId && !v.viewRunId && samePath(v.projectCwd, cwd),
+    );
+    if (!view && !canShowDocked(null, anchor)) return;
+    view ||= convViews.createView({ kind: 'new', sessionId: null, viewRunId: null, projectCwd: cwd, execCwd: cwd });
+    if (!view) return;
+    showDocked(view, anchor);
+    afterViewFocused();
+  } else if (convViews) {
     // The focused panel genuinely becomes the project overview: a fresh
     // session-less binding, so view and globals describe the same target and
     // session dedupe can never return this panel for its old session.
@@ -2654,7 +2672,7 @@ function makeLiveMessages(view, images, text, roots) {
   });
 }
 function makeQuestions(view, root) {
-  return createQuestions({ root, api, getContext: () => questionsContextFor(view) });
+  return createQuestions({ root, api, icon, getContext: () => questionsContextFor(view) });
 }
 // Live per-view composer controllers. Primary keeps the singletons until the
 // enable commit; dynamic views build scoped units on docked focus/mount only,
@@ -2712,6 +2730,7 @@ function ensureViewUnits(view) {
   });
   nodes.modelBtn.addEventListener('click', () => openModelDialogFor(view));
   view.units = { scope, text, images, live, commands, questions, nodes };
+  voiceUI?.mount(nodes.form, view);
   if (state.initialized) convViews.restoreDraftFor(view);
   resizeComposer(nodes.textarea, view);
   return view.units;
@@ -3116,10 +3135,67 @@ function hydrateVisibleSessionViews() {
   }
 }
 
-async function viewsSelectSession(id, cwd) {
+// Docked navigation never replaces a conversation in the layout: a mounted
+// target is focused in place, anything else opens right after the active
+// conversation, in its group. Classic and mobile keep their single editor.
+function dockAnchor() {
+  const groups = groupsOf(dockingUI.getLayout());
+  const mounted = groups.flatMap((group) => group.panels);
+  const focused = convViews.focusedId();
+  for (const group of groups) {
+    const at = group.panels.indexOf(focused);
+    if (at >= 0) return { mounted, groupId: group.id, index: at + 1 };
+  }
+  const fallback = groups.find((group) => group.panels.some(isConversationPanel)) || groups[0];
+  return { mounted, groupId: fallback?.id, index: undefined };
+}
+// Checked before any focus or selection change, so a refusal leaves the
+// layout, focus and drafts exactly as they were.
+function canShowDocked(viewId, anchor) {
+  if (viewId && anchor.mounted.includes(viewId)) return true;
+  if (anchor.mounted.filter(isConversationPanel).length < MAX_CONVERSATIONS) return true;
+  toast(() => tr('docking.conversation_limit'), true);
+  return false;
+}
+function showDocked(view, anchor) {
+  if (!anchor.mounted.includes(view.id)) dockingUI.openPanel(view.id, anchor.groupId, anchor.index);
+  convViews.focusView(view.id, { reveal: true });
+}
+
+// opts.replace keeps the historical in-place binding for lifecycle callers
+// (startup restore, interrupted run): it never applies to user navigation.
+// Returns false when the docked tab limit refused the navigation.
+async function viewsSelectSession(id, cwd, opts = {}) {
   // Dedupe: a view already showing this session is focused, never duplicated,
   // so two panels can never hold dual drafts for one session.
   const existing = convViews.bySession(id);
+  if (dockingUI?.active && !opts.replace) {
+    const anchor = dockAnchor();
+    if (!canShowDocked(existing?.id, anchor)) return false;
+    if (existing) {
+      showDocked(existing, anchor);
+      afterViewFocused();
+      closeSidebar();
+      return true;
+    }
+    saveDraft();
+    const owner = cwd && state.projects.some((p) => samePath(p.cwd, cwd)) ? cwd : state.projectCwd;
+    const view = convViews.createView({
+      kind: 'session',
+      sessionId: id,
+      projectCwd: owner,
+      execCwd: session(id)?.cwd || cwd || owner,
+    });
+    if (!view) return false;
+    // Hydrated just below: keeps the dock activation callback from starting a second fetch.
+    view.loading = true;
+    showDocked(view, anchor);
+    afterViewFocused({ deferLoad: true });
+    projectNavigation?.reveal(state.projectCwd);
+    closeSidebar();
+    await loadSessionIntoView(view);
+    return true;
+  }
   if (existing) {
     // Same-id activation runs the full focus contract (global mirror), so a
     // sidecar-restored focused session at boot mirrors state.sessionId before
@@ -3127,7 +3203,7 @@ async function viewsSelectSession(id, cwd) {
     convViews.focusView(existing.id, { reveal: true });
     afterViewFocused();
     closeSidebar();
-    return;
+    return true;
   }
   saveDraft();
   const knownOwner = cwd && state.projects.some((p) => samePath(p.cwd, cwd)) ? cwd : state.projectCwd;
@@ -3144,20 +3220,29 @@ async function viewsSelectSession(id, cwd) {
   projectNavigation?.reveal(state.projectCwd);
   closeSidebar();
   await loadSessionIntoView(view);
+  return true;
 }
 
-async function viewsSelectRun(run) {
-  saveDraft();
-  convViews.bindFocused(
-    {
-      kind: 'run',
-      sessionId: null,
-      viewRunId: run.id,
-      projectCwd: run.projectCwd || run.cwd,
-      execCwd: run.cwd,
-    },
-    { inheritLegacy: false },
-  );
+async function viewsSelectRun(run, opts = {}) {
+  const binding = {
+    kind: 'run',
+    sessionId: null,
+    viewRunId: run.id,
+    projectCwd: run.projectCwd || run.cwd,
+    execCwd: run.cwd,
+  };
+  if (dockingUI?.active && !opts.replace) {
+    const existing = convViews.byRun(run.id);
+    const anchor = dockAnchor();
+    if (!canShowDocked(existing?.id, anchor)) return false;
+    saveDraft();
+    const view = existing || convViews.createView(binding);
+    if (!view) return false;
+    showDocked(view, anchor);
+  } else {
+    saveDraft();
+    convViews.bindFocused(binding, { inheritLegacy: false });
+  }
   afterViewFocused();
   projectNavigation?.reveal(run.cwd);
   messageNodes.clear();
@@ -3167,6 +3252,7 @@ async function viewsSelectRun(run) {
   renderNavigation();
   renderMessages(true);
   closeSidebar();
+  return true;
 }
 
 async function loadSessionIntoView(view) {
@@ -3275,8 +3361,8 @@ function historyBeforeRun(messages, run) {
   if (i < 0) i = messages.findIndex((m) => toTime(m.timestamp) >= start);
   return i < 0 ? messages : messages.slice(0, i);
 }
-async function selectSession(id, cwd) {
-  if (convViews) return viewsSelectSession(id, cwd);
+async function selectSession(id, cwd, opts) {
+  if (convViews) return viewsSelectSession(id, cwd, opts);
   saveDraft();
   const token = ++state.requestId;
   state.sessionId = id;
@@ -3342,9 +3428,9 @@ async function selectSession(id, cwd) {
     toast(translateKnown(e.message), true);
   }
 }
-async function selectRun(run) {
-  if (run.sessionId) return selectSession(run.sessionId, run.projectCwd || run.cwd);
-  if (convViews) return viewsSelectRun(run);
+async function selectRun(run, opts) {
+  if (run.sessionId) return selectSession(run.sessionId, run.projectCwd || run.cwd, opts);
+  if (convViews) return viewsSelectRun(run, opts);
   saveDraft();
   resetView();
   state.projectCwd = run.projectCwd || run.cwd;
@@ -3676,7 +3762,7 @@ async function sendMessage(event) {
   // only and never rebind globals or the host from a background send.
   const entryOriginId = convViews?.focusedId() || null;
   const origin = convViews?.byId(entryOriginId) || null;
-  const originUnits = origin?.units || null;
+  const originUnits = convViews?.liveUnits(origin) || null;
   const originCommands = originUnits?.commands || commandsUI;
   if (await originCommands?.intercept()) return;
   if (convViews && convViews.focusedId() !== entryOriginId) return;
@@ -3849,7 +3935,7 @@ function refreshOverview() {
             for (const m of run.messages || []) m.streaming = false;
             if (state.viewRunId === run.id) {
               toast(() => tr('ui.cette_execution_n_est_plus_active_l_historique_enregistre_a_ete_c'), true);
-              if (run.sessionId) void selectSession(run.sessionId, run.cwd);
+              if (run.sessionId) void selectSession(run.sessionId, run.cwd, { replace: true });
               else scheduleMessages();
             }
           }
@@ -4261,14 +4347,14 @@ async function bootstrap() {
       }
     }
     const lastRun = state.runs.get(selection.runId);
-    if (lastRun && isRunning(lastRun)) await selectRun(lastRun);
+    if (lastRun && isRunning(lastRun)) await selectRun(lastRun, { replace: true });
     else if (selection.sessionId && session(selection.sessionId))
-      await selectSession(selection.sessionId, session(selection.sessionId).cwd);
+      await selectSession(selection.sessionId, session(selection.sessionId).cwd, { replace: true });
     else {
       // No saved selection: a sidecar-restored focused session still hydrates
       // (mirror + history), otherwise the host renders the fresh primary.
       const bootView = convViews?.focused();
-      if (bootView?.sessionId) await selectSession(bootView.sessionId, bootView.projectCwd);
+      if (bootView?.sessionId) await selectSession(bootView.sessionId, bootView.projectCwd, { replace: true });
       else {
         restoreDraft();
         renderMessages();
@@ -4832,7 +4918,7 @@ sessionWheel = createSessionWheel({
 const knowledgeUI = createKnowledgeBrowser({
   api,
   onOpenSession: async ({ sessionId, cwd, messageId, text }) => {
-    if (sessionId) await selectSession(sessionId, cwd);
+    if (sessionId && (await selectSession(sessionId, cwd)) === false) return;
     if (text) {
       setComposerText(text);
       saveDraft();
@@ -4923,8 +5009,9 @@ function renderToolSession(entry) {
   $('active-runs').replaceChildren();
   for (const run of runs) {
     const button = el('button', 'active-run');
+    // A waiting agent shows the same amber question dot as the sidebar, not a spinner.
     button.append(
-      el('span', 'spinner'),
+      hasPendingQuestion(run) ? activityDot('question') : el('span', 'spinner'),
       el(
         'span',
         'active-run-label',
@@ -5113,6 +5200,7 @@ function makeToolPreferences(entry, scope) {
     instanceId: entry.id,
     isPrimary: entry.id === 'preferences',
     onStudioPreferences: applyStudioPreferences,
+    onVoiceSettings: () => voiceUI?.reload(),
     onEngineSettings: async () => {
       try {
         await modelCatalogRequest?.catch(() => {});
@@ -6144,6 +6232,112 @@ subscribeSync((snapshot) => {
   renderSyncHeader();
 });
 enableLiveComposers();
+// The editor a view types into right now: its pane while docked, the shared
+// host composer in classic and mobile layouts (same rule as updateComposer).
+function voiceUnits(view) {
+  return (convViews?.isFocused(view.id) ? convViews.liveUnits(view) : view.units) || null;
+}
+// The host composer shows the focused view, except while docked where it is
+// the primary pane and secondary views type into their own panes.
+function hostVoiceOrigin() {
+  const focused = convViews?.focused();
+  return focused && focused.id !== PRIMARY_VIEW_ID && convViews.liveUnits(focused)
+    ? convViews.byId(PRIMARY_VIEW_ID)
+    : focused;
+}
+function voiceSnapshot(view) {
+  if (!view || convViews?.byId(view.id) !== view || !convViews.isFocused(view.id)) return null;
+  const units = voiceUnits(view);
+  const images = units?.images || imageComposer;
+  const text = units?.text || { get: composerText, command: composerCommand };
+  const imageDraft = images?.snapshot();
+  return {
+    id: view.id,
+    token: view.token,
+    nonce: view.nonce,
+    sessionId: view.sessionId,
+    projectCwd: view.projectCwd,
+    execCwd: view.execCwd,
+    triple: JSON.stringify(tripleForView(view)),
+    allowQuestions: tripleForView(view).allowQuestions,
+    runId: runForView(view)?.id || null,
+    runStatus: runForView(view)?.status || null,
+    draft: text.get(),
+    command: JSON.stringify(text.command()),
+    images: JSON.stringify(imageDraft?.ids || []),
+    imageKey: imageDraft?.key || '',
+    computerUse: !!(units?.nodes?.allowCU || $('allow-computer-use')).checked,
+  };
+}
+voiceUI = createVoiceUI({
+  activate(view) {
+    if (view && convViews?.byId(view.id) === view && !convViews.isFocused(view.id))
+      convViews.focusView(view.id, { reveal: true });
+  },
+  focusDraft(view) {
+    const textarea = voiceUnits(view)?.nodes?.textarea || $('composer');
+    textarea.focus({ preventScroll: true });
+    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+  },
+  capture: voiceSnapshot,
+  current(view, snapshot) {
+    const now = voiceSnapshot(view);
+    return now && Object.keys(snapshot).every((key) => now[key] === snapshot[key]);
+  },
+  bindingCurrent(view, snapshot) {
+    return !!(
+      view &&
+      convViews?.byId(view.id) === view &&
+      view.token === snapshot.token &&
+      view.nonce === snapshot.nonce &&
+      view.sessionId === snapshot.sessionId &&
+      view.projectCwd === snapshot.projectCwd &&
+      view.execCwd === snapshot.execCwd
+    );
+  },
+  insert(view, text, snapshot) {
+    if (
+      !view ||
+      state.readOnly ||
+      convViews?.byId(view.id) !== view ||
+      view.token !== snapshot.token ||
+      view.nonce !== snapshot.nonce ||
+      view.sessionId !== snapshot.sessionId ||
+      view.projectCwd !== snapshot.projectCwd
+    )
+      return false;
+    if (!convViews.isFocused(view.id)) convViews.focusView(view.id, { reveal: true });
+    if (!convViews.isFocused(view.id)) return false;
+    const textarea = voiceUnits(view)?.nodes?.textarea || $('composer');
+    const existing = textarea.value;
+    textarea.value = existing ? `${existing.trimEnd()}\n\n${text}` : text;
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    textarea.focus({ preventScroll: true });
+    return true;
+  },
+  submit(view) {
+    if (!state.readOnly && convViews?.byId(view.id) === view && convViews.isFocused(view.id))
+      (voiceUnits(view)?.nodes?.form || $('composer-form')).requestSubmit();
+  },
+  canRecord(view) {
+    return !!(
+      state.initialized &&
+      !state.readOnly &&
+      state.online &&
+      view &&
+      convViews?.byId(view.id) === view &&
+      !view.loading &&
+      view.projectCwd &&
+      state.version?.available !== false &&
+      !!modelForView(view) &&
+      project()?.exists !== false &&
+      !(view.id === PRIMARY_VIEW_ID && state.projectOverview)
+    );
+  },
+});
+voiceUI.mount($('composer-form'), hostVoiceOrigin);
+for (const view of convViews.views.values())
+  if (view.units?.nodes?.form && view.units.nodes.form !== $('composer-form')) voiceUI.mount(view.units.nodes.form, view);
 if ($('sync-footer')) $('sync-footer').onclick = () => openSyncPreferences();
 bindToolSession(toolViews.entries.get('session'), $);
 void bootstrap();

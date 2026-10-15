@@ -477,3 +477,14 @@ test('Computer Use is a closed explicit state write with exactly one target', ()
   for (const key of ['cwd', 'name', 'lastAction', 'lastFrame', 'error'])
     assert.equal(key in state.properties, false);
 });
+
+
+test('interaction response accepts strict batch answer arrays without changing singular replies', () => {
+  const check = (response) => validatePublicApiBody('interaction', { id: 'q1', response }).ok;
+  assert.equal(check({ values: [{ option: 0 }, { text: 'Custom' }, { skipped: true }] }), true);
+  for (const values of [[], Array(7).fill({ skipped: true }), [{ option: -1 }], [{ option: 6 }],
+    [{ option: 0.5 }], [{ option: '0' }], [{ text: '' }], [{ text: ' ' }], [{ text: 'x'.repeat(1001) }],
+    [{ skipped: false }], [{ option: 0, text: 'Both' }], [null], [{ extra: true }]])
+    assert.equal(check({ values }), false, JSON.stringify(values));
+  assert.equal(check({ values: [{ skipped: true }], cancelled: true }), false);
+});

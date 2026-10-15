@@ -94,8 +94,12 @@ jq -n --arg sessionId "$SESSION_ID" --argjson revision "$REVISION" \
 - `GET /api/v1/runs` and `GET /api/v1/runs/{runId}` expose `{ id, sessionId, projectId, machineId, status, startedAt, endedAt, error, model, thinking, allowQuestions, interactions, requestId? }`. A run expired from memory is consulted through the kept conversation.
 - `GET /api/v1/runs/{runId}/events` streams events as `text/event-stream` (`id: <seq>` + `data: <event>`, `: heartbeat` comments). Resume with the `Last-Event-ID` header or the `?after=` cursor: newer buffered events replay, preceded by a `replay_truncated` marker when the buffer moved on, and the stream ends when the run finishes.
 - `POST /api/v1/runs/{runId}/stop` requests a stop with a mandatory empty JSON `{}` body and answers `{ stopped: true, ...run }`.
-- `POST /api/v1/runs/{runId}/interactions` answers with `{ id, response }`, where `response` is exactly `{ cancelled: true }`, `{ confirmed: boolean }`, or `{ value: string }`.
+- `POST /api/v1/runs/{runId}/interactions` answers with `{ id, response }`, where `response` is exactly `{ cancelled: true }`, `{ confirmed: boolean }`, `{ value: string }`, or `{ values: [...] }` for a question batch.
 - `POST /api/v1/sessions/{sessionId}/messages` sends `{ requestId, mode: steer | follow_up, message }` to the live run of the conversation.
+
+A question batch has `kind: "questions"`, `allowCustom: true`, and `questions: [{id: "q1", question, options: [{id: "o1", label, description}]}]` in run interactions and SSE events. Its title and placeholder stay readable. Send one entry per question in order: exactly `{option: 0}` (zero-based index), `{text: "Free answer"}` (1 to 1000 characters, nonempty after trimming), or `{skipped: true}`. The array contains 1 to 6 entries; its count and option indices must match the request. Example: `{"id":"…","response":{"values":[{"option":1},{"text":"My choice"},{"skipped":true}]}}`.
+
+`{value: "[...]"}` remains accepted for a batch when the string is the same valid JSON array. A single question keeps the existing `{value}` protocol, including free text. `{values}` is rejected for non-batch requests and `{confirmed}` is rejected for batches. `{cancelled:true}` skips the whole batch. After native acknowledgement, the interaction exposes `answers: [{question, answer, wasCustom, skipped}]`; cancellation produces null answers with `skipped: true`. The POST returns the updated interaction, not the final tool result. Never automatically retry a duplicate, closed request, or uncertain acknowledgement.
 
 ## Roadmaps
 

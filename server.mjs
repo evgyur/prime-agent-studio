@@ -1,4 +1,5 @@
 import { formatMessage as tr, requestLanguage } from './public/i18n-core.js';
+import { createVoice } from './lib/voice.mjs';
 import { createServer } from 'node:http';
 import { isModelAvailabilityError } from './lib/model-availability.mjs';
 import { readFile, stat, mkdir } from 'node:fs/promises';
@@ -200,6 +201,7 @@ export function createApp(options = {}) {
     options.agentHome || process.env.PRIME_AGENT_CODING_AGENT_DIR || join(homedir(), '.prime', 'agent');
   const sessionDir = options.sessionDir || process.env.PRIME_AGENT_SESSION_DIR || join(agentHome, 'sessions');
   const dataDir = options.dataDir || process.env.PRIME_AGENT_GUI_DATA_DIR || join(ROOT, '.local');
+  const voice = createVoice({ dataDir, agentHome, ...options.voice });
   const store =
     options.store ||
     createStore({
@@ -1485,6 +1487,12 @@ export function createApp(options = {}) {
       }
       if (isPublicApiPath(path)) return await publicApi.handle(req, res, url);
       if (isPublicApiAdminPath(path)) return await publicApi.handleAdmin(req, res, url);
+      if (method === 'GET' && path === '/api/voice') return json(res, 200, await voice.status());
+      if (path === '/api/voice/settings') {
+        if (method === 'GET') return json(res, 200, await voice.settings());
+        if (method === 'PATCH') return json(res, 200, await voice.updateSettings(await readBody(req)));
+      }
+      if (path === '/api/voice/transcribe') return await voice.transcribe(req, res);
       if (method === 'GET' && path === '/api/health')
         return json(res, 200, {
           service: 'prime-agent-gui',

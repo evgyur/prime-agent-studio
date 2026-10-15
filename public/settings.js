@@ -3,6 +3,7 @@ import { createDesktopUpdates } from './desktop-updates.js';
 import { createInteractionSettings } from './interaction-settings.js';
 import { createEngineSettings } from './engine-settings.js';
 import { createComputerPreferences } from './computer-preferences.js';
+import { createVoiceSettings } from './voice-settings.js';
 import { createSyncSettings } from './sync-settings.js';
 import { createPublicApiSettings } from './api-settings.js';
 import {
@@ -21,6 +22,7 @@ export function createSettings({
   onStudioPreferences = () => {},
   onEngineSettings = () => {},
   onComputerPreferences = () => {},
+  onVoiceSettings = () => {},
   getModels,
   openModelPicker,
   icon,
@@ -57,6 +59,8 @@ export function createSettings({
     ...scope,
   });
   computerPreferences.start();
+  const voiceSettings = createVoiceSettings({ api, getContext, onChanged: onVoiceSettings, ...scope });
+  voiceSettings.start();
   const syncSettings = createSyncSettings({ api, getContext, toast, ...scope });
   const publicApi = createPublicApiSettings({ api, getContext, copyText, toast, icon, ...scope });
   const showLegacyComponentsRow = isDesktopComponentsAvailable() && !isNewComponentsBridgeAvailable();
@@ -147,6 +151,7 @@ export function createSettings({
       if (id === 'tools') {
         computerPreferences.update();
         void computerPreferences.refresh().catch(() => {});
+        void voiceSettings.refresh();
       }
       if (id === 'notifications') void interactions.refreshNotifications();
     }
@@ -1136,7 +1141,7 @@ export function createSettings({
       try {
         offLanguage?.();
       } catch {}
-      for (const child of [updates, interactions, engineSettings, computerPreferences, syncSettings, publicApi])
+      for (const child of [updates, interactions, engineSettings, computerPreferences, voiceSettings, syncSettings, publicApi])
         try {
           child?.dispose?.();
         } catch {}

@@ -184,7 +184,6 @@ function makeHarness() {
     },
     getRun: () => null,
     isRunActive: () => false,
-    describeRun: () => null,
     getSessionTitle: () => '',
     getHostText: () => '',
     setHostText() {},

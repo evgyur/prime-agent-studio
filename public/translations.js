@@ -33,6 +33,139 @@ export const messages = {
   'goal.status.budget_limited': { en: 'budget limited', fr: 'budget atteint' },
   'goal.status.complete': { en: 'complete', fr: 'terminé' },
   'goal.status.error': { en: 'error', fr: 'erreur' },
+  'voice.transcribe': { en: 'Transcribe', fr: 'Transcrire' },
+  'voice.limitDurationInsert': {
+    en: 'Five-minute limit reached. Press Transcribe to add the text to your draft.',
+    fr: 'Limite de cinq minutes atteinte. Appuyez sur Transcrire pour ajouter le texte au brouillon.',
+  },
+  'voice.autoSend': { en: 'Send after transcription', fr: 'Envoyer après la transcription' },
+  'voice.autoSendNote': {
+    en: 'Off: the text is added to the draft, unsent, so you can complete it.',
+    fr: 'Désactivé : le texte est ajouté au brouillon, sans envoi, pour que vous puissiez le compléter.',
+  },
+  'voice.open': { en: 'Record a voice message', fr: 'Enregistrer un message vocal' },
+  'voice.title': { en: 'Voice message', fr: 'Message vocal' },
+  'voice.cancel': { en: 'Cancel', fr: 'Annuler' },
+  'voice.send': { en: 'Send', fr: 'Envoyer' },
+  'voice.retry': { en: 'Retry', fr: 'Réessayer' },
+  'voice.insert': { en: 'Insert text', fr: 'Insérer le texte' },
+  'voice.copy': { en: 'Copy text', fr: 'Copier le texte' },
+  'voice.copied': { en: 'Text copied.', fr: 'Texte copié.' },
+  'voice.copyManually': {
+    en: 'Text selected. Copy it with Ctrl+C.',
+    fr: 'Texte sélectionné. Copiez-le avec Ctrl+C.',
+  },
+  'voice.providerGroq': {
+    en: 'Your recording will be sent to Groq for transcription.',
+    fr: 'Votre enregistrement sera envoyé à Groq pour transcription.',
+  },
+  'voice.providerWhisper': {
+    en: 'Your recording will be transcribed by the configured Whisper service.',
+    fr: 'Votre enregistrement sera transcrit par le service Whisper configuré.',
+  },
+  'voice.requesting': { en: 'Waiting for microphone access…', fr: 'En attente de l’accès au microphone…' },
+  'voice.recording': { en: 'Recording…', fr: 'Enregistrement…' },
+  'voice.transcribing': { en: 'Transcribing…', fr: 'Transcription…' },
+  'voice.changed': {
+    en: 'The conversation or draft changed. Review the text, then insert it.',
+    fr: 'La conversation ou le brouillon a changé. Vérifiez le texte, puis insérez-le.',
+  },
+  'voice.originGone': {
+    en: 'The original conversation is no longer available. Copy the text to keep it.',
+    fr: 'La conversation d’origine n’est plus disponible. Copiez le texte pour le conserver.',
+  },
+  'voice.denied': {
+    en: 'Microphone access was denied. Allow it in your browser or app settings, then try again.',
+    fr: 'L’accès au microphone a été refusé. Autorisez-le dans les paramètres du navigateur ou de l’application, puis réessayez.',
+  },
+  'voice.unsupported': {
+    en: 'Audio recording is not supported here. Use a current browser or WebView over HTTPS or localhost.',
+    fr: 'L’enregistrement audio n’est pas pris en charge ici. Utilisez un navigateur ou une WebView récente via HTTPS ou localhost.',
+  },
+  'voice.recordFailed': { en: 'Could not record audio.', fr: 'Impossible d’enregistrer le son.' },
+  'voice.transcribeFailed': {
+    en: 'Transcription failed. Your draft was not sent.',
+    fr: 'Échec de la transcription. Votre brouillon n’a pas été envoyé.',
+  },
+  'voice.errorBusy': {
+    en: 'Another recording is being transcribed. Retry in a moment.',
+    fr: 'Une autre transcription est en cours. Réessayez dans un instant.',
+  },
+  'voice.errorRateLimited': {
+    en: 'Groq rate limit reached. Retry in a moment.',
+    fr: 'Limite de débit Groq atteinte. Réessayez dans un instant.',
+  },
+  'voice.errorTimeout': {
+    en: 'Transcription timed out. Retry, or increase the delay in Preferences.',
+    fr: 'Délai de transcription dépassé. Réessayez, ou augmentez le délai dans les Préférences.',
+  },
+  'voice.errorUnavailable': {
+    en: 'The transcription service is unavailable. Your recording is kept: retry.',
+    fr: 'Le service de transcription est indisponible. Votre enregistrement est conservé : réessayez.',
+  },
+  'voice.errorAuth': {
+    en: 'Groq rejected the API key. Check it in Preferences › Models › Providers.',
+    fr: 'Groq a refusé la clé API. Vérifiez-la dans Préférences › Modèles › Fournisseurs.',
+  },
+  'voice.errorMissingKey': {
+    en: 'No Groq API key. Add one in Preferences › Models › Providers.',
+    fr: 'Aucune clé API Groq. Ajoutez-en une dans Préférences › Modèles › Fournisseurs.',
+  },
+  'voice.errorNotConfigured': {
+    en: 'Voice messages are turned off in Preferences › Tools.',
+    fr: 'Les messages vocaux sont désactivés dans Préférences › Outils.',
+  },
+  'voice.errorUnreadable': {
+    en: 'The service could not read this recording. Record it again.',
+    fr: 'Le service n’a pas pu lire cet enregistrement. Enregistrez-le à nouveau.',
+  },
+  'voice.cancelled': { en: 'Recording cancelled.', fr: 'Enregistrement annulé.' },
+  'voice.empty': { en: 'No speech detected.', fr: 'Aucune parole détectée.' },
+  'voice.limitDuration': {
+    en: 'Five-minute limit reached. Press Send to transcribe.',
+    fr: 'Limite de cinq minutes atteinte. Appuyez sur Envoyer pour transcrire.',
+  },
+  'voice.limitSize': {
+    en: 'Recording exceeds the 10 MiB limit.',
+    fr: 'L’enregistrement dépasse la limite de 10 Mio.',
+  },
+  'voice.limitText': {
+    en: 'Transcript exceeds the 32,000-character limit.',
+    fr: 'La transcription dépasse la limite de 32 000 caractères.',
+  },
+  'voice.settingsLabel': { en: 'Voice messages', fr: 'Messages vocaux' },
+  'voice.settingsNote': {
+    en: 'Dictate a message from the composer; the agent receives the transcribed text. Setting specific to this PC.',
+    fr: 'Dictez un message depuis le compositeur ; l’agent reçoit le texte transcrit. Réglage propre à ce PC.',
+  },
+  'voice.providerOff': { en: 'Off', fr: 'Désactivés' },
+  'voice.providerGroqOption': { en: 'Groq · API key', fr: 'Groq · clé API' },
+  'voice.providerWhisperOption': { en: 'Local Whisper', fr: 'Whisper local' },
+  'voice.groqModel': { en: 'Transcription model', fr: 'Modèle de transcription' },
+  'voice.modelTurbo': { en: 'Whisper Large V3 Turbo · fast', fr: 'Whisper Large V3 Turbo · rapide' },
+  'voice.modelLarge': { en: 'Whisper Large V3 · accurate', fr: 'Whisper Large V3 · précis' },
+  'voice.keyProviders': {
+    en: 'Uses the Groq key from Providers.',
+    fr: 'Utilise la clé Groq des Fournisseurs.',
+  },
+  'voice.keyEnvironment': {
+    en: 'Uses the GROQ_API_KEY environment variable.',
+    fr: 'Utilise la variable d’environnement GROQ_API_KEY.',
+  },
+  'voice.keyMissing': {
+    en: 'No Groq key. Add one in Providers.',
+    fr: 'Aucune clé Groq. Ajoutez-en une dans les Fournisseurs.',
+  },
+  'voice.whisperUrl': { en: 'Whisper service address', fr: 'Adresse du service Whisper' },
+  'voice.whisperUrlNote': {
+    en: 'Complete transcription endpoint, for example a whisper.cpp server started with --convert.',
+    fr: 'Point de transcription complet, par exemple un serveur whisper.cpp lancé avec --convert.',
+  },
+  'voice.timeout': { en: 'Maximum transcription time', fr: 'Délai maximal de transcription' },
+  'voice.settingsError': {
+    en: 'Voice settings could not be saved.',
+    fr: 'Impossible d’enregistrer les réglages vocaux.',
+  },
   'docking.session': { en: 'Session', fr: 'Session' },
   'docking.agents': { en: 'Agents', fr: 'Agents' },
   'docking.files': { en: 'Files', fr: 'Fichiers' },
@@ -98,10 +231,6 @@ export const messages = {
   },
   'conversation_view.new_conversation': { en: 'New conversation', fr: 'Nouvelle conversation' },
   'conversation_view.conversation': { en: 'Conversation', fr: 'Conversation' },
-  'conversation_view.questions_waiting': {
-    en: '{count} question(s) waiting — focus to answer',
-    fr: '{count} question(s) en attente — cliquez pour répondre',
-  },
   'conversation_view.limit_reached': {
     en: 'Maximum 8 open conversations reached',
     fr: 'Maximum de 8 conversations ouvertes atteint',
@@ -570,6 +699,22 @@ export const messages = {
   'questions.other': { fr: 'Ou écrivez une autre réponse…', en: 'Or write another answer…' },
   'questions.answer': { fr: 'Votre réponse…', en: 'Your answer…' },
   'questions.send': { fr: 'Envoyer la réponse', en: 'Send answer' },
+  'questions.sendAnswers': { fr: 'Envoyer les réponses', en: 'Send answers' },
+  'questions.skipQuestion': { fr: 'Passer cette question', en: 'Skip this question' },
+  'questions.skipAll': { fr: 'Tout passer', en: 'Skip all' },
+  'questions.skipped': { fr: 'Question passée', en: 'Question skipped' },
+  'questions.previous': { fr: 'Question précédente', en: 'Previous question' },
+  'questions.next': { fr: 'Question suivante', en: 'Next question' },
+  'questions.navigation': { fr: 'Parcourir les questions', en: 'Browse questions' },
+  'questions.position': { fr: 'Question {current}/{total}', en: 'Question {current}/{total}' },
+  'questions.progress': {
+    fr: '{answered} réponse(s) · {skipped} passée(s)',
+    en: '{answered} answered · {skipped} skipped',
+  },
+  'questions.requiredAll': {
+    fr: 'Répondez à chaque question ou passez-la explicitement avant d’envoyer.',
+    en: 'Answer or explicitly skip every question before sending.',
+  },
   'questions.skip': { fr: 'Passer', en: 'Skip' },
   'questions.showDescription': { fr: 'Afficher la description', en: 'Show description' },
   'questions.hideDescription': { fr: 'Masquer la description', en: 'Hide description' },
@@ -939,8 +1084,8 @@ export const messages = {
     en: 'Include prereleases (beta)',
   },
   'updates.prereleases_note': {
-    fr: 'Versions beta expérimentales, parfois instables. Aucune vérification automatique.',
-    en: 'Beta versions are experimental and may be unstable. No automatic check.',
+    fr: 'Versions beta expérimentales, parfois instables.',
+    en: 'Beta versions are experimental and may be unstable.',
   },
   'updates.prereleases_unsupported': {
     fr: 'Le moteur natif ne prend pas en charge les versions beta. Mettez à jour l’application pour utiliser ce canal.',

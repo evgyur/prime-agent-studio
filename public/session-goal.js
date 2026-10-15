@@ -11,6 +11,7 @@ export function createSessionGoal({ api, t, onResumed }) {
   const stop = $('session-goal-stop');
   const clear = $('session-goal-clear');
   const resume = $('session-goal-resume');
+  const resumeHint = $('session-goal-resume-hint');
   const save = $('session-goal-save');
   const reload = $('session-goal-reload');
   const error = $('session-goal-error');
@@ -26,6 +27,24 @@ export function createSessionGoal({ api, t, onResumed }) {
   let dialogGeneration = 0;
   let expectedObjective = '';
   let expectedGoalId = '';
+  let awaitingFreshState = false;
+
+  function resumeEligible(current) {
+    const goal = current?.goal;
+    return (
+      goal &&
+      ['error', 'paused', 'budget_limited'].includes(goal.status) &&
+      (goal.tokenBudget == null || Number(goal.tokensUsed) < Number(goal.tokenBudget))
+    );
+  }
+
+  function resumeBlocked(current) {
+    return ['running', 'stopping', 'busy'].includes(current?.resumeBlocked) ? current.resumeBlocked : null;
+  }
+
+  function resumable(current) {
+    return resumeEligible(current) && current?.resumable === true && !resumeBlocked(current);
+  }
 
   function goalStatus(status) {
     switch (status) {
@@ -93,20 +112,33 @@ export function createSessionGoal({ api, t, onResumed }) {
     const pending = pendingActions.has(opened.id);
     const canEdit = Boolean(current.editable) && !readOnly;
     const canControl = Boolean(current.controllable) && !readOnly;
-    const canResume = current.resumable === true && shown.status === 'error' && !readOnly;
+    const blocked = resumeBlocked(current);
+    const canShowResume = Boolean(resumeEligible(current) && (resumable(current) || blocked) && !readOnly);
     edit.hidden = editing || !canEdit;
-    edit.disabled = pending;
+    edit.disabled = pending || awaitingFreshState;
     stop.hidden = editing || !canControl || !shown.active;
+    stop.textContent = t('goal.stop');
     clear.hidden = editing || !canControl;
-    resume.hidden = editing || !canResume;
-    stop.disabled = pending;
-    clear.disabled = pending;
-    resume.disabled = pending;
+    resume.hidden = editing || !canShowResume;
+    stop.disabled = pending || awaitingFreshState;
+    clear.disabled = pending || awaitingFreshState;
+    resume.disabled = pending || awaitingFreshState || !resumable(current);
+    resume.textContent = t(shown.status === 'error' ? 'goal.retry' : 'goal.resume');
+    if (resumeHint) {
+      resumeHint.hidden = editing || !canShowResume;
+      resumeHint.textContent = t(
+        blocked
+          ? `goal.resumeBlocked${blocked[0].toUpperCase()}${blocked.slice(1)}`
+          : shown.status === 'error'
+            ? 'goal.retryHint'
+            : 'goal.resumeHint',
+      );
+    }
     reload.disabled = pending;
     input.hidden = !editing;
     $('session-goal-editor').hidden = !editing;
     save.hidden = !editing;
-    save.disabled = !canEdit || pending;
+    save.disabled = !canEdit || pending || awaitingFreshState;
   }
 
   async function refresh({ force = false } = {}) {
@@ -122,12 +154,16 @@ export function createSessionGoal({ api, t, onResumed }) {
         if (request?.promise !== promise || (epochs.get(target) || 0) !== epoch) return false;
         cache.set(target, data);
         if (selected?.id === target) lastRead = Date.now();
+        if (dialog.open && opened?.id === target && awaitingFreshState) {
+          awaitingFreshState = false;
+          setError();
+        }
         if (selected?.id === target || opened?.id === target) render();
         return true;
       })
       .catch((e) => {
         if (request?.promise === promise && e.name !== 'AbortError' && opened?.id === target)
-          setError(e.message);
+          setError(e.message, awaitingFreshState);
         return false;
       })
       .finally(() => {
@@ -145,6 +181,7 @@ export function createSessionGoal({ api, t, onResumed }) {
         stashDraft();
         dialog.close();
       }
+      awaitingFreshState = false;
       request?.controller.abort();
       request = null;
       lastRead = 0;
@@ -161,7 +198,9 @@ export function createSessionGoal({ api, t, onResumed }) {
     editing = false;
     setError();
     dialog.showModal();
+    awaitingFreshState = true;
     render();
+    void refresh({ force: true });
   });
   edit.addEventListener('click', () => {
     const current = opened && cache.get(opened.id);
@@ -170,7 +209,8 @@ export function createSessionGoal({ api, t, onResumed }) {
       !current.editable ||
       opened.readOnly ||
       selected?.readOnly ||
-      pendingActions.has(opened.id)
+      pendingActions.has(opened.id) ||
+      awaitingFreshState
     )
       return;
     editing = true;
@@ -196,7 +236,8 @@ export function createSessionGoal({ api, t, onResumed }) {
       !current.editable ||
       context.readOnly ||
       selected?.readOnly ||
-      pendingActions.has(context.id)
+      pendingActions.has(context.id) ||
+      awaitingFreshState
     )
       return;
     const next = input.value;
@@ -233,6 +274,7 @@ export function createSessionGoal({ api, t, onResumed }) {
       });
       epochs.set(context.id, (epochs.get(context.id) || 0) + 1);
       cache.set(context.id, data);
+      if (opened?.id === context.id && dialog.open) awaitingFreshState = false;
       if (drafts.get(context.id) === submittedDraft) drafts.delete(context.id);
       if (opened?.id === context.id && dialog.open && dialogGeneration === generation) {
         editing = false;
@@ -245,7 +287,7 @@ export function createSessionGoal({ api, t, onResumed }) {
         setError(e.status === 409 ? t('goal.conflict') : e.message, e.status === 409);
     } finally {
       if (pendingActions.get(context.id) === saveToken) pendingActions.delete(context.id);
-      if (opened?.id === context.id && dialog.open && dialogGeneration === generation) render();
+      if (opened?.id === context.id && dialog.open) render();
     }
   });
   async function controlGoal(action) {
@@ -257,10 +299,9 @@ export function createSessionGoal({ api, t, onResumed }) {
       selected?.id !== context.id ||
       editing ||
       !current?.goal ||
-      (action === 'resume'
-        ? current.resumable !== true || current.goal.status !== 'error'
-        : !current.controllable) ||
+      (action === 'resume' ? !resumable(current) : !current.controllable) ||
       (action === 'stop' && !current.goal.active) ||
+      awaitingFreshState ||
       context.readOnly ||
       selected.readOnly ||
       pendingActions.has(context.id)
@@ -287,6 +328,7 @@ export function createSessionGoal({ api, t, onResumed }) {
       });
       epochs.set(context.id, (epochs.get(context.id) || 0) + 1);
       cache.set(context.id, data);
+      if (opened?.id === context.id && dialog.open) awaitingFreshState = false;
       if (action === 'clear') drafts.delete(context.id);
       if (opened?.id === context.id && dialog.open && dialogGeneration === generation) {
         setError();
@@ -299,6 +341,8 @@ export function createSessionGoal({ api, t, onResumed }) {
             } catch {}
           renderHeader();
         } else render();
+      } else if (opened?.id === context.id && dialog.open) {
+        render();
       } else if (selected?.id === context.id) {
         renderHeader();
       }
@@ -317,6 +361,7 @@ export function createSessionGoal({ api, t, onResumed }) {
     if (!opened || selected?.id !== opened.id) return;
     const id = opened.id;
     if ((await refresh({ force: true })) && dialog.open && opened?.id === id) {
+      awaitingFreshState = false;
       expectedObjective = String(cache.get(id)?.goal?.objective || '');
       expectedGoalId = cache.get(id)?.goal?.goalId;
       setError();
@@ -333,6 +378,7 @@ export function createSessionGoal({ api, t, onResumed }) {
     if (dialog.open) return;
     stashDraft();
     opened = null;
+    awaitingFreshState = false;
     dialogGeneration++;
     editing = false;
     setError();

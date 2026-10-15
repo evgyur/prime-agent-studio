@@ -113,7 +113,7 @@ test('session goal routes dispatch read, edit, stop and clear to the goal servic
   ]);
 });
 
-test('Error goal retry requires the native capability and starts one run on the exact saved session', async (t) => {
+test('goal resume requires native capability and starts one run on the exact saved session', async (t) => {
   let nativeSupport = false;
   const f = await fixture(t, {
     savedGoalCapabilities: async () => ({ resumable: nativeSupport }),
@@ -167,6 +167,29 @@ test('Error goal retry requires the native capability and starts one run on the 
   assert.equal((await f.api(path, { method: 'POST', body })).status, 409);
   assert.equal(f.runtime.controls.length, 1);
   f.runtime.controls[0].finish();
+
+  for (const [index, status] of ['paused', 'budget_limited'].entries()) {
+    const resumable = { ...saved, goalId: `${status}-goal`, status };
+    await appendFile(
+      join(f.sessionDir, '2026-native-session.jsonl'),
+      JSON.stringify({
+        type: 'custom',
+        id: `goal-state-${index + 2}`,
+        parentId: 'initial-message',
+        customType: 'thread_goal_state',
+        data: resumable,
+      }) + '\n',
+    );
+    const requestBody = { ...body, goalId: resumable.goalId };
+    assert.equal((await f.api('/api/sessions/native-session/goal')).json.resumable, true);
+    const acceptedAgain = await f.api(path, { method: 'POST', body: requestBody });
+    assert.equal(acceptedAgain.status, 200, acceptedAgain.text);
+    assert.equal(acceptedAgain.json.run.sessionId, 'native-session');
+    assert.equal(acceptedAgain.json.run.prompt, '/goal resume');
+    assert.equal(f.runtime.controls.length, index + 2);
+    assert.equal(f.runtime.controls.at(-1).input.message, '/goal resume');
+    f.runtime.controls.at(-1).finish();
+  }
 });
 
 test('ordinary run admission waits while a saved goal mutation owns the session', async (t) => {

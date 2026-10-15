@@ -99,6 +99,8 @@ try {
   assert.equal((await requestAt(0)).url, '/api/sessions/one/goal');
   await resolveAt(0, envelope(goal('g1', 'First objective')));
   await page.locator('#session-goal-button').click();
+  await requestAt(1);
+  await resolveAt(1, envelope(goal('g1', 'First objective')));
   assert.equal(await page.locator('#session-goal-stop').isVisible(), true);
   assert.equal(await page.locator('#session-goal-clear').isVisible(), true);
 
@@ -106,7 +108,7 @@ try {
     document.getElementById('session-goal-stop').click();
     document.getElementById('session-goal-stop').click();
   });
-  const stopped = await requestAt(1);
+  const stopped = await requestAt(2);
   assert.deepEqual(stopped, {
     url: '/api/sessions/one/goal/stop',
     options: {
@@ -122,13 +124,13 @@ try {
   assert.equal(await page.locator('#session-goal-save').isDisabled(), true);
   assert.equal(await page.locator('#session-goal-stop').isDisabled(), true);
   assert.equal(await page.locator('#session-goal-clear').isDisabled(), true);
-  assert.equal(await page.evaluate(() => requests.length), 2, 'double click sends one Stop request');
-  await resolveAt(1, envelope(goal('g1', 'First objective', false)));
+  assert.equal(await page.evaluate(() => requests.length), 3, 'double click sends one Stop request');
+  await resolveAt(2, envelope(goal('g1', 'First objective', false)));
   await page.locator('#session-goal-stop').waitFor({ state: 'hidden' });
   assert.equal(await page.locator('#session-goal-status').textContent(), 'paused');
 
   await page.locator('#session-goal-clear').click();
-  assert.deepEqual(await requestAt(2), {
+  assert.deepEqual(await requestAt(3), {
     url: '/api/sessions/one/goal/clear',
     options: {
       method: 'POST',
@@ -139,44 +141,52 @@ try {
       },
     },
   });
-  await resolveAt(2, envelope(null));
+  await resolveAt(3, envelope(null));
   await page.waitForFunction(() => !document.getElementById('session-goal-dialog').open);
   assert.equal(await page.locator('#session-goal-button').isVisible(), false);
 
   await select('locked', true);
-  await requestAt(3);
-  await resolveAt(3, envelope(goal('g2', 'Read only')));
+  await requestAt(4);
+  await resolveAt(4, envelope(goal('g2', 'Read only')));
   await page.locator('#session-goal-button').click();
+  await requestAt(5);
+  await resolveAt(5, envelope(goal('g2', 'Read only')));
   assert.equal(await page.locator('#session-goal-edit').isVisible(), false);
   assert.equal(await page.locator('#session-goal-stop').isVisible(), false);
   assert.equal(await page.locator('#session-goal-clear').isVisible(), false);
 
   await select('conflict');
-  await requestAt(4);
-  await resolveAt(4, envelope(goal('g3', 'Original')));
+  await requestAt(6);
+  await resolveAt(6, envelope(goal('g3', 'Original')));
   await page.locator('#session-goal-button').click();
+  await requestAt(7);
+  await resolveAt(7, envelope(goal('g3', 'Original')));
   await page.locator('#session-goal-stop').click();
-  await requestAt(5);
-  await rejectAt(5, 'Conflict', 409);
+  await requestAt(8);
+  await rejectAt(8, 'Conflict', 409);
   await page.locator('#session-goal-reload').waitFor({ state: 'visible' });
   assert.match(await page.locator('#session-goal-error').textContent(), /Reload the latest goal/);
   await page.locator('#session-goal-reload').click();
-  await requestAt(6);
-  await resolveAt(6, envelope(goal('g3', 'Updated elsewhere')));
+  await requestAt(9);
+  await resolveAt(9, envelope(goal('g3', 'Updated elsewhere')));
   await page.waitForFunction(() => document.getElementById('session-goal-error').hidden);
   assert.equal(await page.locator('#session-goal-objective').textContent(), 'Updated elsewhere');
 
   await select('old');
-  await requestAt(7);
-  await resolveAt(7, envelope(goal('g4', 'Old session')));
+  await requestAt(10);
+  await resolveAt(10, envelope(goal('g4', 'Old session')));
   await page.locator('#session-goal-button').click();
+  await requestAt(11);
+  await resolveAt(11, envelope(goal('g4', 'Old session')));
   await page.locator('#session-goal-stop').click();
-  await requestAt(8);
+  await requestAt(12);
   await select('new');
-  await requestAt(9);
-  await resolveAt(9, envelope(goal('g5', 'New session')));
+  await requestAt(13);
+  await resolveAt(13, envelope(goal('g5', 'New session')));
   await page.locator('#session-goal-button').click();
-  await resolveAt(8, envelope(goal('g4', 'Old session', false)));
+  await requestAt(14);
+  await resolveAt(14, envelope(goal('g5', 'New session')));
+  await resolveAt(12, envelope(goal('g4', 'Old session', false)));
   assert.equal(await page.locator('#session-goal-dialog').evaluate((node) => node.open), true);
   assert.equal(await page.locator('#session-goal-objective').textContent(), 'New session');
   assert.equal(await page.locator('#session-goal-status').textContent(), 'active');
@@ -184,11 +194,11 @@ try {
   await page.locator('#session-goal-edit').click();
   await page.locator('#session-goal-input').fill('Revised objective');
   await page.locator('#session-goal-save').click();
-  assert.equal((await requestAt(10)).options.method, 'PATCH');
+  assert.equal((await requestAt(15)).options.method, 'PATCH');
   assert.equal(await page.locator('#session-goal-save').isDisabled(), true);
   assert.equal(await page.locator('#session-goal-stop').isVisible(), false);
   assert.equal(await page.locator('#session-goal-clear').isVisible(), false);
-  await resolveAt(10, envelope(goal('g5', 'Revised objective')));
+  await resolveAt(15, envelope(goal('g5', 'Revised objective')));
   await page.waitForFunction(() => document.getElementById('session-goal-save').hidden);
 
   await page.setViewportSize({ width: 390, height: 844 });
@@ -239,26 +249,32 @@ try {
 
   const errored = { ...goal('g6', 'Keep counters'), active: false, status: 'error', tokensUsed: 72 };
   await select('unsupported');
-  await requestAt(11);
-  await resolveAt(11, envelope(errored));
+  await requestAt(16);
+  await resolveAt(16, envelope(errored));
   await page.locator('#session-goal-button').click();
+  await requestAt(17);
+  await resolveAt(17, envelope(errored));
   assert.equal(await page.locator('#session-goal-resume').isVisible(), false);
 
   await select('read-only-error', true);
-  await requestAt(12);
-  await resolveAt(12, envelope(errored, true, true, true));
+  await requestAt(18);
+  await resolveAt(18, envelope(errored, true, true, true));
   await page.locator('#session-goal-button').click();
+  await requestAt(19);
+  await resolveAt(19, envelope(errored, true, true, true));
   assert.equal(await page.locator('#session-goal-resume').isVisible(), false);
 
   await select('retry');
-  await requestAt(13);
-  await resolveAt(13, envelope(errored, true, true, true));
+  await requestAt(20);
+  await resolveAt(20, envelope(errored, true, true, true));
   await page.locator('#session-goal-button').click();
+  await requestAt(21);
+  await resolveAt(21, envelope(errored, true, true, true));
   await page.evaluate(() => {
     document.getElementById('session-goal-resume').click();
     document.getElementById('session-goal-resume').click();
   });
-  assert.deepEqual(await requestAt(14), {
+  assert.deepEqual(await requestAt(22), {
     url: '/api/sessions/retry/goal/resume',
     options: {
       method: 'POST',
@@ -269,8 +285,8 @@ try {
       },
     },
   });
-  assert.equal(await page.evaluate(() => requests.length), 15, 'double click starts one retry');
-  await resolveAt(14, { ...envelope(errored), resumable: false, run: { id: 'run-1', sessionId: 'retry' } });
+  assert.equal(await page.evaluate(() => requests.length), 23, 'double click starts one retry');
+  await resolveAt(22, { ...envelope(errored), resumable: false, run: { id: 'run-1', sessionId: 'retry' } });
   await page.waitForFunction(() => !document.getElementById('session-goal-dialog').open);
   assert.equal(await page.evaluate(() => resumedRuns.length), 1);
 

@@ -15,7 +15,9 @@ Depuis la version 3.0.0, les conversations apparaissent directement sous leur pr
 
 Quand une conversation possède un objectif natif, le bouton **Objectif** dans l’en-tête affiche son état et sa consommation. **Modifier l’objectif** conserve les compteurs. **Arrêter l’objectif** le met en pause et arrête l’exécution en cours après confirmation du moteur. **Effacer l’objectif** retire l’objectif, mais conserve les messages de la conversation. En état **Erreur**, **Réessayer l’objectif** lance une seule exécution visible de `/goal resume` dans la même conversation, sans réinitialiser l’identité ni les compteurs. La reprise demande une action explicite. Une modification simultanée demande de recharger l’objectif avant de réessayer.
 
-La modification apparaît si le moteur connecté annonce `goal_objective_edit` ; l’arrêt et l’effacement demandent `goal_lifecycle_control`. La reprise exige aussi `goal_error_resume`. En l’absence de connexion au moteur ou avec un moteur plus ancien, l’objectif reste consultable sans commande incompatible. En mode consultation, aucune modification n’est disponible.
+**Reprendre l’objectif** permet aussi de continuer un objectif en pause, ou limité par le budget si son budget initial n’est pas épuisé. Cette action n’augmente jamais le budget et ne remet pas les compteurs à zéro. Si une exécution est active, en cours d’arrêt ou d’admission, la fenêtre explique pourquoi la reprise est indisponible. Son ouverture actualise l’état avant d’activer les commandes ; après la fin de l’arrêt, la reprise devient disponible. Un échec d’actualisation propose de recharger plutôt que d’agir sur un état périmé.
+
+La modification apparaît si le moteur connecté annonce `goal_objective_edit` ; l’arrêt et l’effacement demandent `goal_lifecycle_control`. Reprendre ou réessayer exige aussi `goal_error_resume`. En l’absence de connexion au moteur ou avec un moteur plus ancien, l’objectif reste consultable sans commande incompatible. En mode consultation, aucune modification n’est disponible.
 
 ## Naviguer rapidement avec Alt
 

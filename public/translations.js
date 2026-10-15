@@ -11,6 +11,27 @@ export const messages = {
   'goal.stop': { en: 'Stop goal', fr: 'Arrêter l’objectif' },
   'goal.clear': { en: 'Clear goal', fr: 'Effacer l’objectif' },
   'goal.retry': { en: 'Retry goal', fr: 'Réessayer l’objectif' },
+  'goal.resume': { en: 'Resume goal', fr: 'Reprendre l’objectif' },
+  'goal.retryHint': {
+    en: 'Retry continues this goal without resetting its usage.',
+    fr: 'La reprise continue cet objectif sans remettre son utilisation à zéro.',
+  },
+  'goal.resumeHint': {
+    en: 'Resume continues this goal without resetting its usage.',
+    fr: 'La reprise continue cet objectif sans remettre son utilisation à zéro.',
+  },
+  'goal.resumeBlockedRunning': {
+    en: 'The current run is still active. Wait for it to finish before resuming this goal.',
+    fr: 'L’exécution en cours est toujours active. Attendez sa fin avant de reprendre cet objectif.',
+  },
+  'goal.resumeBlockedStopping': {
+    en: 'Waiting for the current run to finish…',
+    fr: 'En attente de la fin de l’exécution en cours…',
+  },
+  'goal.resumeBlockedBusy': {
+    en: 'The session is changing. Please wait.',
+    fr: 'La session est en cours de modification. Veuillez patienter.',
+  },
   'goal.tokens': { en: 'Tokens', fr: 'Jetons' },
   'goal.time': { en: 'Time', fr: 'Temps' },
   'goal.continuations': { en: 'Continuations', fr: 'Reprises' },

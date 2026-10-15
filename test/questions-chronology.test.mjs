@@ -10,7 +10,7 @@ class Node {
     this.nodeType = tag === '#text' ? 3 : 1;
     this.data = data;
     this.childNodes = [];
-    this.classList = { toggle() {} };
+    this.classList = { toggle() {}, add() {} };
     this.attributes = new Map();
   }
   get firstChild() {
@@ -40,6 +40,7 @@ class Node {
     siblings.splice(siblings.indexOf(this), 1);
     this.parentNode = null;
   }
+  focus() {}
   setAttribute(name, value) {
     this.attributes.set(name, value);
   }
@@ -120,6 +121,52 @@ test('native tool-linked questions keep their owner and unlinked answers use cre
   );
   assert.equal(questionAnchorMessageId(run, { status: 'answered', createdAt: 2000 }), 'a1');
   assert.equal(questionAnchorMessageId(run, { status: 'pending', createdAt: 2000 }), null);
+});
+
+test('a resolved question batch preserves all answers and skips beside its original assistant', () => {
+  const previousDocument = globalThis.document;
+  globalThis.document = {
+    createElement: (tag) => new Node(tag),
+    createTextNode: (text) => new Node('#text', text),
+  };
+  try {
+    const before = { id: 'before', role: 'assistant', timestamp: 1000 };
+    const later = { id: 'later', role: 'assistant', timestamp: 3000 };
+    const request = {
+      id: 'batch', kind: 'questions', title: 'Choose settings', status: 'pending', createdAt: 2000,
+      questions: [
+        { question: 'Which model?', options: [{ value: 'alpha', label: 'Alpha' }] },
+        { question: 'Any constraints?', options: [] },
+      ],
+    };
+    const run = { id: 'run', status: 'running', messages: [before, later], interactions: [request] };
+    const root = new Node();
+    const create = () => createQuestions({ root, api: async () => {}, getContext: () => ({ run, readOnly: false }) });
+    let questions = create();
+    questions.update();
+    assert.equal(root.childNodes.length, 1);
+    assert.equal(questions.partsFor(before).length, 0);
+    request.status = 'answered';
+    request.answers = [
+      { question: 'Which model?', answer: 'Alpha', skipped: false },
+      { question: 'Any constraints?', answer: '', skipped: true },
+    ];
+    questions.update();
+    const resolved = questions.partsFor(before)[0].node;
+    assert.equal(root.childNodes.length, 0);
+    assert.equal(questions.partsFor(later).length, 0);
+    assert.match(resolved.textContent, /Which model\? — Alpha/);
+    assert.match(resolved.textContent, /Any constraints\? — .+/);
+    // Windowed history can unmount this form. Reconstructing it from saved
+    // interactions must keep the full batch at its original chronological slot.
+    questions = create();
+    questions.update();
+    assert.equal(root.childNodes.length, 0);
+    assert.equal(questions.partsFor(later).length, 0);
+    assert.equal(questions.partsFor(before)[0].node.textContent, resolved.textContent);
+  } finally {
+    globalThis.document = previousDocument;
+  }
 });
 
 test('ISO timestamps preserve the question position across component remount', () => {

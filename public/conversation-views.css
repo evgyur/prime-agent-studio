@@ -126,17 +126,6 @@
 .cvw-questions {
   padding: 0 18px 12px;
 }
-.cvw-questions-note {
-  width: 100%;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--surface, transparent);
-  color: var(--text);
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
-  padding: 8px 10px;
-}
 .cvw-runline {
   flex: none;
   padding: 6px 12px;
@@ -147,10 +136,15 @@
 .cvw-runline[hidden] {
   display: none;
 }
+.cvw-pill-anchor {
+  position: relative;
+  flex: none;
+  height: 0;
+}
 .cvw-pill {
   position: absolute;
   z-index: 5;
-  inset: auto 12px 12px auto;
+  inset: auto auto 12px 50%;
 }
 .cvw-pill[hidden] {
   display: none;

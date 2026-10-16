@@ -4,6 +4,10 @@
 
 Les changements par version. Retrouvez les installateurs et les archives du code source dans les [releases GitHub](https://github.com/zerr0o/prime-agent-studio/releases).
 
+## 4.3.8-beta.2
+
+- **La fenêtre se rouvre là où vous l’avez laissée** : la fenêtre principale garde sa position, sa taille et son état agrandi d’un démarrage à l’autre. Une fenêtre plus grande que son écran est réduite pour y tenir, et une fenêtre restée sur un écran débranché revient sur l’écran principal.
+
 ## 4.3.8-beta.1
 
 - **Agents en attente visibles dans le panneau Session** : dans « Agents en cours », un agent qui attend votre réponse affiche le point ambre de question utilisé dans la barre latérale et les onglets, à la place de l’indicateur de chargement. L’indicateur revient une fois la réponse envoyée. Contribution de [@evgyur](https://github.com/evgyur) dans la [#7](https://github.com/zerr0o/prime-agent-studio/pull/7).

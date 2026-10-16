@@ -6,6 +6,7 @@ mod notifications;
 #[cfg(test)]
 mod update_tests;
 mod updates;
+mod window_state;
 
 use serde::{Deserialize, Serialize};
 use std::{
@@ -109,6 +110,9 @@ fn open_external_link(app: &tauri::AppHandle, url: &tauri::Url) {
 pub(crate) fn show_main(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.unminimize();
+        if window_state::take_pending_maximize(app) {
+            let _ = window.maximize();
+        }
         let _ = window.show();
         let _ = window.set_focus();
     }
@@ -881,6 +885,7 @@ fn main() {
                 .and_then(|bytes| serde_json::from_slice(&bytes).ok())
                 .unwrap_or_default();
             let webview_data = root.join("webview");
+            let window_file = root.join(window_state::FILE);
             app.manage(Desktop {
                 root,
                 resources,
@@ -894,7 +899,7 @@ fn main() {
             let navigation_app = handle.clone();
             let links_app = handle.clone();
             let background = std::env::args().any(|arg| arg == "--background");
-            WebviewWindowBuilder::new(
+            let main_window = WebviewWindowBuilder::new(
                 app,
                 "main",
                 WebviewUrl::App(
@@ -909,7 +914,8 @@ fn main() {
             .title("Prime Agent Studio")
             .inner_size(1280.0, 860.0)
             .min_inner_size(860.0, 620.0)
-            .visible(!background)
+            // Shown once its saved position and size are applied.
+            .visible(false)
             .data_directory(webview_data)
             // Otherwise Windows consumes file drops before the HTML composer.
             .disable_drag_drop_handler()
@@ -928,6 +934,20 @@ fn main() {
                 false
             })
             .build()?;
+            let saved = window_state::load(&window_file)
+                .map(|saved| window_state::restore(&main_window, saved));
+            let maximize = saved.is_some_and(|saved| saved.maximized);
+            app.manage(window_state::Tracker::new(
+                window_file,
+                saved,
+                background && maximize,
+            ));
+            if !background {
+                if maximize {
+                    let _ = main_window.maximize();
+                }
+                let _ = main_window.show();
+            }
             // Record the real launcher origin once (correct custom protocol for
             // this platform). Fallback shell navigation reuses it instead of a
             // hardcoded scheme that WebView2 may not resolve.
@@ -1024,9 +1044,15 @@ fn main() {
         })
         .on_window_event(|window, event| {
             if window.label() == "main" {
-                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                    api.prevent_close();
-                    let _ = window.hide();
+                match event {
+                    tauri::WindowEvent::CloseRequested { api, .. } => {
+                        api.prevent_close();
+                        let _ = window.hide();
+                    }
+                    tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_) => {
+                        window_state::track(window)
+                    }
+                    _ => (),
                 }
             }
         })

@@ -4,6 +4,10 @@
 
 Changes by version. See [GitHub releases](https://github.com/zerr0o/prime-agent-studio/releases) for installers and source archives.
 
+## 4.3.8-beta.2
+
+- **The window reopens where you left it**: the main window keeps its position, size and maximized state across restarts. A window larger than its screen is resized to fit, and a window left on a disconnected screen returns to the main screen.
+
 ## 4.3.8-beta.1
 
 - **Waiting agents are visible in the Session panel**: in "Running agents", an agent waiting for your answer shows the amber question dot used in the sidebar and tabs, in place of the spinner. The spinner comes back once you answer. Contributed by [@evgyur](https://github.com/evgyur) in [#7](https://github.com/zerr0o/prime-agent-studio/pull/7).

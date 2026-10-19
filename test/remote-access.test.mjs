@@ -26,12 +26,15 @@ const config = () => ({
 async function fixture(t, initial = config()) {
   const dataDir = await mkdtemp(join(tmpdir(), 'prime-remote-code-'));
   const access = createRemoteAccess({ dataDir });
+  const cleanup = [];
   if (initial) await writeFile(access.file, JSON.stringify(initial));
   t.after(async () => {
+    // Release SQLite handles before deleting their directory on Windows.
+    for (const close of cleanup) await close();
     assert.equal(dirname(dataDir), resolve(tmpdir()));
     await rm(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
-  return { dataDir, access };
+  return { dataDir, access, cleanup };
 }
 function http(port, path, { method = 'GET', headers = {}, body } = {}) {
   return new Promise((done, reject) => {
@@ -129,7 +132,7 @@ test('changing the PIN revokes all LAN/Tailscale/PWA cookies and streams immedia
     runtime,
   });
   await new Promise((done) => app.server.listen(0, '127.0.0.1', done));
-  t.after(() => app.close());
+  f.cleanup.push(() => app.close());
   const port = app.server.address().port;
   const local = (path, body) =>
     http(

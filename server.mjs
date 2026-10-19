@@ -1,6 +1,7 @@
 import { formatMessage as tr, requestLanguage } from './public/i18n-core.js';
 import { createVoice } from './lib/voice.mjs';
 import { createMetrics, metricsProjectId } from './lib/metrics.mjs';
+import { createContextService } from './lib/context-service.mjs';
 import { createServer } from 'node:http';
 import { isModelAvailabilityError } from './lib/model-availability.mjs';
 import { readFile, stat, mkdir } from 'node:fs/promises';
@@ -204,6 +205,9 @@ export function createApp(options = {}) {
       dataDir,
       initialCwd: options.initialCwd || process.env.PRIME_AGENT_GUI_INITIAL_CWD || ROOT,
     });
+  const context = options.context || createContextService({ dataDir, store, index: options.codeIndex });
+  const contextStartup = setTimeout(() => { void context.ensureAll().catch(() => {}); }, 0);
+  contextStartup.unref();
   const metrics = createMetrics({
     dataDir,
     sessionDir,
@@ -401,6 +405,7 @@ export function createApp(options = {}) {
       subagentPolicyFile: subagentDefaults.file,
       metricsDir: metrics.rawDir,
       knowledge: { dataDir },
+      codeContext: { dataDir },
       roadmap: { config: roadmapBridge.config },
       computer: { config: computerBridge.config },
     });
@@ -1292,7 +1297,19 @@ export function createApp(options = {}) {
       if (pastudioGated && existing?.id && typeof body.model === 'string' && body.model)
         await store.setConversationSettings(existing.id, { model: body.model });
       await authorize?.();
+      const codeContext = await context.runtimeConfig(worktreeAuth?.projectCwd || cwd, existing?.id);
+      // V1 indexes the registered root only; never expose wrong-root tools in a task worktree.
+      if (worktreeAuth) codeContext.enabled = false;
+      if (codeContext.enabled && existing?.id) {
+        try {
+          const linked = (await roadmap.read(cwd)).plans?.filter((plan) => plan.sessions?.includes(existing.id)).slice(0, 3) || [];
+          if (linked.length) codeContext.dossier = {
+            roadmap: linked.map((plan) => `${plan.id}: ${plan.title}; open: ${(plan.steps || []).filter((step) => !step.done).slice(0, 2).map((step) => step.text).join('; ')}. Use roadmap_read for current state.`).join('\n').slice(0, 400),
+          };
+        } catch { /* Optional local pointers must not block a conversation. */ }
+      }
       run.handle = await runtime.start({
+        codeContext,
         cwd,
         message: run.prompt,
         ...(images.length ? { images } : {}),
@@ -1303,6 +1320,7 @@ export function createApp(options = {}) {
         allowQuestions,
         onEvent: (event) => pushEvent(run, event),
       });
+      void context.notify(metricsProjectId(worktreeAuth?.projectCwd || cwd)).catch(() => {});
       if (existing?.id) await store.consumePastudioModelGate?.(existing.id).catch(() => {});
       if (run.status === 'stopping') void run.handle.cancel();
       Promise.resolve(run.handle.done).then(
@@ -1923,6 +1941,16 @@ export function createApp(options = {}) {
         );
         return json(res, 200, result);
       }
+      const contextRoute = path.match(/^\/api\/projects\/([a-f0-9]{64})\/context(?:\/(events|rebuild|search))?$/);
+      if (contextRoute) {
+        const [, id, action] = contextRoute;
+        if (!action && method === 'GET') return json(res, 200, await context.get(id, url.searchParams.get('sessionId')));
+        if (!action && method === 'PATCH') return json(res, 200, await context.patch(id, await readBody(req)));
+        if (action === 'events' && method === 'GET') return await context.events(id, url.searchParams.get('sessionId'), req, res);
+        if (action === 'rebuild' && method === 'POST') return json(res, 202, await context.rebuild(id));
+        if (action === 'search' && method === 'POST') return json(res, 200, await context.search(id, await readBody(req)));
+        throw new HttpError(405, 'Method not allowed.');
+      }
       if (method === 'POST' && path === '/api/projects/move')
         return json(res, 200, await store.moveProject(await readBody(req)));
       if (method === 'POST' && path === '/api/sessions/move')
@@ -1934,12 +1962,11 @@ export function createApp(options = {}) {
           return json(res, 200, { cwd: url.searchParams.get('cwd'), exists: false });
         }
       }
-      if ((method === 'POST' || method === 'PATCH') && path === '/api/projects')
-        return json(
-          res,
-          method === 'POST' ? 201 : 200,
-          await store.project(await readBody(req), method === 'PATCH'),
-        );
+      if ((method === 'POST' || method === 'PATCH') && path === '/api/projects') {
+        const result = await store.project(await readBody(req), method === 'PATCH');
+        void context.ensureAll().catch(() => {});
+        return json(res, method === 'POST' ? 201 : 200, result);
+      }
       if (method === 'POST' && path === '/api/projects/pick-directory') {
         const body = await readBody(req);
         const controller = new AbortController();
@@ -2244,6 +2271,8 @@ export function createApp(options = {}) {
     providers.close?.();
     commands.close?.();
     closing = true;
+    clearTimeout(contextStartup);
+    await context.close();
     clearInterval(cleanup);
     clearTimeout(syncStartup);
     clearTimeout(syncSoonTimer);
@@ -2265,6 +2294,7 @@ export function createApp(options = {}) {
     worktrees,
     worktreeRoutes,
     runtime,
+    context,
     metrics,
     modelConfig,
     modelDefaults,

@@ -46,6 +46,7 @@ import {
 } from './project-navigation.js';
 import { createKnowledgeBrowser } from './knowledge.js';
 import { createPerformance } from './performance.js';
+import { createContext, pinContextFile } from './context.js';
 import { createProjectArchives } from './project-archives.js';
 import { createWorktreesUI } from './worktrees.js';
 import { createRoadmap } from './roadmap.js';
@@ -5047,6 +5048,37 @@ for (const id of ['project-knowledge', 'detail-project-knowledge'])
     const selected = project();
     if (selected) knowledgeUI.open(selected, event.currentTarget);
   };
+let contextPopup = null;
+function openContext(context, opener) {
+  if (!contextPopup) {
+    const dialog = document.createElement('dialog');
+    dialog.className = 'modal context-dialog';
+    bindAttribute(dialog, 'aria-label', () => tr('docking.context'));
+    const close = el('button', 'secondary-button');
+    bindText(close, () => tr('ui.fermer'));
+    close.onclick = () => dialog.close();
+    const ui = createContext({ api, getContext: () => contextPopup.context });
+    dialog.append(close, ui.root);
+    document.body.append(dialog);
+    dialog.addEventListener('close', () => {
+      ui.setDocked({ visible: false });
+      contextPopup.opener?.focus({ preventScroll: true });
+    });
+    contextPopup = { dialog, ui };
+  }
+  contextPopup.context = context;
+  contextPopup.opener = opener;
+  contextPopup.dialog.showModal();
+  contextPopup.ui.setDocked({ visible: true });
+}
+$('detail-context').onclick = (event) => openContext(toolContext('session'), event.currentTarget);
+async function pinFileToContext(context, file) {
+  try {
+    await pinContextFile(api, context, { path: file.path });
+    toast(() => tr('context.pinned'));
+  } catch (error) { toast(translateKnown(error.message), true); }
+}
+
 let performancePopup = null;
 function openPerformance(context, opener) {
   if (!performancePopup) {
@@ -5072,6 +5104,7 @@ function openPerformance(context, opener) {
 }
 $('detail-performance').onclick = (event) => openPerformance(toolContext('session'), event.currentTarget);
 function bindToolSession(entry, own) {
+  own('detail-context').onclick = (event) => openContext(toolContext(entry.id), event.currentTarget);
   own('detail-performance').onclick = (event) => openPerformance(toolContext(entry.id), event.currentTarget);
   const context = () => toolContext(entry.id);
   own('copy-project-path').onclick = () => {
@@ -5292,6 +5325,11 @@ function updateToolPanels() {
   dockingUI?.refreshTitles();
 }
 function createToolInstance(entry) {
+  if (entry.kind === 'context') {
+    const ui = createContext({ api, getContext: () => toolContext(entry.id) });
+    document.body.append(ui.root);
+    return { ui, root: ui.root };
+  }
   if (entry.kind === 'performance') {
     const ui = createPerformance({ api, getContext: () => toolContext(entry.id) });
     document.body.append(ui.root);
@@ -5319,6 +5357,7 @@ function createToolInstance(entry) {
   scope.root.hidden = true;
   const ui = createInspector({
     api: inspectorApi,
+    onPinContext: pinFileToContext,
     markdown,
     getModels: () => state.models,
     openModelPicker,
@@ -5511,6 +5550,7 @@ toolViews = createToolViews({
 });
 inspectorUI = createInspector({
   api: inspectorApi,
+  onPinContext: pinFileToContext,
   markdown,
   getModels: () => state.models,
   openModelPicker,
@@ -5640,6 +5680,7 @@ dockingUI = createDocking({
     ...(hasInspectorSplit() ? inspectorUI.roots() : { inspector: $('details-panel') }),
     preferences: $('settings-dialog'),
     ...(toolViews.ensure('performance') ? { performance: toolViews.entries.get('performance').root } : {}),
+    ...(toolViews.ensure('context') ? { context: toolViews.entries.get('context').root } : {}),
   },
   read: readStorage,
   write: writeStorage,
@@ -6191,7 +6232,7 @@ document.addEventListener('click', (e) => {
 });
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
-    if (document.querySelector('.inspector-viewer:modal, .performance-dialog:modal') || $('knowledge-dialog').open) return;
+    if (document.querySelector('.inspector-viewer:modal, .performance-dialog:modal, .context-dialog:modal') || $('knowledge-dialog').open) return;
     closeProjectMenu();
     closeSessionMenu();
     closeSidebar();

@@ -83,7 +83,7 @@ Studio checks for updates at startup and every 30 minutes; **Update available** 
 <details>
 <summary><strong>Run from source</strong></summary>
 
-Requires **Windows, Node.js 22.8+, uv, Git Bash and an installed Prime Agent**. Clone this repository or extract the source archive, then run:
+Requires **Windows, Node.js 22.13+, uv, Git Bash and an installed Prime Agent**. Clone this repository or extract the source archive, then run:
 
 ```powershell
 npm ci

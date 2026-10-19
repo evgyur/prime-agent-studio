@@ -4,7 +4,7 @@
 
 ## Installation et développement
 
-Prérequis : **Node.js 22.8 ou ultérieur** et **Prime Agent 0.9.8** installé. Configurez un fournisseur avant le premier message, dans Prime Agent ou dans le panneau local **Fournisseurs**. Cette version du Studio et son adaptateur de sous-agents sont validés avec **0.9.8**. Le GUI réutilise les comptes existants sans redemander leurs clés.
+Prérequis : **Node.js 22.13 ou ultérieur** et **Prime Agent 0.9.8** installé. Configurez un fournisseur avant le premier message, dans Prime Agent ou dans le panneau local **Fournisseurs**. Cette version du Studio et son adaptateur de sous-agents sont validés avec **0.9.8**. Le GUI réutilise les comptes existants sans redemander leurs clés.
 
 ```powershell
 npm ci
@@ -233,3 +233,7 @@ node scripts/capture-readme.mjs --output .local/readme-preview
 ```
 
 `--docs-en` reste un alias de `--lang en`. Les scripts de tests spécialisés et `scripts/capture-roadmap.mjs` restent disponibles pour leurs scénarios propres ; ils ne sont pas nécessaires pour reconstruire les illustrations du README.
+
+## Moteur de contexte V1
+
+Le [moteur de contexte local](context.md) utilise `node:sqlite` (Node.js **22.13 minimum** pour une installation depuis les sources). Son worker séparé maintient un index FTS5 local, sans embeddings. Les extensions natives du Studio ajoutent les outils de code, le dossier du premier message et le compactage guidé ; elles ne modifient pas le moteur installé. Les tests utilisent des dépôts temporaires et un fournisseur déterministe local, sans appel réel.

@@ -98,6 +98,7 @@ The [MCP manager](mcp.md), separate from the model configurator, is also availab
 | `.local/kernel-ready.json`                                 | Path of the latest Python fully prepared and verified by Studio                                                                         |
 | `.local/attachments/`                                      | Original attached files and download metadata; keep them to reopen files from sessions                                                  |
 | `.local/metrics/`                                          | Content-free usage metrics: tokens, cache, estimated cost, durations and statuses per request; kept 90 days                             |
+| `.local/code-index/` | Local code index by opaque project id, settings, pins and context dossiers; contains private source excerpts, never written into the indexed repository |
 | `~/.prime/agent/sessions/.studio-images/`                  | Images passed to the CLI, also recorded in native messages                                                                              |
 | Browser IndexedDB                                          | Draft attachments, separated by session or new project                                                                                  |
 | Browser local storage                                      | Drafts, theme and input preferences                                                                                                     |

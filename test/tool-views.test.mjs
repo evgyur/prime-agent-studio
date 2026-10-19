@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { TOOL_KINDS } from '../public/docking-layout.js';
 import {
   captureToolTarget,
   sameToolContext,
@@ -146,7 +147,7 @@ test('all tool kinds have independent locks; unlock resumes live focus', () => {
     create: (entry) => ({ root: { id: entry.id }, ui: {} }),
     onChange: (entry) => changed.push(entry.id),
   });
-  for (const kind of ['roadmap', 'session', 'agents', 'files', 'preferences', 'performance']) {
+  for (const kind of TOOL_KINDS) {
     const first = views.createView(kind),
       second = views.createView(kind);
     assert.notEqual(first.id, second.id);
@@ -158,9 +159,36 @@ test('all tool kinds have independent locks; unlock resumes live focus', () => {
     assert.equal(views.toggleLock(first.id), true);
     assert.equal(views.context(first.id).sessionId, 'session-b');
   }
-  assert.equal(changed.length, 12);
-  assert.equal(saved.get(TOOL_STORAGE_KEY).entries.length, 18);
+  assert.equal(changed.length, TOOL_KINDS.length * 2);
+  assert.equal(saved.get(TOOL_STORAGE_KEY).entries.length, TOOL_KINDS.length * 3);
   assert.equal('history' in saved.get(TOOL_STORAGE_KEY).entries[0], false);
+});
+
+test('Context lock keeps its conversation dossier target and becomes unavailable if removed', () => {
+  const { a, b, snapshot } = make();
+  const saved = new Map();
+  const options = {
+    read: (key, fallback) => saved.get(key) ?? fallback,
+    write: (key, value) => saved.set(key, structuredClone(value)),
+    getSnapshot: () => snapshot,
+    create: (entry) => ({ root: { id: entry.id }, ui: {} }),
+  };
+  const views = createToolViews(options);
+  assert.equal(views.entries.get('context').kind, 'context');
+  views.toggleLock('context');
+  const other = views.createView('context');
+  snapshot.focused = b;
+  assert.equal(views.context('context').sessionId, a.sessionId);
+  assert.equal(views.context(other.id).sessionId, b.sessionId);
+  const restored = createToolViews(options);
+  assert.equal(restored.entries.get('context').locked, true);
+  assert.equal(restored.context('context').sessionId, a.sessionId);
+  snapshot.projects[0].sessions = [];
+  snapshot.views = [b];
+  assert.equal(restored.context('context').unavailable, true, 'Context must not substitute another dossier');
+  restored.toggleLock('context');
+  assert.equal(restored.context('context').sessionId, b.sessionId);
+  assert.equal(restored.context('context').unavailable, false);
 });
 
 test('recovery of missing metadata is inert until explicit unlock, even after reload', () => {
@@ -194,7 +222,7 @@ test('failed factories do not leave phantom instances', () => {
     },
   });
   assert.throws(() => views.createView('files'), /broken factory/);
-  assert.equal(views.entries.size, 6);
+  assert.equal(views.entries.size, TOOL_KINDS.length);
 });
 
 test('late run creation promotes the submitted draft pin, not a rebound view or sibling', () => {

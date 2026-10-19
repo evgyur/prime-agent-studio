@@ -83,7 +83,7 @@ Le Studio vérifie les mises à jour au démarrage et toutes les 30 minutes ; **
 <details>
 <summary><strong>Lancer depuis les sources</strong></summary>
 
-Nécessite **Windows, Node.js 22.8+, uv, Git Bash et Prime Agent installé**. Clonez ce dépôt ou extrayez l’archive des sources, puis lancez :
+Nécessite **Windows, Node.js 22.13+, uv, Git Bash et Prime Agent installé**. Clonez ce dépôt ou extrayez l’archive des sources, puis lancez :
 
 ```powershell
 npm ci

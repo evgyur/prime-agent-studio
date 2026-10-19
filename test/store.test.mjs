@@ -1,4 +1,6 @@
 import test from 'node:test';
+import fsPromises from 'node:fs/promises';
+import { syncBuiltinESMExports } from 'node:module';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, readFile, appendFile, rm, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -490,4 +492,38 @@ test('inspected artifact histories use a bounded LRU separate from the session l
   await f.store.overview();
   assert.equal(await f.store.inspectFile(paths[1]), retained, 'normal directory scans preserve artifacts');
   assert.notEqual(await f.store.inspectFile(paths[0]), oldest, 'oldest artifact is evicted at 200 entries');
+});
+
+test('workspace initialization is single-flight and failed reads can retry', { timeout: 10000 }, async (t) => {
+  const { store, options } = await fixture(t);
+  const original = fsPromises.readFile;
+  let calls = 0, release;
+  const blocked = new Promise((done) => { release = done; });
+  const read = t.mock.method(fsPromises, 'readFile', async (path, ...args) => {
+    if (path !== join(options.dataDir, 'workspace.json')) return original(path, ...args);
+    calls++;
+    await blocked;
+    return JSON.stringify({ projects: [], sessions: {}, preferences: { computerModel: 'saved/model' } });
+  });
+  syncBuiltinESMExports();
+  t.after(() => { read.mock.restore(); syncBuiltinESMExports(); });
+  const first = store.init(), second = store.init();
+  try { assert.equal(calls, 1, 'concurrent callers must share one workspace read'); }
+  finally { release(); await Promise.all([first, second]); }
+  await store.setStudioPreferences({ computerModel: 'updated/model' });
+  assert.equal((await store.getStudioPreferences()).computerModel, 'updated/model');
+  assert.equal(calls, 1);
+  read.mock.restore();
+  let attempts = 0;
+  const retryRead = t.mock.method(fsPromises, 'readFile', async (path, ...args) => {
+    if (path === join(options.dataDir, 'workspace.json') && attempts++ === 0) throw Object.assign(new Error('fixture read failure'), { code: 'EIO' });
+    return original(path, ...args);
+  });
+  syncBuiltinESMExports();
+  t.after(() => { retryRead.mock.restore(); syncBuiltinESMExports(); });
+  const retry = createStore(options);
+  await assert.rejects(retry.init(), /fixture read failure/);
+  await retry.init();
+  assert.equal((await retry.getStudioPreferences()).computerModel, 'updated/model');
+  assert.equal(attempts, 2);
 });

@@ -3,6 +3,15 @@
   "languages": ["fr", "en"],
   "pages": [
     {
+      "id": "context",
+      "fr": "docs/context.md",
+      "en": "docs/en/context.md",
+      "reviewed": {
+        "fr": "8de5b1ffe6b1f4e3dce51bf7f6f820be632fe592ce41b2c738d022500d0c5fbb",
+        "en": "cd4b80d4ef6a23e9f8f9b4c4b857b9c5c86716053cf63b5b982b89f174793fca"
+      }
+    },
+    {
       "id": "computer-use",
       "fr": "docs/computer-use.md",
       "en": "docs/en/computer-use.md",
@@ -34,8 +43,8 @@
       "fr": "README.fr.md",
       "en": "README.md",
       "reviewed": {
-        "fr": "8aa78cbcd6b77cfc92a50700cda3f1e1a5f38859aba183eb0ef3ef00828a556f",
-        "en": "85026942e7c8c7e48cca8eb1b9e6b339b69aa43782476e8c27b8f6bae62aa6eb"
+        "fr": "07d4cb91de739d5962840c5dc9eb3a2b22e1e1810fd26b74b09d7b6d5a2d5d2b",
+        "en": "0ff44c0d6ffb9a97e8766e3b992ae13c53e4b1d65c1af5462f9800dec669d51e"
       }
     },
     {
@@ -61,8 +70,8 @@
       "fr": "docs/configuration.md",
       "en": "docs/en/configuration.md",
       "reviewed": {
-        "fr": "41bda37a9afc297d3b3925b062745d2328d6fdcb148b15167e6edcbabec08549",
-        "en": "47154f1456e063c300732b781eeb77b31758c6d97df19d223a8f2ced94c18ee0"
+        "fr": "d46f7d2641504df1a9c5f69f62c660da58ac02a8904099fe08aa760ed3c4e4ff",
+        "en": "d0328fc46f2ea410035c02d0d5d9f8cf3002b0393443b91ed927329c801c7c62"
       }
     },
     {
@@ -70,8 +79,8 @@
       "fr": "docs/development.md",
       "en": "docs/en/development.md",
       "reviewed": {
-        "fr": "e80691c6ae2e22e06133c8d0d952eb24021195075dc198ce56f89ddff4fba3df",
-        "en": "5c81d222fee9a31113b594201c2ff90a53dd4dbdc294240e818260cbfaec684e"
+        "fr": "e9e2669fdfc80e901da8319b9646b8c71a7565546c4212bee5e85465329c9d94",
+        "en": "8d58e0855f4cef440bcd04faaac6434e3fdbf53c58380ea6608b9f8b001963de"
       }
     },
     {

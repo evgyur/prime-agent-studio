@@ -5,6 +5,7 @@ import { mkdtemp, mkdir, writeFile, appendFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { createApp } from '../server.mjs';
+import { metricsProjectId } from '../lib/metrics.mjs';
 import { createLanGateway, hashAccessCode, isPrivateIPv4 } from '../lib/lan.mjs';
 
 const ACCESS_CODE = '49283175';
@@ -916,6 +917,21 @@ test('LAN full control reaches former local-only routes, consultation stays bloc
     assert.notEqual(response.status, 404, `full GET ${path}`);
     noSecrets(response.json ?? response.text);
   }
+  // Context is available on authenticated phones with full control only.
+  const contextPath = `/api/projects/${metricsProjectId(full.cwd)}/context`;
+  assert.equal((await full.api(contextPath, { headers: fullHeaders })).status, 200);
+  for (const [method, suffix, body] of [
+    ['PATCH', '', '{"enabled":false}'],
+    ['POST', '/search', '{"q":"fixture"}'],
+    ['POST', '/rebuild', '{}'],
+  ]) {
+    const response = await full.api(contextPath + suffix, { method, headers: fullHeaders, body });
+    assert.ok((suffix === '/rebuild' ? [409] : [200, 202]).includes(response.status), `${method} ${suffix}: ${response.text}`);
+  }
+  const roContext = `/api/projects/${metricsProjectId(ro.cwd)}/context`;
+  assert.equal((await ro.api(roContext, { headers: roHeaders })).status, 404);
+  assert.equal((await ro.api(roContext + '/events', { headers: roHeaders })).status, 404);
+  assert.equal((await ro.api(roContext, { method: 'PATCH', headers: roHeaders, body: '{"enabled":false}' })).status, 405);
   // Providers list exposes metadata only, never stored keys.
   const providers = (await full.api('/api/providers', { headers: fullHeaders })).json;
   assert.ok(Array.isArray(providers.providers));

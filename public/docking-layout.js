@@ -68,19 +68,20 @@ export const PANEL_IDS = Object.freeze([
   'files',
   'preferences',
   'performance',
+  'context',
 ]);
 
 /** Maximum conversation instances mounted at once, legacy primary included. */
 export const MAX_CONVERSATIONS = 8;
 
 /** Tool kinds that support extra lockable instances (all non-conversation kinds). */
-export const TOOL_KINDS = Object.freeze(['roadmap', 'session', 'agents', 'files', 'preferences', 'performance']);
+export const TOOL_KINDS = Object.freeze(['roadmap', 'session', 'agents', 'files', 'preferences', 'performance', 'context']);
 
 /** Maximum tool tabs mounted at once, the five singleton primaries included. */
 export const MAX_TOOL_PANELS = 16;
 
 const CONV_REF_PATTERN = /^conv:[A-Za-z0-9_-]{1,64}$/;
-const TOOL_REF_PATTERN = /^tool:(roadmap|session|agents|files|preferences|performance):[A-Za-z0-9_-]{1,64}$/;
+const TOOL_REF_PATTERN = /^tool:(roadmap|session|agents|files|preferences|performance|context):[A-Za-z0-9_-]{1,64}$/;
 const SINGLETON_SET = new Set(TOOL_KINDS);
 
 /**

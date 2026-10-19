@@ -169,6 +169,7 @@ ${tr('metrics.lastRequest', {
 
 export function createInspector({
   api,
+  onPinContext,
   getContext,
   markdown,
   onClose,
@@ -212,6 +213,7 @@ export function createInspector({
       const childGet = (id) => document.getElementById(childDomId(id));
       children[key] = createInspector({
         api,
+        onPinContext,
         getContext: resolveUnitContext(getContext, key),
         markdown,
         onClose,
@@ -2034,6 +2036,16 @@ export function createInspector({
         },
       ],
     ];
+    if (onPinContext && !file.directory) actions.push([
+      () => tr('context.pin'),
+      () => {
+        const target = menuFile;
+        closeFileMenu();
+        row?.focus({ preventScroll: true });
+        if (target) void onPinContext(getContext(), target);
+      },
+      current.readOnly || !current.enabled,
+    ]);
     for (const [label, run, disabled] of actions) {
       const item = node('button', '', label);
       item.type = 'button';

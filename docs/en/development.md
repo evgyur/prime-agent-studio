@@ -4,7 +4,7 @@
 
 ## Installation and development
 
-Requirements: **Node.js 22.8 or later** and **Prime Agent 0.9.8** installed. Configure a provider before the first message, in Prime Agent or the local **Providers** panel. This version of Studio and its subagent adapter are validated with **0.9.8**. The GUI reuses existing accounts without requesting their keys again.
+Requirements: **Node.js 22.13 or later** and **Prime Agent 0.9.8** installed. Configure a provider before the first message, in Prime Agent or the local **Providers** panel. This version of Studio and its subagent adapter are validated with **0.9.8**. The GUI reuses existing accounts without requesting their keys again.
 
 ```powershell
 npm ci
@@ -233,3 +233,7 @@ node scripts/capture-readme.mjs --output .local/readme-preview
 ```
 
 `--docs-en` remains an alias for `--lang en`. Specialized test scripts and `scripts/capture-roadmap.mjs` remain available for their own scenarios; they are not needed to rebuild the README illustrations.
+
+## Context engine V1
+
+The [local context engine](context.md) uses `node:sqlite` (Node.js **22.13 minimum** for source installs). A separate worker maintains a local FTS5 index without embeddings. Studio native extensions add code tools, the first-message dossier, and guided compaction; they do not change the installed engine. Tests use temporary repositories and a deterministic localhost provider, with no real provider calls.

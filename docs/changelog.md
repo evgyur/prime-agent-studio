@@ -4,6 +4,10 @@
 
 Les changements par version. Retrouvez les installateurs et les archives du code source dans les [releases GitHub](https://github.com/zerr0o/prime-agent-studio/releases).
 
+## 4.3.8-beta.3
+
+- **Copier l’identifiant d’une conversation** : le menu d’une conversation propose **Copier l’identifiant de la conversation**. Il copie l’identifiant enregistré, utile avec l’API publique ou pour le support. Contribution de [@evgyur](https://github.com/evgyur) dans la [#8](https://github.com/zerr0o/prime-agent-studio/pull/8).
+
 ## 4.3.8-beta.2
 
 - **La fenêtre se rouvre là où vous l’avez laissée** : la fenêtre principale garde sa position, sa taille et son état agrandi d’un démarrage à l’autre. Une fenêtre plus grande que son écran est réduite pour y tenir, et une fenêtre restée sur un écran débranché revient sur l’écran principal.

@@ -4,6 +4,10 @@
 
 Changes by version. See [GitHub releases](https://github.com/zerr0o/prime-agent-studio/releases) for installers and source archives.
 
+## 4.3.8-beta.3
+
+- **Copy a conversation ID**: the conversation menu now offers **Copy conversation ID**. It copies the saved conversation ID, useful with the public API or for support. Contributed by [@evgyur](https://github.com/evgyur) in [#8](https://github.com/zerr0o/prime-agent-studio/pull/8).
+
 ## 4.3.8-beta.2
 
 - **The window reopens where you left it**: the main window keeps its position, size and maximized state across restarts. A window larger than its screen is resized to fit, and a window left on a disconnected screen returns to the main screen.

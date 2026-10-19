@@ -1,0 +1,47 @@
+.performance-panel { padding: 18px; overflow: auto; min-width: 0; height: 100%; box-sizing: border-box; container-type: inline-size; font-size: 12px; color: var(--text); }
+.performance-panel h2 { font-size: 15px; font-weight: 600; margin: 0 0 8px; }
+.performance-panel h3 { font-size: 12px; font-weight: 600; margin: 0; }
+.performance-subtitle { margin: 0 0 16px; color: var(--muted); overflow-wrap: anywhere; }
+.performance-toolbar, .performance-section-head { display: flex; align-items: end; flex-wrap: wrap; gap: 8px; }
+.performance-toolbar label { display: grid; gap: 5px; margin: 0; color: var(--muted); font-size: 11px; }
+.performance-panel select { min-height: 32px; max-width: 100%; padding: 5px 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 7px; color: var(--text); font: inherit; }
+.performance-toolbar button { min-height: 32px; margin: 0; }
+.performance-status { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 11px; margin: 14px 0 8px; }
+.performance-status::before { content: ''; width: 6px; height: 6px; flex: 0 0 6px; border-radius: 50%; background: var(--muted); }
+.performance-status[data-state="ready"]::before { background: var(--green); }
+.performance-status[data-state="error"]::before { background: var(--red); }
+.performance-status:is([data-state="incomplete"], [data-state="truncated"], [data-state="backfilling"])::before { background: var(--amber); }
+.performance-kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin: 16px 0; padding: 16px 0; border-block: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+.performance-kpis dt { font-size: 11px; color: var(--muted); }
+.performance-kpis dd { margin: 5px 0; font-size: 23px; font-weight: 500; overflow-wrap: anywhere; }
+.performance-kpis small { font-size: 10px; line-height: 1.6; color: var(--muted); }
+.performance-run-status { white-space: nowrap; }
+.performance-section-head { justify-content: space-between; align-items: center; margin: 18px 0 12px; }
+.performance-section-head label { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); }
+.performance-plot { display: flex; gap: 8px; }
+.performance-scale { display: flex; flex-direction: column; justify-content: space-between; flex-shrink: 0; font-size: 10px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.performance-chart { height: 96px; display: flex; flex: 1; min-width: 0; align-items: end; gap: 3px; border-bottom: 1px solid var(--line); }
+.performance-bar { min-width: 0; flex: 1; background: var(--muted); border-radius: 2px 2px 0 0; }
+.performance-bar:hover { background: var(--accent); }
+.performance-axis { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); margin-top: 6px; font-variant-numeric: tabular-nums; }
+.performance-table { border-collapse: collapse; width: 100%; table-layout: fixed; font-size: 11px; font-variant-numeric: tabular-nums; margin: 12px 0 18px; }
+.performance-table th, .performance-table td { border-bottom: 1px solid var(--line); padding: 8px 5px; text-align: right; overflow-wrap: anywhere; }
+.performance-table thead th { color: var(--muted); font-weight: 500; }
+.performance-table th:first-child { text-align: left; width: 18%; font-weight: 500; }
+.performance-table[data-group="model"] tbody th { font-family: var(--font-mono); }
+.performance-note { font-size: 11px; color: var(--muted); line-height: 1.6; margin: 8px 0; }
+.performance-dialog { width: 1100px; max-width: calc(100vw - 32px); height: min(850px, calc(100dvh - 32px)); padding: 16px; overflow: hidden; }
+.performance-dialog > button { display: block; margin-left: auto; }
+.performance-dialog .performance-panel { height: calc(100% - 40px); padding: 12px 2px; }
+@container (max-width: 800px) {
+  .performance-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .performance-kpis dd { font-size: 18px; }
+  .performance-table, .performance-table tbody { display: block; }
+  .performance-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .performance-table tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-top: 1px solid var(--line); padding: 8px 0; gap: 8px 16px; }
+  .performance-table th:first-child { grid-column: 1 / -1; width: auto; padding: 5px 0; }
+  .performance-table td { display: flex; flex-direction: column; align-items: start; gap: 3px; }
+  .performance-table td::before { content: attr(data-label); color: var(--muted); font-size: 10px; }
+  .performance-table th, .performance-table td { border: 0; text-align: left; padding: 0; }
+}
+@media (pointer: coarse) { .performance-panel select, .performance-panel button, .performance-dialog > button { min-height: 44px; } }

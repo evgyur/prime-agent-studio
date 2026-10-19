@@ -135,7 +135,7 @@ test('malformed, duplicated and unknown instance references are rejected', () =>
     assert.equal(validateToolBindings({ version: 1, entries }), null);
 });
 
-test('all five tool kinds have independent locks; unlock resumes live focus', () => {
+test('all tool kinds have independent locks; unlock resumes live focus', () => {
   const { a, b, snapshot } = make();
   const saved = new Map();
   const changed = [];
@@ -146,7 +146,7 @@ test('all five tool kinds have independent locks; unlock resumes live focus', ()
     create: (entry) => ({ root: { id: entry.id }, ui: {} }),
     onChange: (entry) => changed.push(entry.id),
   });
-  for (const kind of ['roadmap', 'session', 'agents', 'files', 'preferences']) {
+  for (const kind of ['roadmap', 'session', 'agents', 'files', 'preferences', 'performance']) {
     const first = views.createView(kind),
       second = views.createView(kind);
     assert.notEqual(first.id, second.id);
@@ -158,8 +158,8 @@ test('all five tool kinds have independent locks; unlock resumes live focus', ()
     assert.equal(views.toggleLock(first.id), true);
     assert.equal(views.context(first.id).sessionId, 'session-b');
   }
-  assert.equal(changed.length, 10);
-  assert.equal(saved.get(TOOL_STORAGE_KEY).entries.length, 15);
+  assert.equal(changed.length, 12);
+  assert.equal(saved.get(TOOL_STORAGE_KEY).entries.length, 18);
   assert.equal('history' in saved.get(TOOL_STORAGE_KEY).entries[0], false);
 });
 
@@ -194,7 +194,7 @@ test('failed factories do not leave phantom instances', () => {
     },
   });
   assert.throws(() => views.createView('files'), /broken factory/);
-  assert.equal(views.entries.size, 5);
+  assert.equal(views.entries.size, 6);
 });
 
 test('late run creation promotes the submitted draft pin, not a rebound view or sibling', () => {
@@ -340,4 +340,19 @@ test('a finished run without a session or its original draft is unavailable, not
     true,
     'A foreign run cannot supply an orphaned draft target',
   );
+});
+
+
+test('Performance keeps its pinned project after its source session is removed', () => {
+  const { b, snapshot } = make();
+  const views = createToolViews({ read: (_, fallback) => fallback, write() {}, getSnapshot: () => snapshot, create: () => ({ root: {} }) });
+  const entry = views.createView('performance');
+  assert.equal(views.toggleLock(entry.id), true);
+  snapshot.focused = b;
+  snapshot.projects[0].sessions = [];
+  snapshot.views = [b];
+  assert.equal(views.context(entry.id).project.name, 'A');
+  assert.equal(views.context(entry.id).unavailable, false);
+  snapshot.projects.shift();
+  assert.equal(views.context(entry.id).unavailable, true);
 });

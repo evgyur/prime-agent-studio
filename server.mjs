@@ -1,6 +1,6 @@
 import { formatMessage as tr, requestLanguage } from './public/i18n-core.js';
 import { createVoice } from './lib/voice.mjs';
-import { createMetrics } from './lib/metrics.mjs';
+import { createMetrics, metricsProjectId } from './lib/metrics.mjs';
 import { createServer } from 'node:http';
 import { isModelAvailabilityError } from './lib/model-availability.mjs';
 import { readFile, stat, mkdir } from 'node:fs/promises';
@@ -1479,6 +1479,7 @@ export function createApp(options = {}) {
         const [overview, version, catalog] = await Promise.all([store.overview(), status(), models()]);
         return json(res, 200, {
           ...overview,
+          projects: overview.projects.map((project) => ({ ...project, metricsId: metricsProjectId(project.cwd) })),
           version,
           models: catalog,
           studioPreferences: await studioPreferences(),
@@ -1738,12 +1739,15 @@ export function createApp(options = {}) {
             readBody: () => readBody(req),
           }),
         );
-      if (method === 'GET' && path === '/api/overview')
+      if (method === 'GET' && path === '/api/overview') {
+        const overview = await store.overview();
         return json(res, 200, {
-          ...(await store.overview()),
+          ...overview,
+          projects: overview.projects.map((project) => ({ ...project, metricsId: metricsProjectId(project.cwd) })),
           runs: activeRuns(),
           studioPreferences: await studioPreferences(),
         });
+      }
       if (path === '/api/studio-preferences') {
         if (method === 'GET') return json(res, 200, await studioPreferences());
         if (method === 'PATCH') return json(res, 200, await setStudioPreferencesGuarded(await readBody(req)));

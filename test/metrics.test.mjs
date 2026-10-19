@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, readFile, readdir, writeFile, appendFile, rm, utimes } 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import studioMetrics, { rateLimitHeaders } from '../runtime/studio-metrics-extension.mjs';
-import { createMetrics } from '../lib/metrics.mjs';
+import { createMetrics, metricsProjectId } from '../lib/metrics.mjs';
 import { createApp } from '../server.mjs';
 import { createLanGateway, hashAccessCode } from '../lib/lan.mjs';
 
@@ -604,4 +604,20 @@ test('run completion during an active maintenance scan schedules a later ingesti
     assert.ok(performance.now() < deadline, 'completion ingestion was lost behind an active scan');
     await new Promise(setImmediate);
   }
+});
+
+
+test('overview exposes the same opaque project id as filtered metrics', async (t) => {
+  const { base, cwd, app } = await serverFixture(t);
+  const overview = await (await fetch(`${base}/api/overview`)).json();
+  const project = overview.projects.find((entry) => entry.cwd === cwd);
+  assert.equal(project.metricsId, metricsProjectId(cwd));
+  const bootstrap = await (await fetch(`${base}/api/bootstrap`)).json();
+  assert.equal(bootstrap.projects.find((entry) => entry.cwd === cwd).metricsId, project.metricsId);
+  assert.match(project.metricsId, /^[a-f0-9]{64}$/);
+  app.metrics.noteEvent({ id: 'failed', cwd, model: 'fixture/m', startedAt: new Date().toISOString() }, { kind: 'done', status: 'failed' });
+  app.metrics.noteEvent({ id: 'stopped', cwd, model: 'fixture/m', startedAt: new Date().toISOString() }, { kind: 'done', status: 'stopped' });
+  const result = await (await fetch(`${base}/api/metrics/summary?project=${project.metricsId}`)).json();
+  assert.equal(result.totals.runs, 2);
+  assert.equal(result.totals.failedRuns, 1, 'stopped runs are not failures');
 });

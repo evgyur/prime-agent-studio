@@ -45,6 +45,7 @@ import {
   sessionOriginDevice,
 } from './project-navigation.js';
 import { createKnowledgeBrowser } from './knowledge.js';
+import { createPerformance } from './performance.js';
 import { createProjectArchives } from './project-archives.js';
 import { createWorktreesUI } from './worktrees.js';
 import { createRoadmap } from './roadmap.js';
@@ -350,6 +351,7 @@ const icons = {
   refresh: 'M20 7v5h-5M4 17v-5h5M6.1 7a7 7 0 0 1 11.6-2L20 8M4 16l2.3 3A7 7 0 0 0 17.9 17',
   alert: 'm12 3 10 18H2L12 3Zm0 5v6m0 3v.01',
   user: 'M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0ZM4 21v-3a8 5 0 0 1 16 0v3',
+  activity: 'M4 3v18h17M8 17v-5m5 5V7m5 10V4',
   brain: 'M12 4C8 0 4 4 5 7c-5 1-4 7-1 8-1 5 5 8 8 4 3 4 9 1 8-4 3-1 4-7-1-8 1-3-3-7-7-3Zm0 0v15',
   tool: 'M21 3a6 6 0 0 1-8 8L5 21l-3-3 9-9a6 6 0 0 1 8-8l-4 4 3 3 3-5Z',
 };
@@ -3723,6 +3725,9 @@ function applyRunEvent(run, e) {
         toast(() => tr('ui.le_debut_de_cette_execution_sera_recharge_depuis_l_historique_a_l'));
       break;
     case 'done':
+      for (const entry of toolViews?.entries.values() || [])
+        if (entry.kind === 'performance') entry.ui?.runDone();
+      performancePopup?.ui.runDone();
       void finishRun(run, e);
       break;
   }
@@ -5042,7 +5047,32 @@ for (const id of ['project-knowledge', 'detail-project-knowledge'])
     const selected = project();
     if (selected) knowledgeUI.open(selected, event.currentTarget);
   };
+let performancePopup = null;
+function openPerformance(context, opener) {
+  if (!performancePopup) {
+    const dialog = document.createElement('dialog');
+    dialog.className = 'modal performance-dialog';
+    dialog.setAttribute('aria-label', tr('docking.performance'));
+    const close = el('button', 'secondary-button');
+    bindText(close, () => tr('ui.fermer'));
+    close.onclick = () => dialog.close();
+    const ui = createPerformance({ api, getContext: () => performancePopup.context });
+    dialog.append(close, ui.root);
+    document.body.append(dialog);
+    dialog.addEventListener('close', () => {
+      ui.setDocked({ visible: false });
+      performancePopup.opener?.focus({ preventScroll: true });
+    });
+    performancePopup = { dialog, ui };
+  }
+  performancePopup.context = context;
+  performancePopup.opener = opener;
+  performancePopup.dialog.showModal();
+  performancePopup.ui.setDocked({ visible: true });
+}
+$('detail-performance').onclick = (event) => openPerformance(toolContext('session'), event.currentTarget);
 function bindToolSession(entry, own) {
+  own('detail-performance').onclick = (event) => openPerformance(toolContext(entry.id), event.currentTarget);
   const context = () => toolContext(entry.id);
   own('copy-project-path').onclick = () => {
     const value = context();
@@ -5228,7 +5258,7 @@ function toolLockState(id) {
   return {
     locked: entry.locked,
     unavailable: context.unavailable || !context.projectCwd || !state.initialized,
-    label: `${tr(entry.locked ? 'docking.unlock' : 'docking.lock')} · ${tr(entry.locked ? 'docking.locked' : 'docking.following', { name: toolTargetLabel(context) })}`,
+    label: `${tr(entry.locked ? 'docking.unlock' : 'docking.lock')} · ${tr(entry.kind === 'performance' ? entry.locked ? 'performance.locked' : 'performance.following' : entry.locked ? 'docking.locked' : 'docking.following', { name: entry.kind === 'performance' ? context.project?.name || tr('docking.unavailable') : toolTargetLabel(context) })}`,
   };
 }
 function updateToolPanels() {
@@ -5262,6 +5292,11 @@ function updateToolPanels() {
   dockingUI?.refreshTitles();
 }
 function createToolInstance(entry) {
+  if (entry.kind === 'performance') {
+    const ui = createPerformance({ api, getContext: () => toolContext(entry.id) });
+    document.body.append(ui.root);
+    return { ui, root: ui.root };
+  }
   if (entry.kind === 'roadmap') {
     const ui = makeToolRoadmap(entry);
     return { ui, root: ui.root };
@@ -5604,6 +5639,7 @@ dockingUI = createDocking({
     roadmap: $('roadmap-panel'),
     ...(hasInspectorSplit() ? inspectorUI.roots() : { inspector: $('details-panel') }),
     preferences: $('settings-dialog'),
+    ...(toolViews.ensure('performance') ? { performance: toolViews.entries.get('performance').root } : {}),
   },
   read: readStorage,
   write: writeStorage,
@@ -6155,7 +6191,7 @@ document.addEventListener('click', (e) => {
 });
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
-    if (document.querySelector('.inspector-viewer:modal') || $('knowledge-dialog').open) return;
+    if (document.querySelector('.inspector-viewer:modal, .performance-dialog:modal') || $('knowledge-dialog').open) return;
     closeProjectMenu();
     closeSessionMenu();
     closeSidebar();

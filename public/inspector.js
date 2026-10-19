@@ -572,6 +572,10 @@ export function createInspector({
       if (pending.get(key) === controller) pending.delete(key);
     }
   }
+  // Keep disclosure nodes (and their focused summaries) alive during refreshes.
+  // State belongs to the rendered session, not the next async request's context.
+  const usageDisclosures = new Map();
+  let usageContext = '';
   function showUsage() {
     if (!owns('session')) return;
     const session = agentData?.session;
@@ -580,7 +584,13 @@ export function createInspector({
     if (!section) return;
     section.hidden = !usage;
     if (!usage) return;
-    section.replaceChildren(node('div', 'context-label', () => tr('ui.consommation_de_la_session')));
+    const previous = [...section.querySelectorAll('details')];
+    if (usageContext) usageDisclosures.set(usageContext, previous.map((item) => item.open));
+    if (usageDisclosures.size > 200) usageDisclosures.delete(usageDisclosures.keys().next().value);
+    const sameContext = usageContext === contextKey;
+    usageContext = contextKey;
+    const content = document.createElement('div');
+    content.append(node('div', 'context-label', () => tr('ui.consommation_de_la_session')));
     function properties(value) {
       const dl = node('dl', 'session-properties');
       for (const [key, amount] of [
@@ -599,18 +609,35 @@ export function createInspector({
       }
       return dl;
     }
-    section.append(properties(usage));
+    content.append(properties(usage));
     if (session.subagentCount > 0) {
-      section.append(node('p', 'inspector-note', () => tr('metrics.includingSubagents', { count: session.subagentCount })));
+      content.append(node('p', 'inspector-note', () => tr('metrics.includingSubagents', { count: session.subagentCount })));
       if (session.usage) {
         const main = node('details', 'inspector-main-usage');
         main.append(node('summary', '', () => tr('metrics.mainAgent')), properties(session.usage));
-        section.append(main);
+        content.append(main);
       }
     }
     if (session.usageIncomplete)
-      section.append(node('p', 'inspector-note', () => tr('metrics.partial')));
-    section.append(node('p', 'inspector-note', () => tr('metrics.costNote')));
+      content.append(node('p', 'inspector-note', () => tr('metrics.partial')));
+    content.append(node('p', 'inspector-note', () => tr('metrics.costNote')));
+    for (const [index, detail] of [...content.querySelectorAll('details')].entries()) {
+      const retained = sameContext && previous[index];
+      if (retained) {
+        // The summary is not replaced, so keyboard focus and native toggling survive.
+        for (const child of [...retained.children].slice(1)) child.remove();
+        retained.append(...[...detail.children].slice(1));
+        detail.retainedDisclosure = retained;
+      } else detail.open = usageDisclosures.get(usageContext)?.[index] || false;
+    }
+    const next = [...content.children].map((item) => item.retainedDisclosure || item);
+    for (const [index, child] of next.entries()) {
+      const existing = section.children[index];
+      if (existing === child) continue;
+      if (existing) existing.replaceWith(child);
+      else section.append(child);
+    }
+    while (section.children.length > next.length) section.lastElementChild.remove();
   }
   // Session quota (Codex subscription vs API) + live Prime Agent context.
   // Quota shows only for OpenAI family models; Codex needs linked OAuth, never API usage.

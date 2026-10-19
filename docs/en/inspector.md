@@ -10,7 +10,11 @@ Find the project, session status, active runs and conversation export. Tracking 
 
 Chat status also distinguishes a usage-limit wait, an unavailable provider and use of the backup model selected in preferences. These indicators follow engine events; they change neither the selected model nor recovery limits.
 
-Usage adds up Prime Agent’s recorded data on the conversation’s current branch: input, output and cached tokens. Estimated cost appears only when the engine provides it; it does not represent your subscription bill. These totals cover the main agent, not all of its delegations.
+Usage adds up Prime Agent’s recorded data on the conversation’s current branch: uncached input, output, cache read and cache write tokens. The **cache rate** is the share of input tokens served from the cache: read ÷ (input + read + write), excluding output tokens. Estimated cost appears only when the engine provides it; otherwise it stays **unknown**, not zero. It does not represent your subscription bill.
+
+The total includes subagents: each request counts once, with its own usage, including a subagent that is still running. The main agent’s figures remain available in the details. The total is marked **partial** when a subagent is missing, its history exceeds 16 MiB, or beyond 200 subagents. Compaction summary costs are not included here.
+
+Below the composer, a quiet line shows **Context x % · Cache y %**, in every conversation tab and on mobile. During a run it uses the engine’s measurement and updates on each message, compaction or turn end, without periodic polling. When idle, it shows the size of the **last request** against the model’s window, as its tooltip says. It turns amber at 80 % and red at 95 %; it is hidden when the value is unknown, for example right after a compaction.
 
 ## Agents
 

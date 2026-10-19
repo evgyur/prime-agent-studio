@@ -473,3 +473,21 @@ test('conversation Git context and project HEAD are exposed for information', as
   });
   assert.deepEqual(project.gitHead, { branch: 'main', commit: 'b'.repeat(40) });
 });
+
+test('inspected artifact histories use a bounded LRU separate from the session listing', async (t) => {
+  const f = await fixture(t);
+  const dir = join(f.root, 'session-artifacts', 'root', 'children');
+  await mkdir(dir, { recursive: true });
+  const paths = Array.from({ length: 201 }, (_, i) => join(dir, `child-${i}.jsonl`));
+  await Promise.all(paths.map((file, i) => writeFile(file, JSON.stringify({
+    type: 'session', id: `child-${i}`, cwd: f.options.initialCwd,
+  }) + '\n')));
+  const oldest = await f.store.inspectFile(paths[0]);
+  const retained = await f.store.inspectFile(paths[1]);
+  for (const file of paths.slice(2, 200)) await f.store.inspectFile(file);
+  assert.equal(await f.store.inspectFile(paths[1]), retained, 'cache hit refreshes recency');
+  await f.store.inspectFile(paths[200]);
+  await f.store.overview();
+  assert.equal(await f.store.inspectFile(paths[1]), retained, 'normal directory scans preserve artifacts');
+  assert.notEqual(await f.store.inspectFile(paths[0]), oldest, 'oldest artifact is evicted at 200 entries');
+});

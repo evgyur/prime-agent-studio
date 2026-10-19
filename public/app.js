@@ -27,7 +27,7 @@ import {
   selectComposerCommand,
   createComposer,
 } from './composer.js';
-import { createInspector } from './inspector.js';
+import { createInspector, renderComposerGauge } from './inspector.js';
 import { fileLinkRenderer, bindFileLinks } from './file-links.js';
 import { createSessionActivity } from './session-activity.js';
 import { parseAgentEnvelope } from './agent-messages.js';
@@ -94,6 +94,124 @@ let toolViews = null;
 let convViews = null;
 let voiceUI = null;
 const viewHistoryPages = new WeakMap();
+const composerMetrics = new Map();
+const inspectorRequests = new Map();
+function metricsKey(cwd, sessionId) {
+  return sessionId && cwd ? `${cwd}\0${sessionId}` : '';
+}
+// Share in-flight inspector reads with visible Session/Agents tools. The gauge
+// retains numeric fields only, never agent previews, prompts or tool arguments.
+function inspectorApi(url, options) {
+  if (!url.startsWith('/api/inspector?')) return api(url, options);
+  const params = new URL(url, location.href).searchParams;
+  const key = metricsKey(params.get('cwd'), params.get('sessionId'));
+  const run = runningForSession(params.get('sessionId'));
+  const revision = `${run?.id || ''}:${run?.contextRevision || 0}`;
+  const requestKey = `${key}\0${revision}`;
+  if (inspectorRequests.has(requestKey)) return inspectorRequests.get(requestKey);
+  // Share only reads of the same run/revision. A pre-event response must not
+  // consume the event's refresh, even if it finishes during the debounce.
+  // One closing tool must not abort the shared read needed by another pane.
+  const pending = api(url).then((data) => {
+    const entry = composerMetrics.get(key);
+    if (entry && run === runningForSession(params.get('sessionId')) &&
+        revision === `${run?.id || ''}:${run?.contextRevision || 0}`) {
+      entry.data = {
+        contextUsage: data.contextUsage ?? data.session?.contextUsage,
+        session: { lastRequestUsage: data.session?.lastRequestUsage },
+      };
+      entry.dataKey = revision;
+      refreshComposerGauges();
+    }
+    return data;
+  }).finally(() => inspectorRequests.delete(requestKey));
+  inspectorRequests.set(requestKey, pending);
+  return pending;
+}
+function lastRequestMetrics(view) {
+  const run = view ? runForView(view) : activeRun();
+  const messages = isRunning(run) ? [...(run.base || []), ...(run.messages || [])] : view?.history || state.history;
+  const last = messages.findLast((message) => message.role === 'assistant' && message.usage &&
+    !message.streaming && !['error', 'aborted'].includes(message.stopReason));
+  // Compaction invalidates the previous request size until a new response lands.
+  const compact = messages.findLastIndex((message) => message.customType === 'compaction');
+  if (!last || messages.indexOf(last) < compact) return null;
+  const own = last.ownUsage ?? last.usage;
+  const fields = ['input', 'output', 'cacheRead', 'cacheWrite'];
+  if (!fields.every((key) => Number.isFinite(own[key] ?? 0) && (own[key] ?? 0) >= 0)) return null;
+  // Native calculateContextTokens uses these four buckets. This idle snapshot
+  // intentionally omits trailing-message estimates and is labelled not live.
+  const tokens = fields.reduce((sum, key) => sum + (own[key] || 0), 0);
+  const model = state.models.find((item) => item.id === [last.provider, last.model].filter(Boolean).join('/') || item.id === last.model);
+  if (!model?.contextWindow || !tokens) return null;
+  const prompt = (own.input || 0) + (own.cacheRead || 0) + (own.cacheWrite || 0);
+  return {
+    contextUsage: { tokens, contextWindow: model.contextWindow, percent: tokens / model.contextWindow * 100 },
+    lastRequest: true,
+    session: { lastRequestUsage: {
+      input: own.input || 0, output: own.output || 0,
+      cacheRead: own.cacheRead || 0, cacheWrite: own.cacheWrite || 0,
+      cacheHitRatio: prompt ? (own.cacheRead || 0) / prompt : null,
+    } },
+  };
+}
+// Event-driven: assistant completion, compaction/done, view changes and load.
+// Idle views use their last OWN request and catalog window, with no network.
+function refreshComposerGauges() {
+  if (!state.initialized || document.hidden) return;
+  const targets = dockingUI?.active && convViews
+    ? dockingUI.visiblePanels().map((id) => convViews.byId(id)).filter(Boolean)
+    : [convViews?.focused() || null];
+  for (const view of targets) {
+    const element = dockingUI?.active && view?.id !== PRIMARY_VIEW_ID
+      ? view?.composerNodes?.contextGauge
+      : $('composer-context-gauge');
+    if (!element) continue;
+    const sessionId = view ? view.sessionId : state.sessionId;
+    const cwd = view?.execCwd || view?.projectCwd || execCwdOf();
+    const key = metricsKey(cwd, sessionId);
+    element.dataset.contextKey = key;
+    if (!key || !state.online || (state.projectOverview && view?.id === PRIMARY_VIEW_ID)) {
+      renderComposerGauge(element, null);
+      continue;
+    }
+    let entry = composerMetrics.get(key);
+    if (!entry) {
+      entry = { data: null, dataKey: null, requestKey: null, timer: null };
+      composerMetrics.set(key, entry);
+      if (composerMetrics.size > 30) {
+        const oldest = composerMetrics.keys().next().value;
+        clearTimeout(composerMetrics.get(oldest)?.timer);
+        composerMetrics.delete(oldest);
+      }
+    }
+    const run = view ? runForView(view) : activeRun();
+    const fallback = lastRequestMetrics(view);
+    const running = isRunning(run);
+    const requestKey = `${run?.id || ''}:${run?.contextRevision || 0}`;
+    renderComposerGauge(element, running && entry.dataKey === requestKey ? entry.data : fallback);
+    if (!running || !state.inspectorAvailable) continue;
+    if (entry.requestKey === requestKey) continue;
+    entry.requestKey = requestKey;
+    clearTimeout(entry.timer);
+    entry.timer = setTimeout(() => {
+      entry.timer = null;
+      if (document.hidden || element.dataset.contextKey !== key ||
+          !element.closest('.composer-area')?.getClientRects().length || !isRunning(run)) {
+        entry.requestKey = null;
+        return;
+      }
+      if (entry.dataKey === requestKey) return;
+      const params = new URLSearchParams({ cwd, sessionId });
+      void inspectorApi(`/api/inspector?${params}`).catch(() => {
+        if (entry.requestKey !== requestKey) return;
+        entry.data = null;
+        entry.dataKey = null;
+        if (element.dataset.contextKey === key) renderComposerGauge(element, lastRequestMetrics(view));
+      });
+    }, 1000);
+  }
+}
 let settingsDockApi = null;
 let conversationPicker = null;
 const getDocking = () => dockingUI;
@@ -1147,6 +1265,7 @@ function resizeComposer(textarea = null, view = null) {
 // update background panes. Units missing (primary pre-enable, classic) falls
 // back to the host singletons, which mirror the focused view — identical.
 function updateComposer(view = null) {
+  refreshComposerGauges();
   const target = view || convViews?.focused();
   // The focused view uses its live editor: its pane while docked, the host otherwise.
   const units = (target && convViews?.isFocused(target.id) ? convViews.liveUnits(target) : target?.units) || null;
@@ -3607,6 +3726,14 @@ function applyRunEvent(run, e) {
       void finishRun(run, e);
       break;
   }
+  if (
+    (e.kind === 'message' && (e.message?.role === 'assistant' || e.message?.customType === 'compaction')) ||
+    e.kind === 'done' ||
+    (['runtime', 'status'].includes(e.kind) && ['compacting', 'turn_end'].includes(e.status))
+  ) {
+    run.contextRevision = (run.contextRevision || 0) + 1;
+    refreshComposerGauges();
+  }
   if (convViews?.composerLive?.()) {
     // Coalesce live deltas per frame; never repaint the full history in the SSE callback.
     // The frame is owner-routed: only panes bound to this run repaint.
@@ -5156,7 +5283,7 @@ function createToolInstance(entry) {
   }
   scope.root.hidden = true;
   const ui = createInspector({
-    api,
+    api: inspectorApi,
     markdown,
     getModels: () => state.models,
     openModelPicker,
@@ -5348,7 +5475,7 @@ toolViews = createToolViews({
   },
 });
 inspectorUI = createInspector({
-  api,
+  api: inspectorApi,
   markdown,
   getModels: () => state.models,
   openModelPicker,
@@ -6102,7 +6229,10 @@ onLanguageChange(() => {
   resizeComposer();
 });
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && state.initialized) void refreshOverview();
+  if (!document.hidden && state.initialized) {
+    refreshComposerGauges();
+    void refreshOverview();
+  }
 });
 window.addEventListener('online', () => {
   if (state.initialized) void refreshOverview();

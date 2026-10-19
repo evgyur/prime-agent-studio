@@ -10,7 +10,11 @@ Retrouvez le projet, l’état de la session, les exécutions actives et l’exp
 
 Le statut du chat distingue aussi une attente de quota, un fournisseur indisponible et l’utilisation du modèle de secours choisi dans les préférences. Ces indications suivent les événements du moteur ; elles ne modifient ni le modèle sélectionné ni les limites de reprise.
 
-La consommation additionne les données enregistrées par Prime Agent sur la branche actuelle de la conversation : tokens entrants, sortants et en cache. Le coût estimé apparaît uniquement si le moteur le fournit ; il ne correspond pas à la facturation de votre abonnement. Ces totaux concernent l’agent principal, pas l’ensemble de ses délégations.
+La consommation additionne les données enregistrées par Prime Agent sur la branche actuelle de la conversation : tokens entrants hors cache, sortants, lus depuis le cache et écrits dans le cache. Le **taux de cache** est la part des tokens d’entrée servis par le cache : lus ÷ (entrants + lus + écrits), sans les tokens sortants. Le coût estimé apparaît uniquement si le moteur le fournit ; sinon il reste **inconnu**, pas nul. Il ne correspond pas à la facturation de votre abonnement.
+
+Le total inclut les sous-agents : chaque requête est comptée une seule fois, avec sa consommation propre, y compris pour un sous-agent encore en cours. Le détail de l’agent principal reste disponible. Le total est marqué **partiel** si un sous-agent est introuvable, si son historique dépasse 16 Mio ou au-delà de 200 sous-agents. Le coût des résumés de compaction n’est pas inclus ici.
+
+Sous la zone de saisie, une ligne discrète indique **Contexte x % · Cache y %**, dans chaque onglet de conversation et sur mobile. Pendant une exécution, elle reprend la mesure du moteur et se met à jour à chaque message, compaction ou fin de tour, sans interrogation périodique. Au repos, elle montre la taille de la **dernière requête** par rapport à la fenêtre du modèle, comme l’indique son infobulle. Elle passe en orange à 80 % et en rouge à 95 % ; elle disparaît quand la valeur est inconnue, par exemple juste après une compaction.
 
 ## Agents
 

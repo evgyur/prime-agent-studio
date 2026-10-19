@@ -1433,6 +1433,32 @@ a.sidebar-settings {
   margin-top: 12px;
   padding: 0 3px;
 }
+.composer-context-gauge {
+  font-size: 10px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.composer-context-gauge[hidden] {
+  display: none !important;
+}
+.composer-context-gauge[data-level="warning"] {
+  color: var(--warning, #b68a46);
+}
+.composer-context-gauge[data-level="danger"] {
+  color: var(--danger, #d06b6b);
+}
+.composer-footnote > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 480px) {
+  .composer-footnote { gap: 8px; }
+  .composer-context-gauge { font-size: 9px; }
+}
 .composer-footnote > span:first-child {
   display: flex;
   align-items: center;
@@ -4504,7 +4530,7 @@ a.sidebar-settings {
   }
 }
 @media (pointer: coarse) {
-  .composer-footnote {
+  .composer-footnote:not(:has(.composer-context-gauge:not([hidden]))) {
     display: none;
   }
 }

@@ -1,5 +1,6 @@
 import { formatMessage as tr, requestLanguage } from './public/i18n-core.js';
 import { createVoice } from './lib/voice.mjs';
+import { createMetrics } from './lib/metrics.mjs';
 import { createServer } from 'node:http';
 import { isModelAvailabilityError } from './lib/model-availability.mjs';
 import { readFile, stat, mkdir } from 'node:fs/promises';
@@ -203,6 +204,12 @@ export function createApp(options = {}) {
       dataDir,
       initialCwd: options.initialCwd || process.env.PRIME_AGENT_GUI_INITIAL_CWD || ROOT,
     });
+  const metrics = createMetrics({
+    dataDir,
+    sessionDir,
+    artifactDir: join(agentHome, 'session-artifacts'),
+    resolveProject: (cwd) => store.knowledgeProject(cwd),
+  });
   const worktrees =
     options.worktrees ||
     createWorktrees({
@@ -392,6 +399,7 @@ export function createApp(options = {}) {
       cliPath: process.env.PRIME_AGENT_CLI,
       kernelRoot: process.env.PRIME_AGENT_GUI_KERNEL_ROOT,
       subagentPolicyFile: subagentDefaults.file,
+      metricsDir: metrics.rawDir,
       knowledge: { dataDir },
       roadmap: { config: roadmapBridge.config },
       computer: { config: computerBridge.config },
@@ -821,7 +829,13 @@ export function createApp(options = {}) {
       if (run.sessionId && !closing)
         setTimeout(() => void conversationSync.checkSession(run.sessionId).catch(() => {}), 1500).unref();
     }
+    if (
+      (event.kind === 'message' && (event.message?.role === 'assistant' || event.message?.customType === 'compaction')) ||
+      event.kind === 'done' ||
+      (['runtime', 'status'].includes(event.kind) && ['compacting', 'turn_end'].includes(event.status))
+    ) inspector.invalidate(run.sessionId);
     publicApi.noteEvent(run, event);
+    metrics.noteEvent(run, event);
     const item = { ...event, seq: ++run.seq };
     const wire = `id: ${item.seq}\ndata: ${JSON.stringify(item)}\n\n`;
     run.events.push({ item, wire });
@@ -1243,6 +1257,7 @@ export function createApp(options = {}) {
     }
     if (apiRequestId) run.apiRequestId = apiRequestId;
     runs.set(run.id, run);
+    metrics.noteEvent(run, { kind: 'start' });
     try {
       const computerImageCapable = modelSupportsImages(selectedModel, catalog);
       if (body.computerUse === true && !computerImageCapable)
@@ -1311,6 +1326,7 @@ export function createApp(options = {}) {
           }),
       );
     } catch (error) {
+      metrics.noteEvent(run, { kind: 'done', status: 'failed', code: -1 });
       roadmapBridge.revokeOwner(run.id);
       void computerBridge.revokeOwner(run.id);
       runs.delete(run.id);
@@ -1486,6 +1502,8 @@ export function createApp(options = {}) {
           runtime: await status(),
           activeRuns: activeRuns().length,
         });
+      if (path === '/api/metrics/summary' && method === 'GET')
+        return json(res, 200, await metrics.summary(Object.fromEntries(url.searchParams)));
       if (path === '/api/system/logs' && method === 'POST') {
         await readBody(req);
         const logs = join(dataDir, 'logs');
@@ -2230,6 +2248,7 @@ export function createApp(options = {}) {
     await computerBridge.close();
     await computer.close();
     await runtime.close();
+    await metrics.close();
     await roadmapRoutes.close();
     await roadmap.close();
     for (const run of runs.values()) for (const client of run.clients) client.end();
@@ -2242,6 +2261,7 @@ export function createApp(options = {}) {
     worktrees,
     worktreeRoutes,
     runtime,
+    metrics,
     modelConfig,
     modelDefaults,
     engineSettings,

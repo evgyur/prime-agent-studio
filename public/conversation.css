@@ -352,7 +352,7 @@
   .composer-area {
     padding-bottom: calc(12px + var(--studio-safe-bottom));
   }
-  .composer-footnote {
+  .composer-footnote:not(:has(.composer-context-gauge:not([hidden]))) {
     display: none;
   }
   /* Narrow composer: short permission labels fit whole; full names stay

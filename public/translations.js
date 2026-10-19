@@ -5,6 +5,20 @@ export const languages = [
   { id: 'en', label: 'English' },
 ];
 export const messages = {
+  'metrics.input': { en: 'Input (uncached)', fr: 'Entrée (hors cache)' },
+  'metrics.cacheRead': { en: 'Cache read', fr: 'Cache lu' },
+  'metrics.cacheWrite': { en: 'Cache write', fr: 'Cache écrit' },
+  'metrics.cacheRate': { en: 'Cache hit rate', fr: 'Taux de cache' },
+  'metrics.unknown': { en: 'Unknown', fr: 'Inconnu' },
+  'metrics.includingSubagents': { en: 'Including {count} subagents', fr: 'Dont {count} sous-agents' },
+  'metrics.mainAgent': { en: 'Main agent only', fr: 'Agent principal seul' },
+  'metrics.partial': { en: 'Partial totals: some agent usage is unavailable or exceeds the history limit.', fr: 'Totaux partiels : certaines consommations sont indisponibles ou dépassent la limite d’historique.' },
+  'metrics.costNote': { en: 'Engine estimates, not your subscription bill. Cache rate excludes output tokens.', fr: 'Estimations du moteur, pas votre facture d’abonnement. Le taux de cache exclut les tokens sortants.' },
+  'metrics.contextGauge': { en: 'Context {percent} %', fr: 'Contexte {percent} %' },
+  'metrics.cacheGauge': { en: 'Cache {percent} %', fr: 'Cache {percent} %' },
+  'metrics.lastContextDetail': { en: 'Last request context (not live): {tokens} / {window} tokens', fr: 'Contexte de la dernière requête (pas en direct) : {tokens} / {window} tokens' },
+  'metrics.contextDetail': { en: 'Current context: {tokens} / {window} tokens', fr: 'Contexte actuel : {tokens} / {window} tokens' },
+  'metrics.lastRequest': { en: 'Last request — uncached input: {input}; cache read: {read}; cache write: {write}', fr: 'Dernière requête — entrée hors cache : {input} ; cache lu : {read} ; cache écrit : {write}' },
   'sessions.copy_id': { en: 'Copy conversation ID', fr: 'Copier l’identifiant de la conversation' },
   'voice.transcribe': { en: 'Transcribe', fr: 'Transcrire' },
   'voice.limitDurationInsert': {

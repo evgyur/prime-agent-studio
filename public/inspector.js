@@ -137,6 +137,36 @@ const count = (number) =>
 const statusNode = (status) =>
   node('span', `inspector-status is-${status}`, () => labels[status] || labels.unknown);
 
+// Composer rendering is shared by host/mobile and every visible docked pane.
+// The caller supplies the current session only; no history or message text enters this UI.
+export function renderComposerGauge(element, data) {
+  if (!element) return;
+  const context = data?.contextUsage ?? data?.session?.contextUsage;
+  const known = Number.isFinite(context?.tokens) && context.tokens >= 0 &&
+    Number.isFinite(context?.contextWindow) && context.contextWindow > 0;
+  element.hidden = !known;
+  if (!known) {
+    element.textContent = '';
+    element.removeAttribute('title');
+    delete element.dataset.level;
+    return;
+  }
+  const fill = context.tokens / context.contextWindow * 100;
+  const percent = Math.min(100, Math.max(0, Math.round(fill)));
+  const last = data?.session?.lastRequestUsage;
+  const cache = Number.isFinite(last?.cacheHitRatio) ? Math.round(last.cacheHitRatio * 100) : null;
+  bindText(element, () => tr('metrics.contextGauge', { percent }) +
+    (cache === null ? '' : ` · ${tr('metrics.cacheGauge', { percent: cache })}`));
+  bindAttribute(element, 'title', () => tr(data.lastRequest ? 'metrics.lastContextDetail' : 'metrics.contextDetail', {
+    tokens: new Intl.NumberFormat(getLanguage()).format(context.tokens),
+    window: new Intl.NumberFormat(getLanguage()).format(context.contextWindow),
+  }) + (last ? `
+${tr('metrics.lastRequest', {
+    input: count(last.input), read: count(last.cacheRead), write: count(last.cacheWrite),
+  })}` : ''));
+  element.dataset.level = fill >= 95 ? 'danger' : fill >= 80 ? 'warning' : 'normal';
+}
+
 export function createInspector({
   api,
   getContext,
@@ -544,45 +574,43 @@ export function createInspector({
   }
   function showUsage() {
     if (!owns('session')) return;
-    const usage = agentData?.session?.usage;
+    const session = agentData?.session;
+    const usage = session?.totalUsage ?? session?.usage;
     const section = $('inspector-usage');
     if (!section) return;
     section.hidden = !usage;
     if (!usage) return;
     section.replaceChildren(node('div', 'context-label', () => tr('ui.consommation_de_la_session')));
-    const dl = node('dl', 'session-properties');
-    for (const [name, value] of [
-      [tr('ui.tokens_entrants'), usage.input],
-      [tr('ui.tokens_sortants'), usage.output],
-      [tr('ui.tokens_en_cache'), usage.cache],
-    ]) {
-      const row = node('div');
-      row.append(
-        node('dt', '', () => name),
-        node('dd', '', () => count(value)),
-      );
-      dl.append(row);
+    function properties(value) {
+      const dl = node('dl', 'session-properties');
+      for (const [key, amount] of [
+        ['metrics.input', count(value.input)],
+        ['ui.tokens_sortants', count(value.output)],
+        ['metrics.cacheRead', count(value.cacheRead ?? 0)],
+        ['metrics.cacheWrite', count(value.cacheWrite ?? 0)],
+        ['metrics.cacheRate', Number.isFinite(value.cacheHitRatio) ? `${Math.round(value.cacheHitRatio * 100)} %` : tr('metrics.unknown')],
+        ['ui.cout_estime', Number.isFinite(value.cost) ? new Intl.NumberFormat(getLanguage(), {
+          style: 'currency', currency: 'USD', maximumFractionDigits: 4,
+        }).format(value.cost) : tr('metrics.unknown')],
+      ]) {
+        const row = node('div');
+        row.append(node('dt', '', () => tr(key)), node('dd', '', () => amount));
+        dl.append(row);
+      }
+      return dl;
     }
-    if (usage.cost !== null) {
-      const row = node('div');
-      row.append(
-        node('dt', '', () => tr('ui.cout_estime')),
-        node('dd', '', () =>
-          new Intl.NumberFormat('fr-FR', {
-            style: 'currency',
-            currency: 'USD',
-            maximumFractionDigits: 4,
-          }).format(usage.cost),
-        ),
-      );
-      dl.append(row);
+    section.append(properties(usage));
+    if (session.subagentCount > 0) {
+      section.append(node('p', 'inspector-note', () => tr('metrics.includingSubagents', { count: session.subagentCount })));
+      if (session.usage) {
+        const main = node('details', 'inspector-main-usage');
+        main.append(node('summary', '', () => tr('metrics.mainAgent')), properties(session.usage));
+        section.append(main);
+      }
     }
-    section.append(
-      dl,
-      node('p', 'inspector-note', () =>
-        tr('ui.donnees_du_moteur_pour_cet_agent_le_cout_indique_ne_represente_pa'),
-      ),
-    );
+    if (session.usageIncomplete)
+      section.append(node('p', 'inspector-note', () => tr('metrics.partial')));
+    section.append(node('p', 'inspector-note', () => tr('metrics.costNote')));
   }
   // Session quota (Codex subscription vs API) + live Prime Agent context.
   // Quota shows only for OpenAI family models; Codex needs linked OAuth, never API usage.

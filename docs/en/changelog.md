@@ -4,6 +4,13 @@
 
 Changes by version. See [GitHub releases](https://github.com/zerr0o/prime-agent-studio/releases) for installers and source archives.
 
+## 4.4.0-beta.2
+
+- **Performance tab**: a new tool tab in the modular workspace shows your usage for this project or all projects, over today, 7, 30 or 90 days: estimated cost, tokens, cache rate, runs, median duration and time to first token, a daily chart, a ranking of your models on your own work (success rate, cost per completed run, latency, errors) and a by-project table. It follows the active project or stays locked to one; in classic and mobile layouts it opens from the Session tab. It refreshes when shown, after each run or with Refresh, never on a timer.
+- **Context gauge**: a quiet "Context x % · Cache y %" line under every composer (main editor, modular tabs, mobile), updated on run events. When idle, it shows the last request. Amber at 80 %, red at 95 %.
+- **Clearer usage in the Session panel**: uncached input, output, cache read and cache write, cache rate, and totals that include subagents without double counting. The main agent figure no longer includes part of the subagents' usage, and its details stay open while the panel refreshes.
+- **Usage metrics**: Studio records content-free metadata for every request, subagents included (tokens, cache, estimated cost, statuses, durations), keeps it 90 days in the data folder and backfills existing sessions in the background. No prompt, response or tool content is stored.
+
 ## 4.3.8-beta.3
 
 - **Copy a conversation ID**: the conversation menu now offers **Copy conversation ID**. It copies the saved conversation ID, useful with the public API or for support. Contributed by [@evgyur](https://github.com/evgyur) in [#8](https://github.com/zerr0o/prime-agent-studio/pull/8).

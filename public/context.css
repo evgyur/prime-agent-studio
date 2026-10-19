@@ -26,6 +26,11 @@
 .context-dossier { background: var(--surface); border: 1px solid var(--line); border-radius: 7px; padding: 12px; max-height: 280px; overflow: auto; margin: 8px 0 0; }
 .context-source { padding: 6px 0; }
 .context-source + .context-source { border-top: 1px solid var(--line); }
+.context-automatic-exclusions { margin-top: 16px; }
+.context-automatic-exclusions summary { cursor: pointer; color: var(--muted); line-height: 1.7; }
+.context-exclusion { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; border-bottom: 1px solid var(--line); padding: 6px 0; }
+.context-exclusion code { min-width: 0; }
+.context-panel .context-exclusion .context-note { margin: 0; }
 .context-source .text-button { font-size: 11px; padding: 4px 8px; }
 .context-search { display: flex; gap: 8px; }
 .context-panel input[type="search"], .context-panel textarea { box-sizing: border-box; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); color: var(--text); font: inherit; padding: 8px 10px; min-width: 0; }

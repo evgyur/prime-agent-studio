@@ -59,7 +59,7 @@ async function openPanel(page, docked, width) {
 
 function readySnapshot() {
   return { enabled: true, sessionEnabled: true, pins: [{ path: 'src/session-controller.ts', startLine: 12, endLine: 28 }], exclusions: ['dist', 'vendor'],
-    index: { state: 'ready', files: 42, chunks: 186, symbols: 93, updatedAt: '2026-10-19T12:00:00.000Z' },
+    index: { state: 'ready', files: 42, chunks: 186, symbols: 93, updatedAt: '2026-10-19T12:00:00.000Z', excludedCount: 2, automaticExclusions: [{ path: '.env.local', reason: 'sensitive-name' }, { path: 'package-lock.json', reason: 'lockfile' }] },
     dossier: { text: 'Project: Atelier\nRequest: Keep session selection stable.\nPinned evidence: src/session-controller.ts:12-28\nUse the existing session controller and preserve focus.', createdAt: '2026-10-19T12:01:00.000Z', sessionId: 'alpha' } };
 }
 async function setup(width, locale = 'en-US', docked = true, light = false) {
@@ -106,6 +106,14 @@ try {
     const { page, context, fixture } = await setup(width, locale);
     const panel = await openPanel(page, true, width); await state(panel, 'ready');
     await expect(panel).toContainText('src/session-controller.ts');
+    const automatic = panel.locator('.context-automatic-exclusions');
+    await automatic.locator('summary').click();
+    await expect(automatic).toContainText('.env.local');
+    await expect(automatic).toContainText('package-lock.json');
+    await expect(automatic).toContainText(locale === 'fr-FR' ? 'Nom sensible' : 'Sensitive filename');
+    await automatic.scrollIntoViewIfNeeded();
+    await shot(page, `exclusions-${width}-${locale}`);
+    await panel.locator('.context-heading').scrollIntoViewIfNeeded();
     await shot(page, `docked-${width}-${locale}`);
     if (width === 1440 && locale === 'en-US') {
       await expect.poll(() => streams.size).toBeGreaterThan(0);
@@ -129,6 +137,10 @@ try {
         await panel.locator('[data-action="refresh"]').click(); await state(panel, name);
         await shot(page, `state-${name}`);
       }
+      await panel.locator('[data-control="includeGenerated"]').check();
+      await expect.poll(() => fixture.value.includeGenerated).toBe(true);
+      await panel.locator('[data-control="includeGenerated"]').uncheck();
+      await expect.poll(() => fixture.value.includeGenerated).toBe(false);
       await panel.locator('[data-control="enabled"]').uncheck();
       await expect.poll(() => fixture.value.enabled).toBe(false); await state(panel, 'disabled');
       await panel.locator('[data-control="enabled"]').check(); await state(panel, 'ready');

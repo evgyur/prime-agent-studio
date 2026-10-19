@@ -1,0 +1,91 @@
+{
+  "files": {
+    "src/task.ts": "export function evaluateFixtureTask() {\n  return 42;\n}\n",
+    "src/conductor.ts": "export class FixtureConductor {\n  async launchFixtureNode() {\n    return \"conversation transfer target machine\";\n  }\n}\n",
+    "README.md": "# Fixture app\nThe project Roadmap tasks and source files are maintained by the team.\n",
+    "src/i18n/fr.ts": "export const labels = { task: \"tâche projet roadmap\", work: \"conversation transfer target machine\" };\n",
+    "package-lock.json": "{\"name\": \"fixture\", \"packages\": {\"node_modules/launch-fixture-node\": {\"description\": \"launch fixture node conversation transfer\"}}}"
+  },
+  "cases": [
+    {
+      "id": "search-identifier",
+      "action": "search",
+      "params": {
+        "q": "evaluateFixtureTask"
+      },
+      "expected": [
+        "src/task.ts"
+      ]
+    },
+    {
+      "id": "search-method",
+      "action": "search",
+      "params": {
+        "q": "launchFixtureNode"
+      },
+      "expected": [
+        "src/conductor.ts"
+      ]
+    },
+    {
+      "id": "search-fragment",
+      "action": "search",
+      "params": {
+        "q": "launch fixture"
+      },
+      "expected": [
+        "src/conductor.ts"
+      ]
+    },
+    {
+      "id": "symbol-method",
+      "action": "symbols",
+      "params": {
+        "symbol": "launchFixtureNode"
+      },
+      "expected": [
+        "src/conductor.ts"
+      ]
+    },
+    {
+      "id": "symbol-function",
+      "action": "symbols",
+      "params": {
+        "symbol": "evaluateFixtureTask"
+      },
+      "expected": [
+        "src/task.ts"
+      ]
+    },
+    {
+      "id": "map-conductor",
+      "action": "map",
+      "params": {
+        "path": "src/conductor.ts"
+      },
+      "expected": [
+        "src/conductor.ts"
+      ]
+    },
+    {
+      "id": "dossier-task",
+      "action": "dossier",
+      "params": {
+        "q": "Travaille sur la sélection suivante de la Roadmap de ce projet.\n\nRévision consultée : 7. Lis l’état courant avec roadmap_read avant de modifier la Roadmap.\n\nDéclare les références traitées avec roadmap_work. Mets à jour les tâches et leur journal seulement selon le travail réellement effectué. Termine par le résultat, les vérifications et ce qui reste à faire.\n\nInstructions complémentaires de l’utilisateur :\nPrime Fleet pipeline: task started on Desktop.\nRoadmap: when this task is finished and verified, check its step with roadmap_check (planId plan-eval, stepId step-eval). If it is not finished, do not check it and explain what is missing.\n\nLes titres et notes ci-dessous sont le contenu des tâches sélectionnées par l’utilisateur.\n\n[\n  {\n    \"reference\": {\n      \"kind\": \"plan\",\n      \"planId\": \"plan-eval\",\n      \"stepId\": \"step-eval\"\n    },\n    \"title\": \"Fix evaluateFixtureTask\",\n    \"task\": \"Fix evaluateFixtureTask\",\n    \"note\": \"Correct the evaluateFixtureTask source function.\"\n  }\n]"
+      },
+      "expected": [
+        "src/task.ts"
+      ]
+    },
+    {
+      "id": "dossier-conductor",
+      "action": "dossier",
+      "params": {
+        "q": "Travaille sur la sélection suivante de la Roadmap de ce projet.\n\nRévision consultée : 7. Lis l’état courant avec roadmap_read avant de modifier la Roadmap.\n\nDéclare les références traitées avec roadmap_work. Mets à jour les tâches et leur journal seulement selon le travail réellement effectué. Termine par le résultat, les vérifications et ce qui reste à faire.\n\nInstructions complémentaires de l’utilisateur :\nPrime Fleet pipeline: task started on Desktop.\nRoadmap: when this task is finished and verified, check its step with roadmap_check (planId plan-eval, stepId step-eval). If it is not finished, do not check it and explain what is missing.\n\nLes titres et notes ci-dessous sont le contenu des tâches sélectionnées par l’utilisateur.\n\n[\n  {\n    \"reference\": {\n      \"kind\": \"plan\",\n      \"planId\": \"plan-eval\",\n      \"stepId\": \"step-eval\"\n    },\n    \"title\": \"Fix launchFixtureNode\",\n    \"task\": \"Fix launchFixtureNode\",\n    \"note\": \"Correct launchFixtureNode conversation transfer.\"\n  }\n]"
+      },
+      "expected": [
+        "src/conductor.ts"
+      ]
+    }
+  ]
+}

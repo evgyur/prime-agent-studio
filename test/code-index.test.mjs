@@ -64,16 +64,19 @@ test('secrets, ignored, binary, oversized, traversal, symlink and explicit exclu
   const outside = join(f.dir, 'outside'); await mkdir(outside); await writeFile(join(outside, 'escape.ts'), 'function EscapedNeedle() {}');
   await symlink(outside, join(f.root, 'linked'), 'junction');
   const status = await f.index.refresh(f.project);
-  assert.equal(status.state, 'ready'); assert.equal(status.files, 1);
-  assert.deepEqual((await f.index.search(f.project, { q: 'ForbiddenNeedle' })).results.map((r) => r.path), ['safe.ts']);
+  assert.equal(status.state, 'ready'); assert.equal(status.files, 9);
+  const retained = ['credentials.ts', 'embedded.ts', 'keys.ts', 'private-key.ts', 'safe.ts'];
+  assert.deepEqual((await f.index.search(f.project, { q: 'ForbiddenNeedle' })).results.map((r) => r.path).sort(), retained);
+  const database = await readFile(join(f.dataDir, 'code-index', await codeIndexProjectId(f.project), 'index.sqlite'));
+  for (const literal of ['sensitive-value-123', 'fixture_not_a_real_secret']) assert.ok(!database.includes(Buffer.from(literal)));
   assert.equal((await f.index.map(f.project, { path: '../outside/escape.ts' })).results.length, 0);
   assert.equal((await f.index.search(f.project, { q: 'EscapedNeedle' })).results.length, 0);
   for (const [method, options] of [['search', { q: 'ForbiddenNeedle' }], ['symbols', { symbol: 'ForbiddenNeedle' }], ['map', {}]]) {
-    assert.equal((await f.index[method](f.project, { ...options, exclusions: ['safe.ts'] })).results.length, 0);
+    assert.equal((await f.index[method](f.project, { ...options, exclusions: [...retained, 'config.json', 'config.yaml', 'auth.json', 'signing.yaml'] })).results.length, 0);
   }
-  assert.equal((await f.index.refresh(f.project, { exclusions: ['**/*.ts'] })).files, 0);
+  assert.equal((await f.index.refresh(f.project, { exclusions: ['**/*.ts'] })).files, 4);
   assert.equal((await f.index.search(f.project, { q: 'ForbiddenNeedle' })).results.length, 0);
-  assert.equal((await f.index.refresh(f.project, { exclusions: [], rebuild: true })).files, 1);
+  assert.equal((await f.index.refresh(f.project, { exclusions: [], rebuild: true })).files, 9);
 });
 
 test('bounded literal queries and readonly queries do not refresh or modify index', { timeout: 30_000 }, async (t) => {
@@ -156,8 +159,9 @@ test('extensionless build manifests and Go module files are indexed', { timeout:
   const f = await fixture(t);
   for (const path of ['Makefile', 'GNUmakefile', 'Dockerfile', 'Justfile', 'go.mod', 'go.sum']) await f.write(path, 'buildfixture: deterministic-local');
   const status = await f.index.refresh(f.project);
-  assert.equal(status.files, 6);
-  assert.equal((await f.index.search(f.project, { q: 'buildfixture', limit: 20 })).results.length, 6);
+  assert.equal(status.files, 5);
+  assert.equal((await f.index.search(f.project, { q: 'buildfixture', limit: 20 })).results.length, 5);
+  assert.equal((await f.index.refresh(f.project, { includeGenerated: true })).files, 6);
   assert.deepEqual((await f.index.search(f.project, { path: 'Makefile' })).results.map((row) => row.path), ['Makefile']);
   assert.equal((await f.index.search(f.project, { path: 'Makefile', q: 'buildfixture' })).results.length, 1);
   assert.equal((await f.index.search(f.project, { path: 'Makefile', exclusions: ['Makefile'] })).results.length, 0);
@@ -269,4 +273,220 @@ test('refresh emits bounded monotonic progress and terminal ready', { timeout: 2
   assert.ok(progress.length <= 5);
   for (let i = 1; i < progress.length; i++) assert.ok(progress[i].progress.completed >= progress[i - 1].progress.completed);
   assert.ok(events.filter((event) => event.state === 'indexing').every((event) => event.files === 0));
+});
+
+
+test('literal credentials are redacted without dropping source and automatic exclusions are visible', { timeout: 30_000 }, async (t) => {
+  const f = await fixture(t);
+  const secret = 'fixture_literal_credential_984237';
+  await f.write('handler.ts', `const apiKey = value.credentialEnv;\nconst password = "${secret}";\nexport function retainedHandler() { return apiKey; }`);
+  await f.write('auth.md', 'Authorization: Bearer\nUse your environment configuration.');
+  await f.write('credentials.json', '{"value":"excluded"}');
+  await f.write('package-lock.json', '{"name":"retainedHandler"}');
+  await f.write('bundle.min.js', 'function retainedHandler() {}');
+  const status = await f.index.refresh(f.project);
+  assert.equal(status.files, 2);
+  assert.ok(status.automaticExclusions.some((row) => row.path === 'credentials.json' && row.reason === 'sensitive-name'));
+  assert.ok(status.automaticExclusions.some((row) => row.path === 'package-lock.json' && row.reason === 'lockfile'));
+  const result = await f.index.search(f.project, { q: 'retainedHandler' });
+  assert.equal(result.results[0].path, 'handler.ts');
+  assert.ok(result.indexedAt); assert.equal(result.results[0].stale, false);
+  assert.ok(result.excludedCount >= 3);
+  const dbPath = join(f.dataDir, 'code-index', await codeIndexProjectId(f.project), 'index.sqlite');
+  assert.ok(!(await readFile(dbPath)).includes(Buffer.from(secret)));
+  assert.equal((await f.index.search(f.project, { q: 'credentialEnv' })).results.length, 1);
+  assert.equal((await f.index.refresh(f.project, { includeGenerated: true })).files, 4);
+});
+
+test('TypeScript methods, multiline imports, split search and stale evidence', { timeout: 30_000 }, async (t) => {
+  const f = await fixture(t);
+  await f.write('conductor.mts', `import {\n type ImportedType, helper\n} from './helper';\nexport class Conductor {\n async launchNode(task: string): Promise<void> {\n helper(task); task.slice(0); edge.from(task);\n }\n syncConversation(\n task: string\n ): void { helper(task); }\n}\n`);
+  await f.write('helper.cts', 'export function helper(task: string) {}');
+  await f.write('noise.ts', Array.from({ length: 12 }, (_, i) => `function noise${i}() { /* le la les the and launch node */ }`).join('\n'));
+  await f.index.refresh(f.project);
+  for (const symbol of ['launchNode', 'syncConversation']) assert.ok((await f.index.symbols(f.project, { symbol })).results.some((r) => r.kind === 'definition'), symbol);
+  assert.equal((await f.index.symbols(f.project, { symbol: 'ImportedType' })).results.length, 0);
+  const map = (await f.index.map(f.project, { path: 'conductor.mts' })).results[0];
+  assert.equal(map.imports.length, 1); assert.equal(map.imports[0].target, './helper');
+  assert.equal(map.imports[0].resolvedPath, 'helper.cts');
+  assert.ok(!map.references.some((r) => r.name === 'slice'));
+  assert.equal(map.totals.definitions, 3);
+  const found = await f.index.search(f.project, { q: 'le la the launch node', limit: 20 });
+  assert.equal(found.results[0].path, 'conductor.mts');
+  assert.ok(found.results.every((r) => r.text.length <= 1500));
+  assert.ok(found.results.filter((r) => r.path === 'noise.ts').length <= 2);
+  const readonly = createCodeIndex({ dataDir: f.dataDir, readOnly: true }); t.after(() => readonly.close());
+  await f.write('conductor.mts', '// changed after indexing');
+  const stale = await readonly.search(f.project, { q: 'launchNode' });
+  assert.equal(stale.results[0].stale, true); assert.ok(stale.indexedAt);
+  await readonly.close();
+});
+
+
+test('redaction keeps secret-handling modules and removes quoted, YAML, bearer and PEM values', { timeout: 30_000 }, async (t) => {
+  const f = await fixture(t), literal = 'fixtureCredentialLiteral903621';
+  await f.write('secrets.ts', `export function configureSecret(value) { return { apiKey: value.credentialEnv }; }\nconst apiKey = '${literal}';`);
+  await f.write('auth.yaml', `access_token: ${literal}\nauthorization: Bearer ${literal}\n`);
+  await f.write('signing.ts', `const privateKey = "-----BEGIN PRIVATE KEY-----\n${literal}\n-----END PRIVATE KEY-----";\nfunction loadSigning() {}`);
+  const status = await f.index.refresh(f.project);
+  assert.equal(status.files, 3);
+  assert.equal((await f.index.symbols(f.project, { symbol: 'configureSecret' })).results[0].kind, 'definition');
+  const dbPath = join(f.dataDir, 'code-index', await codeIndexProjectId(f.project), 'index.sqlite');
+  assert.ok(!(await readFile(dbPath)).includes(Buffer.from(literal)));
+  assert.equal((await f.index.search(f.project, { q: literal })).results.length, 0);
+});
+
+
+test('credential templates and docs stay intact while generic high entropy literals are masked', { timeout: 20_000 }, async (t) => {
+  const f = await fixture(t);
+  const literal = 'K9mP2xR7vT4nQ8sL3wY6aB5d';
+  await f.write('client.ts', 'const authorization = `Bearer ${token}`;\nconst password = "example";\nconst fixture = "' + literal + '";');
+  await f.index.refresh(f.project);
+  const row = (await f.index.search(f.project, { path: 'client.ts' })).results[0];
+  assert.match(row.text, /Bearer \$\{token\}/);
+  assert.match(row.text, /"example"/);
+  assert.ok(!row.text.includes(literal));
+});
+
+
+test('private methods and arrow fields are definitions and long lines stay searchable', { timeout: 20_000 }, async (t) => {
+  const f = await fixture(t);
+  await f.write('private.ts', 'class Service {\n #launchNode() {}\n syncConversation = async (task: string) => { return task; };\n}\n' + '// filler '.repeat(1000) + ' TailEvidenceUnique');
+  await f.index.refresh(f.project);
+  for (const symbol of ['#launchNode', 'syncConversation']) assert.ok((await f.index.symbols(f.project, { symbol })).results.some((r) => r.kind === 'definition'));
+  assert.equal((await f.index.search(f.project, { q: 'TailEvidenceUnique' })).results.length, 1);
+});
+
+
+test('old schemas request rebuild read-only and migrate without retaining raw secrets', { timeout: 20_000 }, async (t) => {
+  const f = await fixture(t), literal = 'obsoleteRawCredentialFixture992283';
+  await f.write('safe.ts', 'function preservedAfterMigration() {}');
+  await f.index.refresh(f.project); await f.index.close();
+  const dbPath = join(f.dataDir, 'code-index', await codeIndexProjectId(f.project), 'index.sqlite');
+  const db = new DatabaseSync(dbPath);
+  db.prepare("UPDATE meta SET value='1' WHERE key='schemaVersion'").run();
+  db.prepare('INSERT INTO chunks(path,startLine,endLine,text) VALUES(?,?,?,?)').run('obsolete.ts', 1, 1, literal);
+  db.close();
+  const reader = createCodeIndex({ dataDir: f.dataDir, readOnly: true });
+  try { assert.equal((await reader.search(f.project, { q: literal })).reason, 'rebuild-required'); }
+  finally { await reader.close(); }
+  const writer = createCodeIndex({ dataDir: f.dataDir });
+  try {
+    assert.equal((await writer.refresh(f.project)).state, 'ready');
+    assert.ok(!(await readFile(dbPath)).includes(Buffer.from(literal)));
+  } finally { await writer.close(); }
+});
+
+
+test('exact path excerpts preserve late manifest commands and long-line content', { timeout: 20_000 }, async (t) => {
+  const f = await fixture(t);
+  const source = '{"description":"' + 'documentation '.repeat(180) + '","scripts":{"typecheck":"npx tsc --noEmit"}}';
+  await f.write('package.json', source);
+  await f.index.refresh(f.project);
+  const result = await f.index.search(f.project, { path: 'package.json', limit: 20 });
+  assert.equal(result.results.map((row) => row.text).join(''), source);
+  assert.ok(result.results.every((row) => row.text.length <= 1500));
+});
+
+
+test('short explicit credential literals never enter raw SQLite', { timeout: 20_000 }, async (t) => {
+  const f = await fixture(t);
+  await f.write('client.ts', 'const auth = { password: "hunter2", apiKey: "ABC1234" };');
+  await f.index.refresh(f.project);
+  const bytes = await readFile(join(f.dataDir, 'code-index', await codeIndexProjectId(f.project), 'index.sqlite'));
+  for (const literal of ['hunter2', 'ABC1234']) assert.ok(!bytes.includes(Buffer.from(literal)), literal);
+});
+
+
+test('wrong-root legacy databases are rejected before schema migration writes', { timeout: 20_000 }, async (t) => {
+  const f = await fixture(t);
+  await f.write('safe.ts', 'function preserveWrongRootData() {}');
+  await f.index.refresh(f.project); await f.index.close();
+  const dbPath = join(f.dataDir, 'code-index', await codeIndexProjectId(f.project), 'index.sqlite');
+  const db = new DatabaseSync(dbPath);
+  db.prepare("UPDATE meta SET value='1' WHERE key='schemaVersion'").run();
+  db.prepare("UPDATE meta SET value=? WHERE key='root'").run(join(f.dir, 'other-root'));
+  db.exec('DROP TABLE excluded; PRAGMA wal_checkpoint(TRUNCATE)'); db.close();
+  const before = await readFile(dbPath), writer = createCodeIndex({ dataDir: f.dataDir });
+  try { assert.equal((await writer.ensureProject(f.project)).state, 'error'); }
+  finally { await writer.close(); }
+  assert.deepEqual(await readFile(dbPath), before);
+});
+
+
+test('exact symbol definitions outrank repeated README prose', { timeout: 20_000 }, async (t) => {
+  const f = await fixture(t);
+  await f.write('core.ts', 'export const launchNode = () => true;');
+  await f.write('README.md', 'Launch node function documentation\n'.repeat(40));
+  await f.index.refresh(f.project);
+  for (const q of ['launchNode', 'launch node']) assert.equal((await f.index.search(f.project, { q })).results[0].path, 'core.ts');
+});
+
+
+test('French action words find code definitions rather than translated prose', { timeout: 20_000 }, async (t) => {
+  const f = await fixture(t);
+  await f.write('worker.ts', 'export function launchTask(task) { return syncConversation(task.machine); }\nexport function syncConversation(machine) { return machine; }');
+  await f.write('fr.ts', 'export const labels = { hint: "lancer tâche synchroniser conversation machine" };');
+  await f.write('README.md', 'lancer tâche synchroniser conversation machine\n'.repeat(40));
+  await f.write('node-panel.ts', '// launch node '.repeat(20));
+  await f.write('core.ts', 'export const launchNode = () => true;');
+  await f.index.refresh(f.project);
+  assert.equal((await f.index.search(f.project, { q: 'lancer tâche synchroniser conversation machine' })).results[0].path, 'worker.ts');
+  assert.equal((await f.index.search(f.project, { q: 'launchNode' })).results[0].path, 'core.ts');
+});
+
+
+test('bounded excerpts retain the source start line when a match is late in the chunk', { timeout: 20_000 }, async (t) => {
+  const f = await fixture(t);
+  const source = 'export function sourceRange() {\n' + '  // padding for source range\n'.repeat(25) + '  return LateRangeKeyword;\n}';
+  await f.write('range.ts', source);
+  await f.index.refresh(f.project);
+  const row = (await f.index.search(f.project, { q: 'LateRangeKeyword' })).results[0];
+  assert.equal(row.startLine, 1);
+  assert.equal(row.text, source);
+  assert.equal(row.textTruncated, false);
+});
+
+
+test('exact identifier definitions inside i18n outrank helper references', { timeout: 20_000 }, async (t) => {
+  const f = await fixture(t);
+  await mkdir(join(f.root, 'i18n'));
+  await f.write('i18n/fr.ts', 'export function translateMessage(key) { return key; }');
+  await f.write('helper.ts', 'export function translateMessageReference(key) { return translateMessage(key); }');
+  await f.index.refresh(f.project);
+  assert.equal((await f.index.search(f.project, { q: 'translateMessage' })).results[0].path, 'i18n/fr.ts');
+});
+
+
+test('exact filename search explains exclusions without treating prose as a path', { timeout: 20_000 }, async (t) => {
+  const f = await fixture(t);
+  await f.write('.env.local', 'PRIVATE_SETTING=not-indexed');
+  await f.write('package-lock.json', '{}');
+  await f.write('safe.ts', 'export function safeSource() {}');
+  await f.index.refresh(f.project);
+  const secret = await f.index.search(f.project, { q: '.env.local' });
+  assert.deepEqual(secret.excludedPath, { path: '.env.local', reason: 'sensitive-name' });
+  const generated = await f.index.search(f.project, { q: 'package-lock.json' });
+  assert.deepEqual(generated.excludedPath, { path: 'package-lock.json', reason: 'lockfile' });
+  const configured = await f.index.search(f.project, { q: 'safe.ts', exclusions: ['safe.ts'] });
+  assert.deepEqual(configured.excludedPath, { path: 'safe.ts', reason: 'configured' });
+  const prose = await f.index.search(f.project, { q: 'explain .env.local configuration' });
+  assert.equal(prose.excludedPath, undefined);
+});
+
+
+test('directory maps do not report unsupported-file exclusions', { timeout: 20_000 }, async (t) => {
+  const f = await fixture(t);
+  await mkdir(join(f.root, 'src'));
+  await mkdir(join(f.root, '.github', 'workflows'), { recursive: true });
+  await f.write('src/main.ts', 'export function mappedSource() {}');
+  await f.write('.github/workflows/check.yaml', 'name: checks');
+  await f.index.refresh(f.project);
+  for (const path of ['src', '.github/workflows']) {
+    const result = await f.index.map(f.project, { path });
+    assert.equal(result.results.length, 1);
+    assert.equal(result.excludedPath, undefined);
+  }
+  const configured = await f.index.map(f.project, { path: 'src', exclusions: ['src'] });
+  assert.deepEqual(configured.excludedPath, { path: 'src', reason: 'configured' });
 });

@@ -45,9 +45,9 @@ export function createContext({ api, getContext }) {
     root.append(status); root.setAttribute('aria-busy', String(pending || state === 'loading'));
     if (!data) return;
     const controls = node('div', 'context-switches');
-    for (const name of ['enabled', 'sessionEnabled']) {
+    for (const name of ['enabled', 'sessionEnabled', 'includeGenerated']) {
       const label = node('label'), input = node('input'); input.type = 'checkbox'; input.dataset.control = name;
-      input.checked = data[name] !== false; input.disabled = !canEdit() || (name === 'sessionEnabled' && (!getContext()?.sessionId || !data.enabled));
+      input.checked = name === 'includeGenerated' ? data[name] === true : data[name] !== false; input.disabled = !canEdit() || (name === 'sessionEnabled' && (!getContext()?.sessionId || !data.enabled));
       input.onchange = () => void mutate({ [name]: input.checked });
       label.append(input, node('span', '', t(`context.${name}`))); controls.append(label);
     }
@@ -100,6 +100,16 @@ export function createContext({ api, getContext }) {
     const field = node('textarea'); field.rows = 3; field.dataset.control = 'exclusions'; field.setAttribute('aria-label', t('context.exclusions')); field.value = exclusionDraft ?? (data.exclusions || []).join('\n'); field.disabled = !canEdit(); field.oninput = () => { exclusionDraft = field.value; };
     const save = button('context.save', 'save-exclusions', () => void mutate({ exclusions: field.value.split(/\r?\n/).map((s) => s.trim()).filter(Boolean) })); save.disabled = !canEdit();
     exclusions.append(node('p', 'context-note', t('context.exclusionsNote')), field, save);
+    const automatic = node('details', 'context-automatic-exclusions');
+    automatic.append(node('summary', '', `${t('context.automaticExclusions')} · ${data.index?.excludedCount || 0}`));
+    const reasons = new Set(['sensitive-name', 'generated', 'lockfile', 'configured', 'unsafe', 'binary', 'too-large', 'unsupported']);
+    for (const item of data.index?.automaticExclusions || []) {
+      const row = node('div', 'context-exclusion');
+      row.append(node('code', '', item.path), node('span', 'context-note', reasons.has(item.reason) ? t(`context.exclusion.${item.reason}`) : String(item.reason)));
+      automatic.append(row);
+    }
+    if (data.index?.exclusionsTruncated) automatic.append(node('p', 'context-note', t('context.exclusionsTruncated')));
+    exclusions.append(automatic);
     if (focused) {
       const target = [...root.querySelectorAll('[data-control], [data-action]')].find((el) => el.dataset.control === focused || el.dataset.action === focused);
       target?.focus({ preventScroll: true });

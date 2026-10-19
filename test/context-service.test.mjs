@@ -163,3 +163,19 @@ test('run configuration reactivates an evicted writer without waiting for its sc
   assert.equal(refreshCalls, 1, 'pending activation is shared');
   release();
 });
+
+
+test('generated sources require a validated project opt-in and pass to index and runtime', { timeout: 15000 }, async (t) => {
+  const f = await fixture(t);
+  assert.equal((await f.api()).body.includeGenerated, false);
+  assert.equal((await f.api(f.route, 'PATCH', { includeGenerated: 'yes' })).status, 400);
+  assert.equal((await f.api(f.route, 'PATCH', { includeGenerated: true })).status, 200);
+  assert.equal((await f.api()).body.includeGenerated, true);
+  assert.equal((await f.app.context.runtimeConfig(f.cwd, 'fixture-session')).includeGenerated, true);
+  const found = await f.api(f.route + '/search', 'POST', { q: 'fixture' });
+  assert.equal(found.body.results[0].includeGenerated, true);
+  await f.app.context.ensureAll();
+  assert.ok(f.calls.some((call) => call.includeGenerated === true));
+  await writeFile(join(f.cwd, 'secrets.js'), 'export function secretNames() { return []; }');
+  assert.equal((await f.api(f.route, 'PATCH', { pins: ['secrets.js'] })).status, 200, 'source filenames are not credential stores');
+});

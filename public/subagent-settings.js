@@ -93,6 +93,7 @@ export function createSubagentSettings({
     const row = document.createElement('div');
     row.className = 'subagent-role-row';
     const title = document.createElement('div');
+    title.className = 'subagent-role-title';
     const label = document.createElement('strong');
     const hint = document.createElement('small');
     bindText(label, () => tr(`routing.${role}`));
@@ -133,7 +134,12 @@ export function createSubagentSettings({
         },
       });
     };
-    row.append(title, model, thinking);
+    // Title and hint above; model and reasoning below, in the same columns as
+    // the base Model / Reasoning row of this form (its responsive rules apply).
+    const controls = document.createElement('div');
+    controls.className = 'subagent-controls subagent-role-controls';
+    controls.append(model, thinking);
+    row.append(title, controls);
     roleSection.append(row);
     roleFields.set(role, { model, thinking });
   }

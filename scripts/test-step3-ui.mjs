@@ -40,6 +40,30 @@ async function capture(page, options) {
   await expect(page.locator('#toasts .toast')).toHaveCount(0, { timeout: 8000 });
   await page.screenshot(options);
 }
+// Role rows: title and hint above, then the model and reasoning controls in the
+// same columns as the base Model / Reasoning row of the same form.
+async function assertRoleColumns(root, label) {
+  const layout = await root.locator('.subagent-role-row').first().evaluate((row) => {
+    const box = (element) => {
+      const rect = element.getBoundingClientRect();
+      return { left: rect.left, top: rect.top, bottom: rect.bottom, width: rect.width };
+    };
+    const form = row.closest('.subagent-form');
+    return {
+      title: box(row.querySelector('.subagent-role-title')),
+      model: box(row.querySelector('.model-picker-button')),
+      thinking: box(row.querySelector('select')),
+      baseModel: box(form.querySelector('.subagent-model-field .model-picker-button')),
+      baseThinking: box(form.querySelector('.subagent-thinking-field select')),
+    };
+  });
+  const near = (a, b) => Math.abs(a - b) < 2;
+  assert.ok(layout.title.bottom <= layout.model.top + 1 && layout.title.bottom <= layout.thinking.top + 1, `${label}: role title sits above its controls`);
+  assert.ok(near(layout.model.left, layout.baseModel.left) && near(layout.model.width, layout.baseModel.width), `${label}: role model uses the base model column`);
+  assert.ok(near(layout.thinking.left, layout.baseThinking.left) && near(layout.thinking.width, layout.baseThinking.width), `${label}: role reasoning uses the base reasoning column`);
+  if (layout.thinking.top < layout.model.bottom - 1)
+    assert.ok(near(layout.model.top, layout.thinking.top), `${label}: role model and reasoning share one line like the base row`);
+}
 async function chooseRole(page, root, role, id, screenshot) {
   const button = root.locator(`[data-role-model="${role}"]`);
   await expect(button).toHaveClass('model-picker-button');
@@ -145,6 +169,7 @@ try {
       assert.equal(fields.background, fields.baseBackground, 'role thinking uses the base thinking surface');
       assert.equal(fields.providerFont, '11px', 'mobile picker provider text stays readable');
     }
+    await assertRoleColumns(roles, `global ${suffix}`);
     await roles.locator('button[type="submit"]').click();
     await expect.poll(() => saves.some((s) => s.path === '/api/subagent-defaults')).toBe(true);
     assert.deepEqual(global.roles.implement, { model: 'fixture/deep', thinking: 'medium' });
@@ -190,6 +215,7 @@ try {
     await projectRoles.locator('[data-role-thinking="explore"]').selectOption('high');
     await expect.poll(() => saves.some((s) => s.path === '/api/project-subagent-defaults')).toBe(true);
     await expect.poll(() => project.roles.explore).toEqual({ model: 'fixture/deep', thinking: 'high' });
+    await assertRoleColumns(projectRoles, `project ${suffix}`);
     await projectRoles.scrollIntoViewIfNeeded();
     await capture(page, { path: `test-results/step3b/roles-project-${suffix}.png` });
     await noOverflow(page, projectRoles);

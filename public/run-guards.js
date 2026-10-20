@@ -1,4 +1,6 @@
-import { t, bindText, getLanguage } from './i18n.js';
+import { t, bindText, bindAttribute, getLanguage } from './i18n.js';
+
+export const modelDisplayName = (id, models = []) => models.find((model) => model.id === id)?.name || id;
 
 export function renderBudgetStatus(root, budget) {
   root.replaceChildren();
@@ -31,11 +33,11 @@ export function renderBudgetStatus(root, budget) {
   }
 }
 
-export function renderRunGuard(parent, run, { disabled = false, onRetry = () => {} } = {}) {
+export function renderRunGuard(parent, run, { disabled = false, onRetry = () => {}, models = [] } = {}) {
   if (!parent) return;
   let root = parent.querySelector(':scope > .run-guards');
   if (!root) { root = document.createElement('div'); root.className = 'run-guards'; parent.prepend(root); }
-  const signature = JSON.stringify([run?.id, run?.status, run?.quota, run?.budget, disabled]);
+  const signature = JSON.stringify([run?.id, run?.status, run?.quota, run?.budget, disabled, (run?.quota?.candidates || []).map((candidate) => modelDisplayName(candidate.model, models))]);
   if (root.dataset.signature === signature) return;
   root.dataset.signature = signature; root.replaceChildren();
   if (!run) return;
@@ -52,7 +54,9 @@ export function renderRunGuard(parent, run, { disabled = false, onRetry = () => 
   for (const candidate of run.quota.candidates || []) {
     const button = document.createElement('button'); button.type = 'button'; button.className = 'secondary-button';
     button.dataset.retryModel = candidate.model; button.disabled = disabled || candidate.reason === 'unavailable';
-    bindText(button, () => t('routing.retry', { model: candidate.model }));
+    bindText(button, () => t('routing.retry', { model: modelDisplayName(candidate.model, models) }));
+    button.title = candidate.model;
+    bindAttribute(button, 'aria-label', () => `${t('routing.retry', { model: modelDisplayName(candidate.model, models) })} · ${candidate.model}`);
     button.onclick = () => onRetry(run, candidate.model);
     actions.append(button);
   }
@@ -60,7 +64,7 @@ export function renderRunGuard(parent, run, { disabled = false, onRetry = () => 
 }
 
 // Native dialog and existing Studio modal styles; values never enter HTML.
-export function confirmQuotaBilling(source, target) {
+export function confirmQuotaBilling(source, target, catalog = []) {
   const opener = document.activeElement;
   const dialog = document.createElement('dialog');
   dialog.className = 'modal compact'; dialog.dataset.quotaConfirm = '';
@@ -70,7 +74,8 @@ export function confirmQuotaBilling(source, target) {
   bindText(title, () => t('routing.billingTitle'));
   const models = document.createElement('p');
   models.style.overflowWrap = 'anywhere';
-  bindText(models, () => t('routing.billingModels', { source: source || t('routing.currentModel'), target }));
+  bindText(models, () => t('routing.billingModels', { source: modelDisplayName(source, catalog) || t('routing.currentModel'), target: modelDisplayName(target, catalog) }));
+  models.title = `${source || ''} → ${target}`;
   const note = document.createElement('p'); note.id = 'quota-billing-note';
   bindText(note, () => t('routing.billingNote'));
   const actions = document.createElement('div'); actions.className = 'modal-actions';

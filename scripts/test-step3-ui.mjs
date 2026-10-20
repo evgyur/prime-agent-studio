@@ -6,8 +6,9 @@ import { launchStudioBrowser } from './fixtures/browser.mjs';
 import { preferencesFixture } from './preview-preferences.mjs';
 import { join } from 'node:path';
 import { createDefaultLayout } from '../public/docking-layout.js';
-const watchdog = setTimeout(() => { console.error('Step 3 UI hard timeout'); process.exit(1); }, 180000);
+const watchdog = setTimeout(() => { console.error('Step 3 UI hard timeout'); process.exit(1); }, 220000);
 const models = ['swift', 'deep', 'risky'].map((name) => ({ id: `fixture/${name}`, name: name === 'swift' ? 'Swift' : name === 'deep' ? 'Deep' : 'Risky account', provider: 'fixture', reasoning: true, thinkingLevels: ['low', 'medium', 'high'], available: true }));
+models.push({ id: 'fixture/offline', name: 'Offline model', provider: 'fixture', available: false, availability: 'unavailable' });
 const controls = [];
 const fixture = await preferencesFixture({ runtime: {
   getStatus: async () => ({ available: true, version: 'fixture' }),
@@ -33,18 +34,31 @@ const fixture = await preferencesFixture({ runtime: {
 } });
 const cwd = join(fixture.temp, 'Projet de démonstration');
 const browser = await launchStudioBrowser();
-await mkdir('test-results/step3', { recursive: true });
+await mkdir('test-results/step3b', { recursive: true });
 const errors = [], external = [];
 async function capture(page, options) {
   await expect(page.locator('#toasts .toast')).toHaveCount(0, { timeout: 8000 });
   await page.screenshot(options);
+}
+async function chooseRole(page, root, role, id, screenshot) {
+  const button = root.locator(`[data-role-model="${role}"]`);
+  await expect(button).toHaveClass('model-picker-button');
+  await button.focus(); await page.keyboard.press('Enter');
+  await expect(page.locator('#model-dialog')).toBeVisible();
+  await expect(button).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.locator('#model-list .model-choice[data-model-id="fixture/offline"]')).toBeDisabled();
+  if (screenshot) await capture(page, { path: screenshot });
+  await page.locator(`#model-list .model-choice[data-model-id="${id}"]`).click();
+  await expect(page.locator('#model-dialog')).not.toBeVisible();
+  await expect(button).toHaveAttribute('aria-expanded', 'false');
+  await expect(button).toHaveAttribute('value', id);
 }
 async function noOverflow(page, panel) {
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
   assert.equal(await panel.evaluate((node) => node.scrollWidth > node.clientWidth + 1), false);
 }
 try {
-  for (const locale of ['fr-FR', 'en-US']) for (const width of [1440, 1100, 390]) for (const theme of width === 1440 ? ['dark', 'light'] : ['dark']) {
+  for (const locale of ['fr-FR', 'en-US']) for (const width of [1440, 1100, 390]) for (const theme of width !== 1100 ? ['dark', 'light'] : ['dark']) {
     const suffix = `${locale}-${width}-${theme}`;
     if (process.argv[2] && process.argv[2] !== suffix) continue;
     const context = await browser.newContext({ viewport: { width, height: width === 390 ? 844 : 1000 }, locale, hasTouch: width === 390, reducedMotion: 'reduce' });
@@ -59,7 +73,7 @@ try {
     let confirmedAttempts = 0;
     let fallback = { revision: 'fallback-1', automatic: false, models: ['fixture/swift', 'fixture/deep'] };
     let budgets = { revision: 'budget-1', run: { tokens: 1000, estimatedCost: 1 }, projects: { [cwd]: { tokens: 10000, estimatedCost: 10 } } };
-    let global = { model: '', thinking: '', roles: { explore: { model: 'fixture/swift', thinking: 'low' }, review: { model: 'fixture/deep', thinking: 'high' } } };
+    let global = { model: '', thinking: '', roles: { implement: { model: 'fixture/missing', thinking: 'high' }, explore: { model: 'fixture/swift', thinking: 'low' }, review: { model: 'fixture/deep', thinking: 'high' } } };
     let project = null;
     await context.route('**/*', async (route) => {
       const request = route.request(), url = new URL(request.url());
@@ -107,8 +121,30 @@ try {
       await expect(roles.locator(`[data-role-model="${role}"]`)).toBeVisible();
       await expect(roles.locator(`[data-role-thinking="${role}"]`)).toBeVisible();
     }
-    await roles.locator('[data-role-model="implement"]').selectOption('fixture/deep');
+    await expect(roles.locator('[data-role-model="implement"] .model-picker-name')).toContainText('fixture/missing');
+    await expect(roles.locator('[data-role-model="implement"] .model-picker-provider')).toContainText(/indisponible|unavailable/i);
+    await chooseRole(page, roles, 'implement', 'fixture/deep');
+    await chooseRole(page, roles, 'implement', '');
+    await expect(roles.locator('[data-role-model="implement"] .model-picker-name')).toHaveText(locale.startsWith('fr') ? 'Hériter du défaut' : 'Inherit default');
+    await chooseRole(page, roles, 'implement', 'fixture/deep');
+    await chooseRole(page, roles, 'explore', '');
+    await chooseRole(page, roles, 'explore', 'fixture/swift');
+    await chooseRole(page, roles, 'review', '', `test-results/step3b/role-picker-${suffix}.png`);
+    await chooseRole(page, roles, 'review', 'fixture/deep');
     await roles.locator('[data-role-thinking="implement"]').selectOption('medium');
+    if (width === 390) {
+      const fields = await roles.locator('.subagent-role-row').first().evaluate((row) => {
+        const model = row.querySelector('.model-picker-button'), thinking = row.querySelector('select');
+        return { modelHeight: model.getBoundingClientRect().height, thinkingHeight: thinking.getBoundingClientRect().height,
+          modelFont: getComputedStyle(model.querySelector('.model-picker-name')).fontSize, thinkingFont: getComputedStyle(thinking).fontSize,
+          providerFont: getComputedStyle(model.querySelector('.model-picker-provider')).fontSize,
+          background: getComputedStyle(thinking).backgroundColor, baseBackground: getComputedStyle(row.closest('.subagent-form').querySelector('.subagent-thinking-field select')).backgroundColor };
+      });
+      assert.equal(fields.modelHeight, fields.thinkingHeight, 'mobile role fields have equal height');
+      assert.equal(fields.modelFont, fields.thinkingFont, 'mobile role fields have equal primary text size');
+      assert.equal(fields.background, fields.baseBackground, 'role thinking uses the base thinking surface');
+      assert.equal(fields.providerFont, '11px', 'mobile picker provider text stays readable');
+    }
     await roles.locator('button[type="submit"]').click();
     await expect.poll(() => saves.some((s) => s.path === '/api/subagent-defaults')).toBe(true);
     assert.deepEqual(global.roles.implement, { model: 'fixture/deep', thinking: 'medium' });
@@ -117,7 +153,11 @@ try {
       const thinkingBounds = await roles.locator('#default-subagent-thinking').boundingBox();
       assert.ok(thinkingBounds.width >= 220, `Mobile base reasoning needs >=220px, got ${thinkingBounds.width}`);
     }
-    await capture(page, { path: `test-results/step3/roles-global-${suffix}.png` });
+    await capture(page, { path: `test-results/step3b/roles-global-${suffix}.png` });
+    if (width === 390) {
+      await roles.locator('[data-role-thinking="review"]').scrollIntoViewIfNeeded();
+      await capture(page, { path: `test-results/step3b/roles-global-lower-${suffix}.png` });
+    }
     const routing = page.locator('#engine-settings .routing-settings');
     const fallbackForm = routing.locator('[data-routing-form="fallback"]');
     await expect(fallbackForm.locator('[data-fallback-automatic]')).not.toBeChecked();
@@ -131,9 +171,9 @@ try {
     await budgetForm.locator('button[type="submit"]').click();
     await expect.poll(() => budgets.run.tokens).toBe(2000);
     await fallbackForm.scrollIntoViewIfNeeded(); await noOverflow(page, routing);
-    await capture(page, { path: `test-results/step3/fallback-${suffix}.png` });
+    await capture(page, { path: `test-results/step3b/fallback-${suffix}.png` });
     await budgetForm.scrollIntoViewIfNeeded();
-    await capture(page, { path: `test-results/step3/budgets-${suffix}.png` });
+    await capture(page, { path: `test-results/step3b/budgets-${suffix}.png` });
     await page.keyboard.press('Escape');
     // The project Agents panel is a separate policy scope, not a copy of globals.
     await expect(page.locator('#model-config-dialog')).not.toBeVisible();
@@ -144,12 +184,14 @@ try {
     const projectRoles = page.locator('#project-subagent-settings');
     await projectRoles.locator('.subagent-scope').selectOption('project');
     await expect(projectRoles.locator('[data-role-model="explore"]')).toBeVisible();
-    await projectRoles.locator('[data-role-model="explore"]').selectOption('fixture/deep');
+    await chooseRole(page, projectRoles, 'explore', '');
+    await expect.poll(() => project.roles?.explore?.model || '').toBe('');
+    await chooseRole(page, projectRoles, 'explore', 'fixture/deep');
     await projectRoles.locator('[data-role-thinking="explore"]').selectOption('high');
     await expect.poll(() => saves.some((s) => s.path === '/api/project-subagent-defaults')).toBe(true);
     await expect.poll(() => project.roles.explore).toEqual({ model: 'fixture/deep', thinking: 'high' });
     await projectRoles.scrollIntoViewIfNeeded();
-    await capture(page, { path: `test-results/step3/roles-project-${suffix}.png` });
+    await capture(page, { path: `test-results/step3b/roles-project-${suffix}.png` });
     await noOverflow(page, projectRoles);
     await page.locator('#close-inspector').click();
     const before = controls.length;
@@ -162,7 +204,7 @@ try {
     await expect(warning).toBeVisible();
     await expect(warning).toContainText('800');
     await noOverflow(page, warning);
-    await capture(page, { path: `test-results/step3/budget-warning-${suffix}.png` });
+    await capture(page, { path: `test-results/step3b/budget-warning-${suffix}.png` });
     await page.locator('#toggle-details').click();
     await page.locator('#inspector-tab-session').click();
     await page.locator('#detail-performance').click();
@@ -170,7 +212,7 @@ try {
     await expect(performance.locator('.run-guard[data-kind="budget"]')).toBeVisible();
     await expect(performance.locator('.run-guard[data-kind="budget"]')).toContainText('800');
     await noOverflow(page, performance);
-    await capture(page, { path: `test-results/step3/performance-warning-${suffix}.png` });
+    await capture(page, { path: `test-results/step3b/performance-warning-${suffix}.png` });
     await page.keyboard.press('Escape');
     await page.locator('#close-inspector').click();
     run.emit({ kind: 'budget', budget: { status: 'paused', tokens: 1000, estimatedCost: 1, limits: { tokens: 1000, estimatedCost: 1 }, costKnown: true } });
@@ -178,7 +220,7 @@ try {
     await expect(page.locator('.agent-question:visible')).toBeVisible();
     await expect(page.locator('.agent-question:visible')).toContainText(locale.startsWith('fr') ? 'Arrêter' : 'Stop');
     await noOverflow(page, page.locator('.agent-question:visible'));
-    await capture(page, { path: `test-results/step3/budget-question-${suffix}.png` });
+    await capture(page, { path: `test-results/step3b/budget-question-${suffix}.png` });
     await page.locator('.agent-question:visible input[type="radio"]').first().check();
     await page.locator('.agent-question:visible button[type="submit"]').click();
     await expect.poll(() => run.answers.length).toBe(1);
@@ -189,7 +231,10 @@ try {
     await expect(quota).toContainText('2030');
     await noOverflow(page, quota);
     await expect(quota.locator('[data-retry-model="fixture/deep"]')).toBeEnabled();
-    await capture(page, { path: `test-results/step3/quota-reset-${suffix}.png` });
+    await expect(quota.locator('[data-retry-model="fixture/deep"]')).toHaveText(locale.startsWith('fr') ? 'Relancer avec Deep' : 'Retry with Deep');
+    await expect(quota.locator('[data-retry-model="fixture/deep"]')).toHaveAttribute('title', 'fixture/deep');
+    await expect(quota.locator('[data-retry-model="fixture/deep"]')).toHaveAttribute('aria-label', /fixture\/deep/);
+    await capture(page, { path: `test-results/step3b/quota-reset-${suffix}.png` });
     const composerModel = await page.locator('#model-picker-label').textContent();
     await quota.locator('[data-retry-model="fixture/deep"]').click();
     await expect.poll(() => saves.some((s) => s.path.endsWith('/quota-retry'))).toBe(true);
@@ -221,16 +266,22 @@ try {
 
     await expect(page.locator('#model-picker-label')).toHaveText(composerModel);
     await expect(quota.locator('[data-retry-model="fixture/unavailable"]')).toBeDisabled();
+    if (width === 390) {
+      await expect.poll(async () => quota.locator('[data-retry-model]').evaluateAll((buttons) =>
+        buttons.length === 3 && buttons.every((button) => button.getBoundingClientRect().height >= 44)),
+      { message: 'mobile retry buttons settle at 44px touch targets' }).toBe(true);
+    }
     const retryRequests = saves.filter((s) => s.path.endsWith('/quota-retry')).length;
     const runsBeforeConfirm = controls.length;
     await quota.locator('[data-retry-model="fixture/risky"]').click();
     const confirmation = page.locator('dialog[data-quota-confirm]');
     await expect(confirmation).toBeVisible();
     await expect(confirmation.getByRole('button', { name: /Annuler|Cancel/ })).toBeFocused();
-    await expect(confirmation).toContainText('fixture/swift');
-    await expect(confirmation).toContainText('fixture/risky');
+    await expect(confirmation).toContainText('Swift');
+    await expect(confirmation).toContainText('Risky account');
+    await expect(confirmation.locator('p').first()).toHaveAttribute('title', 'fixture/swift → fixture/risky');
     await noOverflow(page, confirmation);
-    await capture(page, { path: `test-results/step3/billing-confirmation-${suffix}.png` });
+    await capture(page, { path: `test-results/step3b/billing-confirmation-${suffix}.png` });
     await confirmation.getByRole('button', { name: /Annuler|Cancel/ }).click();
     await expect(confirmation).not.toBeVisible();
     assert.equal(saves.filter((s) => s.path.endsWith('/quota-retry')).length, retryRequests);
@@ -269,7 +320,7 @@ try {
       await expect.poll(() => overviewReads).toBeGreaterThan(0);
       await expect(page.locator('#messages')).toContainText('Automatic retry stream remains visible.');
       await expect(page.locator('#model-picker-label')).toHaveText(previousModel);
-      await capture(page, { path: 'test-results/step3/automatic-adoption-en-US-1440-dark.png' });
+      await capture(page, { path: 'test-results/step3b/automatic-adoption-en-US-1440-dark.png' });
     }
     await context.close(); console.log(`PASS Step 3 ${suffix}`);
   }

@@ -1286,6 +1286,7 @@ function updateComposer(view = null) {
   const running = isRunning(run);
   const guardRun = run || (target?.guardRunToken === target?.token ? state.runs.get(target?.guardRunId) : null) || [...state.runs.values()].filter((entry) => viewSessionId && entry.sessionId === viewSessionId).sort((a, b) => String(b.startedAt).localeCompare(String(a.startedAt)))[0];
   renderRunGuard(node('composer-form', 'form'), guardRun, {
+    models: state.models,
     disabled: state.readOnly || !state.online || state.sending || running,
     onRetry: (failed, model) => void retryQuotaRun(failed, model, target),
   });
@@ -3807,7 +3808,7 @@ async function retryQuotaRun(failed, model, origin = null) {
   const confirmBillingChange = candidate.automaticEligible !== true && !['eligible', 'automatic_disabled'].includes(candidate.reason);
   state.sending = true;
   try {
-    if (confirmBillingChange && !await confirmQuotaBilling(failed.model || failed.quota.provider, model)) return;
+    if (confirmBillingChange && !await confirmQuotaBilling(failed.model || failed.quota.provider, model, state.models)) return;
     // Closing a modal after navigation never sends into a different conversation.
     if (state.readOnly || !state.online || (origin && (convViews?.byId(origin.id) !== origin || origin.token !== token))) return;
     if (isRunning(origin ? runForView(origin) : activeRun())) return;
@@ -3820,7 +3821,7 @@ async function retryQuotaRun(failed, model, origin = null) {
       // Identity may have changed since the candidate list was generated.
       // The server asks for fresh consent; retry once, never auto-confirm or loop.
       if (confirmBillingChange || error.code !== 'quota_confirmation_required') throw error;
-      if (!await confirmQuotaBilling(failed.model || failed.quota.provider, model)) return;
+      if (!await confirmQuotaBilling(failed.model || failed.quota.provider, model, state.models)) return;
       if (state.readOnly || !state.online || (origin && (convViews?.byId(origin.id) !== origin || origin.token !== token))) return;
       if (isRunning(origin ? runForView(origin) : activeRun())) return;
       run = await api(retryPath, { method: 'POST', body: { model, confirmBillingChange: true } });

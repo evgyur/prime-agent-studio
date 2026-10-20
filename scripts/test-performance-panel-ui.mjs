@@ -29,10 +29,10 @@ for (const [id, project, title] of [['alpha', cwd, 'Alpha conversation'], ['beta
 }
 for (let day = 0; day < 12; day++) {
   const ts = now - day * 86400000, rows = [];
-  for (const [project, model, count, cost] of [[cwd, 'swift', 3, 0.1], [cwd, 'deep', 1, 1], [other, 'orbit', 1, 0.2]]) {
+  for (const [project, model, count, cost] of [[cwd, 'swift', 4, 0.1], [cwd, 'deep', 1, 1], [other, 'orbit', 1, 0.2]]) {
     for (let n = 0; n < count; n++) {
       const base = { ts, project, provider: 'fixture', model }, id = `${day}-${model}-${n}`;
-      rows.push({ ...base, id: `${id}-start`, type: 'run_start' }, { ...base, id: `${id}-end`, type: 'run_end', status: n === 2 ? 'failed' : 'completed', errorClass: n === 2 ? 'runtime' : null, durationMs: model === 'deep' ? 8000 : 2400, ttftMs: 320 }, { ...base, id: `${id}-usage`, type: 'message_end', usage: { input: 1000, output: 200, cacheRead: 4000, cacheWrite: 500, cost } });
+      rows.push({ ...base, id: `${id}-start`, type: 'run_start' }, { ...base, id: `${id}-end`, type: 'run_end', status: n === 3 ? 'stopped' : n === 2 ? 'failed' : 'completed', errorClass: n === 2 ? 'runtime' : null, durationMs: model === 'deep' ? 8000 : 2400, ttftMs: 320 }, { ...base, id: `${id}-usage`, type: 'message_end', usage: { input: 1000, output: 200, cacheRead: 4000, cacheWrite: 500, cost } });
     }
   }
   await writeFile(join(dataDir, 'metrics', new Date(ts).toISOString().slice(0, 10) + '.jsonl'), jsonl(rows));
@@ -52,7 +52,7 @@ await new Promise((resolve) => app.server.listen(0, '127.0.0.1', resolve));
 const url = `http://127.0.0.1:${app.server.address().port}`;
 const browser = await launchStudioBrowser();
 const errors = [];
-await mkdir('test-results/performance-panel', { recursive: true });
+await mkdir('test-results/step3b/performance', { recursive: true });
 async function setup(width, locale = 'en-US', docked = true) {
   const context = await browser.newContext({ viewport: { width, height: 900 }, locale, reducedMotion: 'reduce', isMobile: width === 390, hasTouch: width === 390 });
   await context.addInitScript(({ cwd, layout }) => {
@@ -98,7 +98,20 @@ async function toolbarAligned(panel) {
 }
 async function runStatusGroups(panel) {
   const groups = panel.locator('.performance-run-status');
-  await expect(groups).toHaveCount(2);
+  await expect(groups).toHaveCount(3);
+  assert.equal(await groups.first().evaluate((node) => getComputedStyle(node).fontSize), '11px', 'run counts stay readable');
+  await expect(groups.nth(0)).toHaveText(/^(Succeeded|Réussies) \d+$/);
+  await expect(groups.nth(2)).toHaveText(/^(Stopped|Arrêtées) [1-9]\d*$/);
+  const rate = panel.locator('[data-group="model"] tbody tr').filter({ hasText: 'fixture/swift' }).locator('td').nth(1);
+  const to = new Date(now).toISOString().slice(0, 10);
+  const from = new Date(Date.parse(to) - 6 * 86400000).toISOString().slice(0, 10);
+  const summary = await (await panel.page().request.get(`${url}/api/metrics/summary?from=${from}&to=${to}&groupBy=model`)).json();
+  const row = summary.groups.find((row) => row.key === 'fixture/swift');
+  assert.ok(row.finishedRuns > row.completedRuns + row.failedRuns, 'fixture includes stopped runs');
+  const expected = row.completedRuns / (row.completedRuns + row.failedRuns);
+  const actual = Number((await rate.textContent()).replace(',', '.').replace(/[^0-9.]/g, ''));
+  assert.ok(Math.abs(actual - expected * 100) < .06, `rate ${actual} excludes stopped runs (${expected * 100})`);
+  await expect(rate).toHaveAttribute('title', /(?:Stopped|Arrêtées): [1-9]\d*/);
   for (const group of await groups.all()) {
     await expect(group).toHaveText(/\S+ \d+/);
     assert.equal(await group.evaluate((node) => {
@@ -112,7 +125,7 @@ try {
   // then a session round trip. The baseline option must fail the open assertion.
   {
     const { page, context } = await setup(1440, 'en-US', false);
-    if (process.argv.includes('--baseline')) await page.route('**/public/inspector.js', (route) => route.fulfill({ path: 'test-results/performance-panel/inspector-before.js', contentType: 'text/javascript' }));
+    if (process.argv.includes('--baseline')) await page.route('**/public/inspector.js', (route) => route.fulfill({ path: 'test-results/step3b/performance/inspector-before.js', contentType: 'text/javascript' }));
     let reads = 0;
     await page.route('**/api/inspector?**', async (route) => {
       const response = await route.fetch(), data = await response.json(); reads++;
@@ -177,14 +190,14 @@ try {
         await expect(panel.locator('.performance-kpis dt')).toContainText(['Coût estimé', 'Tokens', 'Taux de cache', 'Exécutions démarrées', 'Durée médiane', 'Latence du premier token']);
         await expect(panel.locator('.performance-kpis')).not.toContainText(/jeton/i);
       }
-      await page.screenshot({ path: `test-results/performance-panel/docked-${width}-${locale}.png`, fullPage: true });
+      await page.screenshot({ path: `test-results/step3b/performance/docked-${width}-${locale}.png`, fullPage: true });
       if (width === 1440 && locale === 'en-US') {
         let release;
         const gate = new Promise((resolve) => { release = resolve; });
         await page.route('**/api/metrics/summary?**', async (route) => { await gate; await route.continue(); });
         await panel.locator('[data-action="refresh"]').click();
         await expect(panel.locator('[data-state="loading"]')).toBeVisible();
-        await page.screenshot({ path: 'test-results/performance-panel/state-loading.png', fullPage: true });
+        await page.screenshot({ path: 'test-results/step3b/performance/state-loading.png', fullPage: true });
         release(); await expect(panel.locator('[data-state="ready"]')).toBeVisible();
         await page.unroute('**/api/metrics/summary?**');
         await panel.locator('[data-control="chart"]').selectOption('tokens');
@@ -222,11 +235,11 @@ try {
         await panel.locator('[data-control="scope"]').selectOption('all');
         await expect(panel.locator('[data-state="ready"]')).toBeVisible();
         await chartScale(panel);
-        await page.screenshot({ path: 'test-results/performance-panel/docked-light.png', fullPage: true });
+        await page.screenshot({ path: 'test-results/step3b/performance/docked-light.png', fullPage: true });
         await panel.locator('[data-group="model"]').scrollIntoViewIfNeeded();
-        await page.screenshot({ path: 'test-results/performance-panel/model-ranking.png', fullPage: true });
+        await page.screenshot({ path: 'test-results/step3b/performance/model-ranking.png', fullPage: true });
         // Error and partial states use the same real ledger with transport/metadata faults.
-        for (const state of ['error', 'empty', 'no-daily', 'backfilling', 'incomplete', 'truncated', 'unknown']) {
+        for (const state of ['error', 'empty', 'no-daily', 'backfilling', 'incomplete', 'truncated', 'unknown', 'stopped-only']) {
           await page.route('**/api/metrics/summary?**', async (route) => {
             if (state === 'error') return route.fulfill({ status: 503, json: { error: 'fixture failure' } });
             const response = await route.fetch(), value = await response.json();
@@ -238,12 +251,15 @@ try {
             } else if (state === 'no-daily') {
               if (new URL(route.request().url()).searchParams.get('groupBy') === 'day') value.groups = [];
             }
+            else if (state === 'stopped-only') {
+              for (const row of [value.totals, ...value.groups]) Object.assign(row, { runs: 3, finishedRuns: 3, completedRuns: 0, failedRuns: 0 });
+            }
             else if (state === 'unknown') { value.totals.costKnown = false; value.totals.unknownCostMessages = 2; value.totals.duration.medianMs = value.totals.timeToFirstToken.medianMs = null; }
             else { value.complete = false; if (state !== 'incomplete') value[state] = true; }
             return route.fulfill({ json: value });
           });
           await panel.locator('[data-action="refresh"]').click();
-          await expect(panel.locator(`[data-state="${['unknown', 'no-daily'].includes(state) ? 'ready' : state}"]`)).toBeVisible();
+          await expect(panel.locator(`[data-state="${['unknown', 'no-daily', 'stopped-only'].includes(state) ? 'ready' : state}"]`)).toBeVisible();
           if (state === 'empty') {
             await expect(panel.locator('.performance-status')).toContainText('Aucune mesure');
             await expect(panel.locator('.performance-body')).toBeEmpty();
@@ -256,28 +272,36 @@ try {
             await expect(panel.locator('.performance-chart')).toHaveCount(0);
             await expect(panel.locator('[data-group="model"] tbody tr')).not.toHaveCount(0);
           }
+          if (state === 'stopped-only') {
+            await expect(panel.locator('.performance-run-status').nth(2)).toHaveText('Arrêtées 3');
+            await expect(panel.locator('[data-group="model"] tbody tr').first().locator('td').nth(1)).toHaveText('Non disponible');
+          }
           if (state === 'unknown') { await expect(panel.locator('.performance-kpis')).toContainText('Inconnu'); await expect(panel.locator('.performance-kpis')).toContainText('Non disponible'); }
-          await page.screenshot({ path: `test-results/performance-panel/state-${state}.png`, fullPage: true });
+          await page.screenshot({ path: `test-results/step3b/performance/state-${state}.png`, fullPage: true });
           await page.unroute('**/api/metrics/summary?**');
         }
         await panel.locator('[data-action="refresh"]').click(); await expect(panel.locator('[data-state="ready"]')).toBeVisible();
       }
       await context.close(); console.log(`PASS docked ${width} ${locale}`);
     }
-    for (const width of [1440, 390]) {
-      const { page, context } = await setup(width, 'en-US', false);
+    for (const [width, locale, theme] of [[1440, 'en-US', 'dark'], [390, 'en-US', 'dark'], [390, 'en-US', 'light'], [390, 'fr-FR', 'dark'], [390, 'fr-FR', 'light']]) {
+      const { page, context } = await setup(width, locale, false);
+      await context.addInitScript((theme) => localStorage.setItem('prime-studio.preferences', JSON.stringify({ theme })), theme);
       await page.goto(url);
       if (width === 390) await page.locator('#toggle-details').click();
       await page.locator('#detail-performance').click();
       const panel = page.locator('.performance-dialog .performance-panel');
       await expect(panel.locator('[data-state="ready"]')).toBeVisible();
       await noOverflow(page);
+      await runStatusGroups(panel);
       await toolbarAligned(panel);
       await chartScale(panel);
-      await page.screenshot({ path: `test-results/performance-panel/classic-${width}.png`, fullPage: true });
+      const suffix = locale === 'en-US' && theme === 'dark' ? width : `${width}-${locale}-${theme}`;
+      await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+      await page.screenshot({ path: `test-results/step3b/performance/classic-${suffix}.png`, fullPage: true });
       await page.keyboard.press('Escape'); await expect(page.locator('.performance-dialog')).not.toBeVisible();
       await expect(page.locator('#detail-performance')).toBeFocused();
-      await context.close(); console.log(`PASS classic ${width}`);
+      await context.close(); console.log(`PASS classic ${width} ${locale} ${theme}`);
     }
   }
   assert.deepEqual(errors, []);

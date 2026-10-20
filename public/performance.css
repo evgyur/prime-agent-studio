@@ -15,7 +15,7 @@
 .performance-kpis dt { font-size: 11px; color: var(--muted); }
 .performance-kpis dd { margin: 5px 0; font-size: 23px; font-weight: 500; overflow-wrap: anywhere; }
 .performance-kpis small { font-size: 10px; line-height: 1.6; color: var(--muted); }
-.performance-run-status { white-space: nowrap; }
+.performance-run-status { white-space: nowrap; font-size: 11px; }
 .performance-section-head { justify-content: space-between; align-items: center; margin: 18px 0 12px; }
 .performance-section-head label { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); }
 .performance-plot { display: flex; gap: 8px; }

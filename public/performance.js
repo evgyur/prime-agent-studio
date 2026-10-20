@@ -7,6 +7,9 @@ const node = (tag, className = '', text = '') => {
   value.textContent = text;
   return value;
 };
+export const successRate = (row) => row.completedRuns + row.failedRuns ? row.completedRuns / (row.completedRuns + row.failedRuns) : null;
+// The ledger only accepts completed, failed and stopped terminal statuses.
+export const stoppedRuns = (row) => Math.max(0, row.finishedRuns - row.completedRuns - row.failedRuns);
 const totalTokens = (row) => Object.values(row.tokens).reduce((sum, n) => sum + n, 0);
 const hasMeasurements = (totals) => Object.values(totals).some((value) =>
   typeof value === 'number' ? value > 0 : value && typeof value === 'object' && hasMeasurements(value));
@@ -97,7 +100,8 @@ export function createPerformance({ api, getContext }) {
     kpi('metrics.cacheRate', percent(totals.cacheHitRatio));
     kpi('performance.runs', number(totals.runs), [
       node('span', 'performance-run-status', `${t('performance.completed')} ${number(totals.completedRuns)}`), ' · ',
-      node('span', 'performance-run-status', `${t('performance.failed')} ${number(totals.failedRuns)}`),
+      node('span', 'performance-run-status', `${t('performance.failed')} ${number(totals.failedRuns)}`), ' · ',
+      node('span', 'performance-run-status', `${t('performance.stopped')} ${number(stoppedRuns(totals))}`),
     ]);
     kpi('performance.duration', duration(totals.duration));
     kpi('performance.ttft', duration(totals.timeToFirstToken));
@@ -177,11 +181,12 @@ export function createPerformance({ api, getContext }) {
     const tbody = node('tbody');
     for (const row of [...rows].sort((a, b) => b[sort] - a[sort] || a.key.localeCompare(b.key))) {
       const tr = node('tr');
-      const values = [projects ? row.name : row.key, number(row.runs), percent(row.finishedRuns ? row.completedRuns / row.finishedRuns : null), number(totalTokens(row)), percent(row.cacheHitRatio), money(row), row.completedRuns ? money({ ...row, cost: row.cost / row.completedRuns }) : t('performance.na'), duration(row.duration), duration(row.timeToFirstToken), `${number(row.errors['4xx'])} / ${number(row.errors['5xx'])}`];
+      const values = [projects ? row.name : row.key, number(row.runs), percent(successRate(row)), number(totalTokens(row)), percent(row.cacheHitRatio), money(row), row.completedRuns ? money({ ...row, cost: row.cost / row.completedRuns }) : t('performance.na'), duration(row.duration), duration(row.timeToFirstToken), `${number(row.errors['4xx'])} / ${number(row.errors['5xx'])}`];
       values.forEach((value, index) => {
         const cell = node(index ? 'td' : 'th', '', value);
         if (!index) cell.scope = 'row';
         cell.dataset.label = t(labels[index]);
+        if (index === 2) cell.title = `${t('performance.successNote')} · ${t('performance.stopped')}: ${number(stoppedRuns(row))}`;
         tr.append(cell);
       });
       tbody.append(tr);

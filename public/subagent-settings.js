@@ -98,17 +98,17 @@ export function createSubagentSettings({
     bindText(label, () => tr(`routing.${role}`));
     bindText(hint, () => tr(`routing.${role}Note`));
     title.append(label, hint);
-    const model = document.createElement('select');
+    const model = modelButton.cloneNode(true);
+    model.removeAttribute('id');
     model.dataset.roleModel = role;
-    bindAttribute(model, 'aria-label', () => `${tr(`routing.${role}`)} · ${tr('ui.modele')}`);
     const thinking = document.createElement('select');
     thinking.dataset.roleThinking = role;
     bindAttribute(thinking, 'aria-label', () => `${tr(`routing.${role}`)} · ${tr('ui.reflexion_3')}`);
     const change = () => {
       const value = {};
       if (model.value) value.model = model.value;
-      const selected = getModels().find((entry) => entry.id === model.value);
-      if (thinking.value && (!selected || selected.thinkingLevels?.includes(thinking.value))) value.thinking = thinking.value;
+      const selected = getModels().find((entry) => entry.id === (model.value || inheritedRoleModel(role)));
+      if (thinking.value && (!selected || (selected.thinkingLevels || (selected.reasoning ? Object.keys(thinkingLabels) : ['off'])).includes(thinking.value))) value.thinking = thinking.value;
       draft.roles = { ...draft.roles };
       if (Object.keys(value).length) draft.roles[role] = value;
       else delete draft.roles[role];
@@ -116,33 +116,57 @@ export function createSubagentSettings({
       renderRoles();
       if (project) void save();
     };
-    model.onchange = thinking.onchange = change;
+    thinking.onchange = change;
+    model.onclick = () => {
+      if (busy || !data || model.matches(':disabled')) return;
+      const turn = generation;
+      openModelPicker({
+        button: model,
+        value: model.value,
+        get title() { return `${tr(`routing.${role}`)} · ${tr('ui.modele')}`; },
+        get defaultLabel() { return tr('routing.inherit'); },
+        get defaultDetail() { return inheritedRoleName(role); },
+        onSelect(id) {
+          if (turn !== generation || busy || !data || model.matches(':disabled')) return;
+          model.value = id || '';
+          change();
+        },
+      });
+    };
     row.append(title, model, thinking);
     roleSection.append(row);
     roleFields.set(role, { model, thinking });
   }
   $('.subagent-fields').append(roleSection);
+  function inheritedRoleModel(role) {
+    return (project ? data?.global?.roles?.[role]?.model : '') || draft.model || context.mainModel || '';
+  }
+  function inheritedRoleName(role) {
+    const id = inheritedRoleModel(role);
+    return getModels().find((entry) => entry.id === id)?.name || id || tr('ui.modele_natif_sinon_parent');
+  }
   function renderRoles() {
     for (const [role, fields] of roleFields) {
       const value = draft.roles?.[role] || {};
-      fields.model.replaceChildren(option('', () => tr('routing.inherit')));
-      for (const model of getModels()) {
-        const entry = option(model.id, model.name || model.id);
-        entry.disabled = model.available === false || model.availability === 'unavailable';
-        fields.model.append(entry);
-      }
-      if (value.model && !getModels().some((model) => model.id === value.model)) {
-        const missing = option(value.model, () => tr('common.unavailable', { value1: value.model }));
-        missing.disabled = true;
-        fields.model.append(missing);
-      }
+      const selected = getModels().find((entry) => entry.id === value.model);
+      const unavailable = value.model && (!selected || selected.available === false || selected.availability === 'unavailable');
       fields.model.value = value.model || '';
+      bindText(fields.model.querySelector('.model-picker-name'), () => selected?.name ||
+        (value.model ? tr('common.unavailable', { value1: value.model }) : tr('routing.inherit')));
+      bindText(fields.model.querySelector('.model-picker-provider'), () => unavailable ? tr('ui.modele_indisponible') :
+        selected?.provider || inheritedRoleName(role));
+      bindAttribute(fields.model, 'title', () => value.model || inheritedRoleModel(role) || tr('routing.inherit'));
+      bindAttribute(fields.model, 'aria-label', () => `${tr(`routing.${role}`)} · ${tr('ui.modele')}: ${
+        selected?.name || value.model || tr('routing.inherit')}${selected ? ` · ${selected.id}` : ''}${unavailable ? ` · ${tr('ui.modele_indisponible')}` : ''}`);
       fields.thinking.replaceChildren(option('', () => tr('routing.inherit')));
-      const inheritedModel = data?.effective?.roles?.[role]?.model || draft.model || context.mainModel;
-      const model = getModels().find((entry) => entry.id === (value.model || inheritedModel));
-      const levels = model ? model.thinkingLevels || [] : Object.keys(thinkingLabels);
+      const model = getModels().find((entry) => entry.id === (value.model || inheritedRoleModel(role)));
+      const levels = model ? model.thinkingLevels || (model.reasoning ? Object.keys(thinkingLabels) : ['off']) : Object.keys(thinkingLabels);
       for (const level of levels) fields.thinking.append(option(level, () => thinkingLabels[level] || level));
-      if (value.thinking && !levels.includes(value.thinking)) fields.thinking.append(option(value.thinking, () => thinkingLabels[value.thinking] || value.thinking));
+      if (value.thinking && !levels.includes(value.thinking)) {
+        const missing = option(value.thinking, () => tr('common.unavailable', { value1: thinkingLabels[value.thinking] || value.thinking }));
+        missing.disabled = true;
+        fields.thinking.append(missing);
+      }
       fields.thinking.value = value.thinking || '';
     }
   }

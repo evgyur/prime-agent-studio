@@ -4018,6 +4018,7 @@ a.sidebar-settings {
   font-size: 11px;
 }
 .subagent-controls .model-picker-button,
+.subagent-role-row .model-picker-button,
 .engine-field .model-picker-button {
   display: flex;
   width: 100%;
@@ -4039,7 +4040,8 @@ a.sidebar-settings {
   width: 17px;
   height: 17px;
 }
-.subagent-controls .subagent-thinking-field select {
+.subagent-controls .subagent-thinking-field select,
+.subagent-role-row select {
   display: block;
   width: 100%;
   min-width: 0;
@@ -4058,6 +4060,7 @@ a.sidebar-settings {
   overflow-wrap: anywhere;
 }
 .subagent-controls :focus-visible,
+.subagent-role-row :focus-visible,
 .subagent-scope:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -4416,6 +4419,14 @@ a.sidebar-settings {
   }
   .model-config-grid .model-config-wide {
     grid-column: auto;
+  }
+  .model-config-modal .subagent-form .model-picker-button {
+    height: 46px;
+    padding-block: 5px;
+    font-size: 16px;
+  }
+  .model-config-modal .subagent-form .model-picker-provider {
+    font-size: 11px;
   }
   .model-config-modal input:not([type='checkbox']),
   .model-config-modal select {

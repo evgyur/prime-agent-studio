@@ -1027,3 +1027,23 @@ test('LAN full control reaches former local-only routes, consultation stays bloc
   // Health metadata never leaves the PC, even for full control.
   assert.equal((await full.api('/api/health', { headers: fullHeaders })).status, 404);
 });
+
+test('routing and budget preferences require authenticated full control over LAN', async (t) => {
+  for (const readOnly of [false, true]) {
+    const f = await fixture(t, { readOnly });
+    const Cookie = await f.authenticate();
+    for (const path of ['/api/quota-fallback', '/api/budgets']) {
+      assert.equal((await f.api(path)).status, 401);
+      const state = await f.api(path, { headers: { Cookie } });
+      assert.equal(state.status, readOnly ? 404 : 200, state.text);
+      const write = await f.api(path, { method: 'PUT', body: JSON.stringify(state.json),
+        headers: { Cookie, 'Content-Type': 'application/json' } });
+      assert.equal(write.status, readOnly ? 405 : 200, write.text);
+    }
+    const retry = await f.api('/api/runs/00000000-0000-0000-0000-000000000000/quota-retry', {
+      method: 'POST', body: JSON.stringify({ model: 'test/model' }),
+      headers: { Cookie, 'Content-Type': 'application/json' },
+    });
+    assert.equal(retry.status, readOnly ? 405 : 404);
+  }
+});

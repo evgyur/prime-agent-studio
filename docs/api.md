@@ -6,6 +6,19 @@ L’API publique v1 expose un contrat générique et documenté pour piloter un 
 
 La référence exacte du contrat est [openapi-v1.json](api/openapi-v1.json), générée depuis `lib/public-api-contract.mjs`. Ce guide la décrit ; en cas de doute, le fichier JSON généré fait foi.
 
+## Mesures d’utilisation
+
+`GET /api/v1/metrics` exige `read`. Les règles de calcul sont celles du résumé interne des mesures. Les totaux et chaque groupe ne comprennent que les projets autorisés par le token, même sans filtre de projet.
+
+- `from` et `to` : dates UTC inclusives (`YYYY-MM-DD`) ; par défaut, les 90 derniers jours jusqu’à aujourd’hui. Une date impossible ou des bornes inversées donnent `400`.
+- `groupBy` : `day` (par défaut), `model` ou `project`.
+- `project` : identifiant opaque `p_…` facultatif obtenu avec `GET /api/v1/projects`. Les clés des groupes de projets utilisent ces mêmes identifiants. Un identifiant valide mais inconnu ou non autorisé donne `404` ; un chemin ou un identifiant interne des mesures donne `400`.
+- Un paramètre inconnu ou répété donne `400`.
+
+Les champs publics `rowsRead`, `bytesRead` et `dropped` valent `null` : les compteurs du journal partagé pourraient révéler l’activité d’un autre projet. Les indicateurs de santé et de complétude restent conservateurs sur l’ensemble du journal.
+
+La réponse comprend `from`, `to`, `groupBy`, `project`, `totals`, `groups`, la rétention et les métadonnées de complétude de lecture. Elle mesure les jetons, le cache, le coût estimé, les erreurs, runs, outils, compactages et durées. Les coûts sont les estimations du moteur, pas des totaux de facturation ; `costKnown` et `unknownCostMessages` signalent les prix manquants. Les résumés de compactage gardent un compartiment séparé. Aucun prompt, texte de réponse, secret, identifiant de session ou chemin système n’est renvoyé. Les plafonds de lecture et la reprise d’historique peuvent rendre le résultat incomplet : vérifier `complete` et `truncated` avant de conclure.
+
 ## Documentation interactive et tests
 
 Ouvrir **Préférences → API → Documentation interactive**, ou `/api-docs` sur le Studio choisi (par défaut [http://127.0.0.1:3088/api-docs](http://127.0.0.1:3088/api-docs)). Le contrat servi à `/openapi-v1.json` est généré depuis la même source que cette référence, même quand l’API est désactivée.

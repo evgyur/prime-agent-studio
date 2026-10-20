@@ -145,3 +145,37 @@ test('thinking choices use the native capability map and preserve it through mod
   assert.deepEqual(model.thinkingLevels, ['off', 'minimal', 'low', 'medium', 'xhigh', 'max']);
   assert.equal('thinkingLevelMap' in model, false);
 });
+
+test('role routing merges optional fields, preserves explicit values and strips the role', async (t) => {
+  const { store, cwd } = await fixture(t);
+  let state = await store.set({ revision: '', policy: {
+    model: 'fixture/global', thinking: 'high',
+    roles: { explore: { model: 'fixture/explore', thinking: 'low' }, review: { thinking: 'max' } },
+  } });
+  state = await store.set({ cwd, revision: state.revision, policy: {
+    model: 'fixture/project', thinking: 'medium', roles: { explore: { thinking: 'off' } },
+  } });
+  assert.deepEqual(applySubagentDefaults(cwd, { role: 'explore', name: 'scan' }, store.file), {
+    model: 'fixture/explore', thinking: 'off', name: 'scan',
+  });
+  assert.deepEqual(applySubagentDefaults(cwd, { role: 'review', model: 'fixture/explicit', thinking: null }, store.file), {
+    model: 'fixture/explicit', thinking: null,
+  });
+  assert.deepEqual(applySubagentDefaults(cwd, { role: 'implement' }, store.file), {
+    model: 'fixture/project', thinking: 'medium',
+  });
+  assert.equal((await store.get(cwd)).effective.roles.explore.model, 'fixture/explore');
+  assert.match(subagentInstruction(cwd, store.file), /role.*explore/);
+  assert.match(subagentInstruction(cwd, store.file), /review/);
+  assert.throws(() => applySubagentDefaults(cwd, { role: 'typo' }, store.file), /explore, implement, review/);
+  assert.throws(() => applySubagentDefaults(cwd, { role: null }, store.file), /explore, implement, review/);
+});
+test('role configuration is strict and optional empty role fields inherit', async (t) => {
+  const { store, cwd } = await fixture(t);
+  for (const roles of [null, [], { typo: {} }, { explore: null }, { explore: { model: 1 } },
+    { explore: { thinking: 'invalid' } }, { explore: { extra: true } }]) {
+    await assert.rejects(store.set({ revision: '', policy: { model: '', thinking: '', roles } }), { status: 400 });
+  }
+  await store.set({ revision: '', policy: { model: 'fixture/base', thinking: 'high', roles: { explore: { model: '', thinking: '' } } } });
+  assert.deepEqual(applySubagentDefaults(cwd, { role: 'explore' }, store.file), { model: 'fixture/base', thinking: 'high' });
+});

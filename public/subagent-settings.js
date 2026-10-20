@@ -80,6 +80,74 @@ export function createSubagentSettings({
   byId(`${prefix}-model-label`).setAttribute('for', modelButton.id);
   const option = (value, label) => translatedOption(label, value);
 
+  // Role overrides are sparse: empty fields inherit without pinning a global value.
+  const roles = ['explore', 'implement', 'review'];
+  const roleFields = new Map();
+  const roleSection = document.createElement('div');
+  roleSection.className = 'subagent-roles';
+  const roleNote = document.createElement('p');
+  roleNote.className = 'model-defaults-note';
+  bindText(roleNote, () => tr('routing.rolesNote'));
+  roleSection.append(roleNote);
+  for (const role of roles) {
+    const row = document.createElement('div');
+    row.className = 'subagent-role-row';
+    const title = document.createElement('div');
+    const label = document.createElement('strong');
+    const hint = document.createElement('small');
+    bindText(label, () => tr(`routing.${role}`));
+    bindText(hint, () => tr(`routing.${role}Note`));
+    title.append(label, hint);
+    const model = document.createElement('select');
+    model.dataset.roleModel = role;
+    bindAttribute(model, 'aria-label', () => `${tr(`routing.${role}`)} · ${tr('ui.modele')}`);
+    const thinking = document.createElement('select');
+    thinking.dataset.roleThinking = role;
+    bindAttribute(thinking, 'aria-label', () => `${tr(`routing.${role}`)} · ${tr('ui.reflexion_3')}`);
+    const change = () => {
+      const value = {};
+      if (model.value) value.model = model.value;
+      const selected = getModels().find((entry) => entry.id === model.value);
+      if (thinking.value && (!selected || selected.thinkingLevels?.includes(thinking.value))) value.thinking = thinking.value;
+      draft.roles = { ...draft.roles };
+      if (Object.keys(value).length) draft.roles[role] = value;
+      else delete draft.roles[role];
+      if (!Object.keys(draft.roles).length) delete draft.roles;
+      renderRoles();
+      if (project) void save();
+    };
+    model.onchange = thinking.onchange = change;
+    row.append(title, model, thinking);
+    roleSection.append(row);
+    roleFields.set(role, { model, thinking });
+  }
+  $('.subagent-fields').append(roleSection);
+  function renderRoles() {
+    for (const [role, fields] of roleFields) {
+      const value = draft.roles?.[role] || {};
+      fields.model.replaceChildren(option('', () => tr('routing.inherit')));
+      for (const model of getModels()) {
+        const entry = option(model.id, model.name || model.id);
+        entry.disabled = model.available === false || model.availability === 'unavailable';
+        fields.model.append(entry);
+      }
+      if (value.model && !getModels().some((model) => model.id === value.model)) {
+        const missing = option(value.model, () => tr('common.unavailable', { value1: value.model }));
+        missing.disabled = true;
+        fields.model.append(missing);
+      }
+      fields.model.value = value.model || '';
+      fields.thinking.replaceChildren(option('', () => tr('routing.inherit')));
+      const inheritedModel = data?.effective?.roles?.[role]?.model || draft.model || context.mainModel;
+      const model = getModels().find((entry) => entry.id === (value.model || inheritedModel));
+      const levels = model ? model.thinkingLevels || [] : Object.keys(thinkingLabels);
+      for (const level of levels) fields.thinking.append(option(level, () => thinkingLabels[level] || level));
+      if (value.thinking && !levels.includes(value.thinking)) fields.thinking.append(option(value.thinking, () => thinkingLabels[value.thinking] || value.thinking));
+      fields.thinking.value = value.thinking || '';
+    }
+  }
+
+
   function error(message = '') {
     bindText($('.subagent-error'), () => translateKnown(message));
     $('.subagent-error').hidden = !message;
@@ -121,6 +189,7 @@ export function createSubagentSettings({
       } else draft.thinking = '';
     }
     thinkingSelect.value = draft.thinking;
+    renderRoles();
     if (project) $('.subagent-scope').value = data?.project === null ? 'global' : 'project';
     controls();
   }
@@ -150,6 +219,8 @@ export function createSubagentSettings({
       if (turn !== generation) return;
       data = response;
       draft = { ...(project ? data.effective : data.global) };
+      // Preserve sparse project role overrides rather than copying inherited roles.
+      if (project) draft.roles = { ...data.project?.roles };
       $('.subagent-reload').hidden = true;
       render();
       savedStatus();
@@ -183,6 +254,8 @@ export function createSubagentSettings({
       if (turn !== generation) return;
       data = saved;
       draft = { ...(project ? data.effective : data.global) };
+      // Preserve sparse project role overrides rather than copying inherited roles.
+      if (project) draft.roles = { ...data.project?.roles };
       $('.subagent-reload').hidden = true;
       render();
       savedStatus();

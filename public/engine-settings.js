@@ -1,4 +1,5 @@
 import { t as tr, bindText, bindAttribute, translateKnown, onLanguageChange } from './i18n.js';
+import { createRoutingSettings } from './routing-settings.js';
 
 const AUTONOMOUS_FIELDS = ['maxContinuations', 'maxTurns', 'maxTokens', 'timeoutMs'];
 const MODEL_FIELDS = ['auxiliaryModel', 'imageModel', 'providerBackupModel', 'nativeSubagentDefaultModel'];
@@ -91,6 +92,9 @@ export function createEngineSettings({
   const pickerButtons = new Map();
   const budgetInputs = new Map();
   const budgetChecks = new Map();
+  const routingRoot = document.createElement('div');
+  root.append(routingRoot);
+  const routing = createRoutingSettings({ api, root: routingRoot, getContext, getModels, openModelPicker });
 
   function liveModels() {
     try {
@@ -402,6 +406,7 @@ export function createEngineSettings({
   }
 
   async function load() {
+    void routing.open();
     const turn = ++generation;
     busy = true;
     needsLoad = false;
@@ -571,6 +576,7 @@ export function createEngineSettings({
     open: load,
     root,
     dispose: () => {
+      routing.dispose();
       generation++;
       needsLoad = true;
       try {
@@ -585,6 +591,7 @@ export function createEngineSettings({
       } catch {}
     },
     update: () => {
+      routing.update();
       if (data) {
         try {
           const shared = typeof getModels === 'function' ? getModels() : null;

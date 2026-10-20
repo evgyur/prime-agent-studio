@@ -18,7 +18,7 @@ async function fixture(t, onUpdate) {
   return { dir, root, dataDir, project, index, write: (path, text) => writeFile(join(root, path), text) };
 }
 
-test('WAL FTS5, lexical definitions/references/imports, multilingual and incremental changes', { timeout: 30_000 }, async (t) => {
+test('WAL definitions/references/imports and incremental changes', { timeout: 30_000 }, async (t) => {
   const f = await fixture(t);
   await f.write('main.ts', 'import { helper } from "./helper";\nexport function calculate(x: number) {\n return helper(x);\n}\n');
   await f.write('helper.py', 'def helper(value):\n return value\n');
@@ -45,7 +45,7 @@ test('WAL FTS5, lexical definitions/references/imports, multilingual and increme
   const id = await codeIndexProjectId(f.project); assert.match(id, /^[a-f0-9]{64}$/);
   const db = new DatabaseSync(join(f.dataDir, 'code-index', id, 'index.sqlite'), { readOnly: true });
   assert.equal(db.prepare('PRAGMA journal_mode').get().journal_mode, 'wal');
-  assert.match(db.prepare("SELECT sql FROM sqlite_master WHERE name='chunks'").get().sql, /fts5/);
+  assert.equal(db.prepare("SELECT name FROM sqlite_master WHERE name='chunks'").get(), undefined);
   db.close();
 });
 
@@ -298,27 +298,30 @@ test('literal credentials are redacted without dropping source and automatic exc
   assert.equal((await f.index.refresh(f.project, { includeGenerated: true })).files, 4);
 });
 
-test('TypeScript methods, multiline imports, split search and stale evidence', { timeout: 30_000 }, async (t) => {
+test('TypeScript methods, multiline imports and fresh exact evidence', { timeout: 30_000 }, async (t) => {
   const f = await fixture(t);
   await f.write('conductor.mts', `import {\n type ImportedType, helper\n} from './helper';\nexport class Conductor {\n async launchNode(task: string): Promise<void> {\n helper(task); task.slice(0); edge.from(task);\n }\n syncConversation(\n task: string\n ): void { helper(task); }\n}\n`);
   await f.write('helper.cts', 'export function helper(task: string) {}');
   await f.write('noise.ts', Array.from({ length: 12 }, (_, i) => `function noise${i}() { /* le la les the and launch node */ }`).join('\n'));
   await f.index.refresh(f.project);
   for (const symbol of ['launchNode', 'syncConversation']) assert.ok((await f.index.symbols(f.project, { symbol })).results.some((r) => r.kind === 'definition'), symbol);
-  assert.equal((await f.index.symbols(f.project, { symbol: 'ImportedType' })).results.length, 0);
+  assert.ok((await f.index.symbols(f.project, { symbol: 'ImportedType' })).results.some((r) => r.kind === 'reference' && r.path === 'conductor.mts'));
   const map = (await f.index.map(f.project, { path: 'conductor.mts' })).results[0];
   assert.equal(map.imports.length, 1); assert.equal(map.imports[0].target, './helper');
   assert.equal(map.imports[0].resolvedPath, 'helper.cts');
   assert.ok(!map.references.some((r) => r.name === 'slice'));
   assert.equal(map.totals.definitions, 3);
-  const found = await f.index.search(f.project, { q: 'le la the launch node', limit: 20 });
+  const found = await f.index.search(f.project, { q: 'launchNode', limit: 20 });
   assert.equal(found.results[0].path, 'conductor.mts');
-  assert.ok(found.results.every((r) => r.text.length <= 1500));
-  assert.ok(found.results.filter((r) => r.path === 'noise.ts').length <= 2);
+  assert.equal(found.results[0].label, 'definition');
+  assert.ok(found.results.every((r) => r.text.length <= 500));
+  assert.ok(found.results.filter((r) => r.path === 'noise.ts').length <= 3);
+  assert.equal(found.files, 1);
   const readonly = createCodeIndex({ dataDir: f.dataDir, readOnly: true }); t.after(() => readonly.close());
-  await f.write('conductor.mts', '// changed after indexing');
-  const stale = await readonly.search(f.project, { q: 'launchNode' });
-  assert.equal(stale.results[0].stale, true); assert.ok(stale.indexedAt);
+  await f.write('conductor.mts', '// changed after indexing\nconsole.log(launchNode);\n');
+  const fresh = await readonly.search(f.project, { q: 'launchNode' });
+  assert.ok(fresh.results.some((r) => r.path === 'conductor.mts'));
+  assert.equal(fresh.results[0].stale, false); assert.ok(fresh.indexedAt);
   await readonly.close();
 });
 
@@ -365,7 +368,7 @@ test('old schemas request rebuild read-only and migrate without retaining raw se
   const dbPath = join(f.dataDir, 'code-index', await codeIndexProjectId(f.project), 'index.sqlite');
   const db = new DatabaseSync(dbPath);
   db.prepare("UPDATE meta SET value='1' WHERE key='schemaVersion'").run();
-  db.prepare('INSERT INTO chunks(path,startLine,endLine,text) VALUES(?,?,?,?)').run('obsolete.ts', 1, 1, literal);
+  db.prepare('INSERT INTO files(path,mtime,size,hash,imports) VALUES(?,?,?,?,?)').run('obsolete.ts', 0, 0, 'legacy', literal);
   db.close();
   const reader = createCodeIndex({ dataDir: f.dataDir, readOnly: true });
   try { assert.equal((await reader.search(f.project, { q: literal })).reason, 'rebuild-required'); }
@@ -414,48 +417,8 @@ test('wrong-root legacy databases are rejected before schema migration writes', 
 });
 
 
-test('exact symbol definitions outrank repeated README prose', { timeout: 20_000 }, async (t) => {
-  const f = await fixture(t);
-  await f.write('core.ts', 'export const launchNode = () => true;');
-  await f.write('README.md', 'Launch node function documentation\n'.repeat(40));
-  await f.index.refresh(f.project);
-  for (const q of ['launchNode', 'launch node']) assert.equal((await f.index.search(f.project, { q })).results[0].path, 'core.ts');
-});
 
 
-test('French action words find code definitions rather than translated prose', { timeout: 20_000 }, async (t) => {
-  const f = await fixture(t);
-  await f.write('worker.ts', 'export function launchTask(task) { return syncConversation(task.machine); }\nexport function syncConversation(machine) { return machine; }');
-  await f.write('fr.ts', 'export const labels = { hint: "lancer tâche synchroniser conversation machine" };');
-  await f.write('README.md', 'lancer tâche synchroniser conversation machine\n'.repeat(40));
-  await f.write('node-panel.ts', '// launch node '.repeat(20));
-  await f.write('core.ts', 'export const launchNode = () => true;');
-  await f.index.refresh(f.project);
-  assert.equal((await f.index.search(f.project, { q: 'lancer tâche synchroniser conversation machine' })).results[0].path, 'worker.ts');
-  assert.equal((await f.index.search(f.project, { q: 'launchNode' })).results[0].path, 'core.ts');
-});
-
-
-test('bounded excerpts retain the source start line when a match is late in the chunk', { timeout: 20_000 }, async (t) => {
-  const f = await fixture(t);
-  const source = 'export function sourceRange() {\n' + '  // padding for source range\n'.repeat(25) + '  return LateRangeKeyword;\n}';
-  await f.write('range.ts', source);
-  await f.index.refresh(f.project);
-  const row = (await f.index.search(f.project, { q: 'LateRangeKeyword' })).results[0];
-  assert.equal(row.startLine, 1);
-  assert.equal(row.text, source);
-  assert.equal(row.textTruncated, false);
-});
-
-
-test('exact identifier definitions inside i18n outrank helper references', { timeout: 20_000 }, async (t) => {
-  const f = await fixture(t);
-  await mkdir(join(f.root, 'i18n'));
-  await f.write('i18n/fr.ts', 'export function translateMessage(key) { return key; }');
-  await f.write('helper.ts', 'export function translateMessageReference(key) { return translateMessage(key); }');
-  await f.index.refresh(f.project);
-  assert.equal((await f.index.search(f.project, { q: 'translateMessage' })).results[0].path, 'i18n/fr.ts');
-});
 
 
 test('exact filename search explains exclusions without treating prose as a path', { timeout: 20_000 }, async (t) => {
@@ -475,6 +438,46 @@ test('exact filename search explains exclusions without treating prose as a path
 });
 
 
+test('exact search finds durationLabels references without reindex', { timeout: 30_000 }, async (t) => {
+  const f = await fixture(t);
+  await mkdir(join(f.root, 'src'));
+  await f.write('src/labels.js', 'export function durationLabels() { return {}; }\n');
+  await f.write('src/use.js', 'import { durationLabels } from "./labels.js";\nconsole.log(durationLabels());\n');
+  await f.index.refresh(f.project);
+  const reader = createCodeIndex({ dataDir: f.dataDir, readOnly: true });
+  t.after(() => reader.close());
+  const fresh = await reader.search(f.project, { q: 'durationLabels' });
+  assert.ok(fresh.results.length >= 3);
+  assert.ok(fresh.results.some((r) => r.path === 'src/labels.js' && r.label === 'definition'));
+  assert.ok(fresh.results.some((r) => r.path === 'src/use.js'));
+  assert.equal(fresh.results[0].label, 'definition');
+  assert.ok(fresh.results[0].symbol && fresh.results[0].symbol.name === 'durationLabels');
+  assert.ok(fresh.results[0].context);
+  await f.write('src/late.js', 'console.log(durationLabels());\n');
+  const late = await reader.search(f.project, { q: 'durationLabels' });
+  assert.ok(late.results.some((r) => r.path === 'src/late.js'));
+  const syms = await reader.symbols(f.project, { symbol: 'durationLabels' });
+  assert.ok(syms.results.some((r) => r.kind === 'definition' && r.path === 'src/labels.js'));
+  assert.ok(syms.results.some((r) => r.kind === 'reference' && r.path === 'src/late.js'));
+  await reader.close();
+});
+
+test('search reads current disk content without reindex', { timeout: 30_000 }, async (t) => {
+  const f = await fixture(t);
+  await f.write('a.js', 'const alphaOne = 1;\n');
+  await f.index.refresh(f.project);
+  const reader = createCodeIndex({ dataDir: f.dataDir, readOnly: true });
+  t.after(() => reader.close());
+  assert.equal((await reader.search(f.project, { q: 'alphaOne' })).results.length, 1);
+  await f.write('b.js', 'const betaTwo = 2;\nconsole.log(betaTwo);\n');
+  const found = await reader.search(f.project, { q: 'betaTwo' });
+  assert.ok(found.results.some((r) => r.path === 'b.js'));
+  assert.equal(found.files, 1);
+  assert.equal((await reader.search(f.project, { q: 'alphaOne' })).results.length, 1);
+  assert.ok((await reader.search(f.project, { q: 'betaTwo', wholeWord: true })).results.length >= 1);
+  await reader.close();
+});
+
 test('directory maps do not report unsupported-file exclusions', { timeout: 20_000 }, async (t) => {
   const f = await fixture(t);
   await mkdir(join(f.root, 'src'));
@@ -489,4 +492,16 @@ test('directory maps do not report unsupported-file exclusions', { timeout: 20_0
   }
   const configured = await f.index.map(f.project, { path: 'src', exclusions: ['src'] });
   assert.deepEqual(configured.excludedPath, { path: 'src', reason: 'configured' });
+});
+
+test('close terminates every index worker so the process can exit', { timeout: 30_000 }, async (t) => {
+  const f = await fixture(t);
+  await f.write('main.ts', 'export function calculate() {}\n');
+  await f.index.refresh(f.project);
+  const workers = () => process.getActiveResourcesInfo().filter((type) => type === 'ProcessWrap').length;
+  assert.ok(workers() > 0, 'the index started a worker');
+  await f.index.close();
+  // libuv frees an exited process handle asynchronously; a leaked worker would stay past 1 s.
+  for (let i = 0; i < 50 && workers(); i++) await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(workers(), 0, 'no worker left after close');
 });

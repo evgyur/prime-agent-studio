@@ -44,6 +44,11 @@ async function shot(page, name) {
   if (process.argv.includes('--pending-baseline')) return;
   await page.screenshot({ path: `test-results/context-tab/${name}.png`, fullPage: true });
 }
+async function shot2e(page, width, locale, name) {
+  await noOverflow(page);
+  if (process.argv.includes('--pending-baseline')) return;
+  await page.screenshot({ path: `test-results/step2e/context-${width}-${locale}-${name}.png`, fullPage: true });
+}
 async function openPanel(page, docked, width) {
   await page.goto(url);
   if (docked) {
@@ -58,9 +63,8 @@ async function openPanel(page, docked, width) {
 }
 
 function readySnapshot() {
-  return { enabled: true, sessionEnabled: true, pins: [{ path: 'src/session-controller.ts', startLine: 12, endLine: 28 }], exclusions: ['dist', 'vendor'],
-    index: { state: 'ready', files: 42, chunks: 186, symbols: 93, updatedAt: '2026-10-19T12:00:00.000Z', excludedCount: 2, automaticExclusions: [{ path: '.env.local', reason: 'sensitive-name' }, { path: 'package-lock.json', reason: 'lockfile' }] },
-    dossier: { text: 'Project: Atelier\nRequest: Keep session selection stable.\nPinned evidence: src/session-controller.ts:12-28\nUse the existing session controller and preserve focus.', createdAt: '2026-10-19T12:01:00.000Z', sessionId: 'alpha' } };
+  return { enabled: true, sessionEnabled: true, exclusions: ['dist', 'vendor'],
+    index: { state: 'ready', files: 42, chunks: 186, symbols: 93, updatedAt: '2026-10-19T12:00:00.000Z', excludedCount: 2, automaticExclusions: [{ path: '.env.local', reason: 'sensitive-name' }, { path: 'package-lock.json', reason: 'lockfile' }] } };
 }
 async function setup(width, locale = 'en-US', docked = true, light = false) {
   const context = await browser.newContext({ viewport: { width, height: 900 }, locale, reducedMotion: 'reduce', isMobile: width === 390, hasTouch: width === 390 });
@@ -82,11 +86,6 @@ async function setup(width, locale = 'en-US', docked = true, light = false) {
     if (path.endsWith('/events')) return route.continue({ url: eventUrl });
     const body = request.postDataJSON();
     fixture.requests.push({ path, method: request.method(), body });
-    if (path.endsWith('/search') && fixture.searchGate) await fixture.searchGate;
-    if (path.endsWith('/search')) return route.fulfill({ json: { state: 'ready', results: [
-      { path: 'src/session-controller.ts', startLine: 12, endLine: 28, text: 'export function selectSession(id) { return sessions.get(id); }', snippet: 'export function selectSession(id) { return sessions.get(id); }', score: 0.94 },
-      { path: 'src/views/conversation-selection-and-focus-manager.ts', startLine: 8, endLine: 20, text: 'export function preserveFocus() { return document.activeElement; }', snippet: 'export function preserveFocus() { return document.activeElement; }', score: 0.81 },
-    ] } });
     if (path.endsWith('/rebuild')) { fixture.value.index.state = 'indexing'; return route.fulfill({ status: 202, json: { queued: true } }); }
     if (request.method() === 'PATCH') {
       const { sessionId, ...changes } = body; Object.assign(fixture.value, changes);
@@ -105,7 +104,8 @@ try {
   for (const width of [1440, 1100]) for (const locale of ['en-US', 'fr-FR']) {
     const { page, context, fixture } = await setup(width, locale);
     const panel = await openPanel(page, true, width); await state(panel, 'ready');
-    await expect(panel).toContainText('src/session-controller.ts');
+    await expect(panel).toContainText(locale === 'fr-FR' ? 'Index des sources' : 'Source index');
+    await expect(panel.locator('[data-control="enabled"]')).toBeChecked();
     const automatic = panel.locator('.context-automatic-exclusions');
     await automatic.locator('summary').click();
     await expect(automatic).toContainText('.env.local');
@@ -115,14 +115,14 @@ try {
     await shot(page, `exclusions-${width}-${locale}`);
     await panel.locator('.context-heading').scrollIntoViewIfNeeded();
     await shot(page, `docked-${width}-${locale}`);
+    await shot2e(page, width, locale, 'docked');
     if (width === 1440 && locale === 'en-US') {
       await expect.poll(() => streams.size).toBeGreaterThan(0);
       const before = fixture.reads; await page.waitForTimeout(5500);
       assert.equal(fixture.reads, before, 'no periodic context GET requests while visible');
       fixture.value.index.files = 73;
-      fixture.value.dossier.text = 'SSE evidence changed without refresh or polling.';
       emit(fixture.value);
-      await expect(panel).toContainText('SSE evidence changed without refresh or polling.');
+      await expect(panel).toContainText('73');
       assert.equal(fixture.reads, before, 'SSE snapshot updates without a polling fetch');
       await shot(page, 'sse-updated');
       let release;
@@ -132,7 +132,7 @@ try {
       for (const name of ['disabled', 'empty', 'error', 'indexing', 'ready']) {
         fixture.value = readySnapshot(); fixture.fail = name === 'error';
         if (name === 'disabled') fixture.value.enabled = false;
-        if (name === 'empty') { fixture.value.index = { state: 'empty', files: 0, chunks: 0 }; fixture.value.pins = []; fixture.value.dossier = null; }
+        if (name === 'empty') { fixture.value.index = { state: 'empty', files: 0, chunks: 0 }; }
         if (name === 'indexing') fixture.value.index.state = 'indexing';
         await panel.locator('[data-action="refresh"]').click(); await state(panel, name);
         await shot(page, `state-${name}`);
@@ -151,36 +151,18 @@ try {
       await panel.locator('[data-control="exclusions"]').fill('dist\nvendor\ngenerated/**');
       await panel.locator('[data-action="save-exclusions"]').click();
       await expect.poll(() => fixture.value.exclusions).toEqual(['dist', 'vendor', 'generated/**']);
-      await panel.locator('[data-control="query"]').fill('session selection');
-      await panel.locator('[data-action="search"]').click();
-      await expect(panel).toContainText('src/views/conversation-selection-and-focus-manager.ts');
-      await shot(page, 'search-results');
-      await panel.locator('[data-action="pin-result"]').nth(1).click();
-      await expect.poll(() => fixture.value.pins.length).toBe(2);
-      await expect(panel.locator('[data-action="pin-result"]').nth(1)).toBeDisabled();
-      await panel.locator('[data-action="remove-pin"]').nth(1).click();
-      await expect.poll(() => fixture.value.pins.length).toBe(1);
-      await expect(panel.locator('[data-action="pin-result"]').nth(1)).toBeEnabled();
-      // Refresh must release pending controls and discard a superseded search response.
-      let releaseSearch;
-      fixture.searchGate = new Promise((resolve) => { releaseSearch = resolve; });
-      await panel.locator('[data-control="query"]').fill('delayed search');
-      await panel.locator('[data-action="search"]').click(); await state(panel, 'searching');
-      await expect(panel.locator('[data-action="search"]')).toBeDisabled();
-      await panel.locator('[data-action="refresh"]').click(); await state(panel, 'ready');
-      await expect(panel.locator('[data-action="search"]')).toBeEnabled();
-      await expect(panel.locator('[data-control="enabled"]')).toBeEnabled();
-      const delayedResponse = page.waitForResponse((response) => response.url().endsWith('/context/search'));
-      releaseSearch(); fixture.searchGate = null; await delayedResponse;
-      await expect(panel.locator('.context-result')).toHaveCount(0);
-      await expect(panel.locator('[data-action="search"]')).toBeEnabled();
-      console.log('PASS Refresh during delayed search clears pending and ignores stale results');
+      // Dossier, pins and context search were removed: none of their controls may render.
+      for (const selector of ['[data-control="query"]', '[data-action="search"]', '[data-action="pin-result"]', '[data-action="remove-pin"]', '.context-result', '.context-dossier']) {
+        await expect(panel.locator(selector)).toHaveCount(0);
+      }
+      assert.ok(!fixture.requests.some((r) => r.path.endsWith('/context/search')), 'no context search requests');
+      await shot2e(page, width, locale, 'context-switches-exclusions');
       await panel.locator('[data-action="rebuild"]').click();
       await expect.poll(() => fixture.requests.filter((r) => r.path.endsWith('/rebuild')).length).toBe(1);
       emit(fixture.value); await state(panel, 'indexing');
       fixture.value.index.state = 'ready'; emit(fixture.value); await state(panel, 'ready');
       assert.ok(fixture.requests.some((r) => r.body?.sessionEnabled === false && r.body?.sessionId === 'alpha'), 'session toggle is scoped to selected session');
-      console.log('PASS states, toggles, exclusions, search, rebuild, real SSE and no polling (5500ms)');
+      console.log('PASS states, toggles, exclusions, rebuild, real SSE and no polling (5500ms)');
     }
     await context.close(); console.log(`PASS docked ${width} ${locale}`);
   }
@@ -188,6 +170,7 @@ try {
     const { page, context } = await setup(width, 'en-US', docked, light);
     const panel = await openPanel(page, docked, width); await state(panel, 'ready');
     await shot(page, docked ? 'docked-light' : `classic-${width}${light ? '-light' : ''}`);
+    await shot2e(page, width, 'en-US', `classic-${width}${light ? '-light' : ''}`);
     if (!docked) {
       await page.keyboard.press('Escape'); await expect(panel).not.toBeVisible();
       await expect(page.locator('#detail-context')).toBeFocused();

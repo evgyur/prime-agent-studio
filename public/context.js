@@ -7,21 +7,13 @@ const node = (tag, cls = '', text = '') => {
   return el;
 };
 const endpoint = (context) => `/api/projects/${encodeURIComponent(context.project.metricsId)}/context`;
-export async function pinContextFile(api, context, pin) {
-  if (!context?.project?.metricsId || context.unavailable || context.readOnly) throw new Error(t('context.unavailable'));
-  const url = endpoint(context), query = new URLSearchParams({ sessionId: context.sessionId || '' });
-  const data = await api(`${url}?${query}`);
-  const pins = data.pins || [];
-  if (!pins.some((item) => item.path === pin.path && item.startLine === pin.startLine && item.endLine === pin.endLine))
-    await api(url, { method: 'PATCH', body: { pins: [...pins, pin] } });
-}
 
 // Only visible panels subscribe. SSE carries complete snapshots; no polling.
 export function createContext({ api, getContext }) {
   const root = node('section', 'context-panel');
   root.hidden = true;
   let visible = false, key = '', generation = 0, stream = null, controller = null;
-  let data = null, state = '', pending = false, results = null, queryValue = '', exclusionDraft = null;
+  let data = null, state = '', pending = false, exclusionDraft = null;
   const contextKey = () => { const c = getContext(); return JSON.stringify([c?.project?.metricsId, c?.sessionId, c?.unavailable, c?.readOnly]); };
   const canEdit = () => !getContext()?.readOnly && !pending;
   function button(label, action, run, cls = 'secondary-button') {
@@ -59,7 +51,8 @@ export function createContext({ api, getContext }) {
     const rebuild = button('context.rebuild', 'rebuild', () => void mutate(null, '/rebuild'));
     rebuild.disabled = !canEdit() || data.enabled === false || indexState === 'indexing'; row.append(badge, rebuild); index.append(row);
     const stats = node('dl', 'context-stats');
-    for (const name of ['files', 'symbols', 'chunks']) {
+    // Chunk text is no longer indexed; the API keeps chunks: 0 only for compatibility.
+    for (const name of ['files', 'symbols']) {
       const item = node('div'); item.append(node('dt', '', t(`context.${name}`)), node('dd', '', new Intl.NumberFormat(getLanguage()).format(data.index?.[name] || 0))); stats.append(item);
     }
     index.append(stats);
@@ -69,33 +62,6 @@ export function createContext({ api, getContext }) {
     }
     if (data.index?.updatedAt) index.append(node('p', 'context-note', `${t('context.updated')} · ${new Date(data.index.updatedAt).toLocaleString(getLanguage())}`));
     if (data.index?.error) index.append(node('p', 'context-error', String(data.index.error)));
-    const dossier = section('context.dossier');
-    dossier.append(node('p', 'context-note', t('context.dossierNote')));
-    if (data.dossier?.text) {
-      if (data.dossier.createdAt) dossier.append(node('p', 'context-note', new Date(data.dossier.createdAt).toLocaleString(getLanguage())));
-      dossier.append(node('pre', 'context-dossier', data.dossier.text));
-    } else dossier.append(node('p', 'context-empty', t(getContext()?.sessionId ? 'context.noDossier' : 'context.noSession')));
-    const pins = section('context.pins');
-    if (!data.pins?.length) pins.append(node('p', 'context-empty', t('context.noPins')));
-    for (const pin of data.pins || []) {
-      const row = node('div', 'context-source');
-      row.append(node('code', '', `${pin.path}${pin.startLine ? `:${pin.startLine}${pin.endLine ? `–${pin.endLine}` : ''}` : ''}`));
-      const remove = button('context.remove', 'remove-pin', () => void mutate({ pins: data.pins.filter((p) => p !== pin) }), 'text-button');
-      remove.disabled = !canEdit(); row.append(remove); pins.append(row);
-    }
-    const search = section('context.search'), form = node('form', 'context-search');
-    const input = node('input'); input.type = 'search'; input.dataset.control = 'query'; input.placeholder = t('context.query'); input.setAttribute('aria-label', t('context.query')); input.value = queryValue; input.oninput = () => { queryValue = input.value; };
-    const submit = button('context.search', 'search', () => {}); submit.type = 'submit'; submit.disabled = pending;
-    form.onsubmit = (event) => { event.preventDefault(); void searchSources(); }; form.append(input, submit); search.append(form);
-    if (results && !results.length) search.append(node('p', 'context-empty', t('context.noResults')));
-    for (const result of results || []) {
-      const row = node('div', 'context-result'), top = node('div', 'context-source');
-      top.append(node('code', '', `${result.path}:${result.startLine || 1}${result.endLine ? `–${result.endLine}` : ''}`));
-      const pin = { path: result.path, ...(result.startLine ? { startLine: result.startLine } : {}), ...(result.endLine ? { endLine: result.endLine } : {}) };
-      const pinned = (data.pins || []).some((p) => p.path === pin.path && p.startLine === pin.startLine && p.endLine === pin.endLine);
-      const add = button(pinned ? 'context.pinned' : 'context.pin', 'pin-result', () => void mutate({ pins: [...(data.pins || []), pin] }), 'text-button'); add.disabled = !canEdit() || pinned;
-      top.append(add); row.append(top, node('pre', '', result.text || '')); search.append(row);
-    }
     const exclusions = section('context.exclusions');
     const field = node('textarea'); field.rows = 3; field.dataset.control = 'exclusions'; field.setAttribute('aria-label', t('context.exclusions')); field.value = exclusionDraft ?? (data.exclusions || []).join('\n'); field.disabled = !canEdit(); field.oninput = () => { exclusionDraft = field.value; };
     const save = button('context.save', 'save-exclusions', () => void mutate({ exclusions: field.value.split(/\r?\n/).map((s) => s.trim()).filter(Boolean) })); save.disabled = !canEdit();
@@ -118,7 +84,7 @@ export function createContext({ api, getContext }) {
   }
   function stop() { generation++; controller?.abort(); stream?.close(); stream = null; }
   async function refresh() {
-    stop(); pending = false; key = contextKey(); data = null; results = null; exclusionDraft = null;
+    stop(); pending = false; key = contextKey(); data = null; exclusionDraft = null;
     const c = getContext(), token = generation;
     if (!visible) return;
     if (!c?.project?.metricsId || c.unavailable) { state = 'unavailable'; render(); return; }
@@ -147,15 +113,6 @@ export function createContext({ api, getContext }) {
       data = snapshot;
       if (body?.exclusions) exclusionDraft = null;
       state = 'saved';
-    } catch { if (token === generation) state = 'error'; }
-    finally { if (token === generation) { pending = false; render(); } }
-  }
-  async function searchSources() {
-    if (!queryValue.trim() || pending) return;
-    const token = generation; pending = true; state = 'searching'; render();
-    try {
-      const value = await api(endpoint(getContext()) + '/search', { method: 'POST', body: { q: queryValue.trim(), limit: 12 } });
-      if (token === generation) { results = value.results || []; state = ''; }
     } catch { if (token === generation) state = 'error'; }
     finally { if (token === generation) { pending = false; render(); } }
   }

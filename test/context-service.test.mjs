@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { createHash } from 'node:crypto';
 import { createApp } from '../server.mjs';
 import { metricsProjectId } from '../lib/metrics.mjs';
 import { createContextService } from '../lib/context-service.mjs';
@@ -36,9 +35,8 @@ test('context routes validate ownership, paths, line ranges and origin without p
   assert.equal((await f.api()).body.enabled, true);
   assert.equal((await f.api(f.route + '?sessionId=other')).status, 404);
   assert.equal((await f.api('/api/projects/' + '0'.repeat(64) + '/context')).status, 404);
-  for (const pins of [[{ path: '../outside' }], [{ path: '.env.local' }], [{ path: 'api-key.json' }], [{ path: '/absolute' }], [{ path: 'code.js', startLine: 4, endLine: 2 }], [{ path: 'code.js', startLine: 0 }], [{ path: 'absent.js' }]]) {
-    assert.equal((await f.api(f.route, 'PATCH', { pins })).status, 400);
-  }
+  assert.equal((await f.api(f.route, 'PATCH', { pins: [{ path: 'code.js' }] })).status, 400, 'legacy pins are rejected');
+  assert.equal((await f.api(f.route, 'PATCH', { exclusions: ['../outside'] })).status, 400);
   assert.equal((await f.api(f.route, 'PATCH', { sessionEnabled: false })).status, 400);
   assert.equal((await f.api(f.route, 'PATCH', { sessionEnabled: false, sessionId: 'other' })).status, 404);
   assert.equal((await f.api(f.route, 'PATCH', { enabled: false }, { Origin: 'https://evil.example' })).status, 403);
@@ -47,28 +45,22 @@ test('context routes validate ownership, paths, line ranges and origin without p
   assert.equal((await f.api(f.route + '/rebuild', 'POST')).status, 202);
 });
 
-test('serialized settings preserve concurrent updates and runtime config; dossiers stay session scoped', { timeout: 15000 }, async (t) => {
+test('serialized settings preserve concurrent updates and runtime config', { timeout: 15000 }, async (t) => {
   const f = await fixture(t);
   const results = await Promise.all([
-    f.api(f.route, 'PATCH', { pins: [{ path: 'code.js', startLine: 1, endLine: 1 }] }),
+    f.api(f.route, 'PATCH', { exclusions: ['other.js'] }),
     f.api(f.route, 'PATCH', { sessionId: 'fixture-session', sessionEnabled: false }),
   ]);
   assert.ok(results.every((r) => r.status === 200));
   const state = (await f.api(f.route + '?sessionId=fixture-session')).body;
-  assert.equal(state.pins.length, 1);
   assert.equal(state.sessionEnabled, false);
+  assert.equal(state.dossier, undefined);
+  assert.equal(state.pins, undefined);
   const runtime = await f.app.context.runtimeConfig(f.cwd, 'fixture-session');
   assert.equal(runtime.enabled, false);
   assert.equal(runtime.dataDir, f.dataDir);
   assert.equal(runtime.projectId, f.id);
-  const folder = join(f.dataDir, 'code-index', f.id, 'sessions');
-  await mkdir(folder, { recursive: true });
-  const dossier = { text: 'Fixture dossier', createdAt: '2026-10-19', sessionId: 'fixture-session' };
-  await writeFile(join(folder, createHash('sha256').update('fixture-session').digest('hex') + '.json'), JSON.stringify(dossier));
-  assert.deepEqual((await f.api(f.route + '?sessionId=fixture-session')).body.dossier, dossier);
-  assert.equal((await f.api()).body.dossier, null);
   await f.api(f.route, 'PATCH', { exclusions: ['code.js'] });
-  assert.equal((await f.api()).body.pins.length, 0);
   assert.deepEqual((await f.api(f.route + '/search', 'POST', { q: 'fixture' })).body.results, []);
   const saved = JSON.parse(await readFile(join(f.dataDir, 'code-index', f.id, 'settings.json'), 'utf8'));
   assert.equal(saved.sessions['fixture-session'], false);
@@ -122,20 +114,6 @@ test('authorized task worktrees explicitly disable wrong-root context tools', { 
   assert.equal(f.starts[0].codeContext.enabled, false);
 });
 
-test('resumed sessions receive only bounded linked Roadmap pointers', { timeout: 15000 }, async (t) => {
-  const f = await fixture(t);
-  f.app.roadmap.read = async () => ({ plans: [
-    { id: 'linked', title: 'Fix fixture', sessions: ['fixture-session'], steps: [{ text: 'Open task', done: false }, { text: 'Finished task', done: true }] },
-    { id: 'unrelated', title: 'Private unrelated goal', sessions: ['other'], steps: [] },
-  ] });
-  const result = await f.api('/api/runs', 'POST', { cwd: f.cwd, sessionId: 'fixture-session', message: 'Fixture only' });
-  assert.equal(result.status, 201, JSON.stringify(result.body));
-  const text = f.starts[0].codeContext.dossier.roadmap;
-  assert.match(text, /linked: Fix fixture; open: Open task/);
-  assert.doesNotMatch(text, /Finished task|unrelated/);
-  assert.ok(text.length <= 400);
-});
-
 test('run configuration reactivates an evicted writer without waiting for its scan', { timeout: 15000 }, async (t) => {
   const f = await fixture(t);
   await f.api(f.route, 'PATCH', { exclusions: ['private/**'], sessionId: 'fixture-session', sessionEnabled: false });
@@ -176,6 +154,4 @@ test('generated sources require a validated project opt-in and pass to index and
   assert.equal(found.body.results[0].includeGenerated, true);
   await f.app.context.ensureAll();
   assert.ok(f.calls.some((call) => call.includeGenerated === true));
-  await writeFile(join(f.cwd, 'secrets.js'), 'export function secretNames() { return []; }');
-  assert.equal((await f.api(f.route, 'PATCH', { pins: ['secrets.js'] })).status, 200, 'source filenames are not credential stores');
 });

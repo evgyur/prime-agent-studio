@@ -1387,14 +1387,6 @@ export function createApp(options = {}) {
       const codeContext = await context.runtimeConfig(worktreeAuth?.projectCwd || cwd, existing?.id);
       // V1 indexes the registered root only; never expose wrong-root tools in a task worktree.
       if (worktreeAuth) codeContext.enabled = false;
-      if (codeContext.enabled && existing?.id) {
-        try {
-          const linked = (await roadmap.read(cwd)).plans?.filter((plan) => plan.sessions?.includes(existing.id)).slice(0, 3) || [];
-          if (linked.length) codeContext.dossier = {
-            roadmap: linked.map((plan) => `${plan.id}: ${plan.title}; open: ${(plan.steps || []).filter((step) => !step.done).slice(0, 2).map((step) => step.text).join('; ')}. Use roadmap_read for current state.`).join('\n').slice(0, 400),
-          };
-        } catch { /* Optional local pointers must not block a conversation. */ }
-      }
       run.handle = await runtime.start({
         codeContext,
         cwd,

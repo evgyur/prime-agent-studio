@@ -5,7 +5,6 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
 import { createCodeIndex } from '../lib/code-index.mjs';
-import { buildDossier } from './studio-code-worker.mjs';
 
 const lockfile = (path) => /(?:^|\/)(?:package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml|bun\.lockb?|Cargo\.lock|poetry\.lock|uv\.lock|Pipfile\.lock|composer\.lock|Gemfile\.lock|go\.sum)$/i.test(path);
 const noise = (path) => lockfile(path) || /(?:^|\/)(?:README[^/]*|translations\.[^/]+)$|(?:^|\/)(?:i18n|locales|translations)\//i.test(path);
@@ -42,9 +41,7 @@ export async function evaluate(projectPath, cases) {
     const results = [];
     for (const item of cases) {
       const start = performance.now();
-      const response = item.action === 'dossier'
-        ? await buildDossier({ sessionId: 'offline-eval', ...item.config }, item.params, index, project)
-        : await index[item.action](project, { limit: 5, ...item.params });
+      const response = await index[item.action](project, { limit: 5, ...item.params });
       if (response.error) throw new Error(`${item.id}: ${response.error}`);
       results.push({ id: item.id, action: item.action, params: item.params, expected: item.expected,
         elapsedMs: performance.now() - start, response });
@@ -59,9 +56,7 @@ export async function evaluate(projectPath, cases) {
 export function rescoreReport(report, expectations = {}) {
   const results = report.results.map((item) => {
     const response = item.response;
-    const rows = item.action === 'dossier'
-      ? [...response.text.matchAll(/^Relevant: (.+?):(\d+)-(\d+)/gm)].map((m) => ({ path: m[1] }))
-      : response.results || [];
+    const rows = response.results || [];
     const expected = expectations[item.id] || {};
     const matches = (row, wanted) => row.path === wanted.path && row.name === wanted.name && row.line === wanted.line && row.kind === 'definition';
     const mapped = rows.flatMap((row) => (row.definitions || []).map((definition) => ({ ...definition, path: row.path })));
@@ -75,7 +70,7 @@ export function rescoreReport(report, expectations = {}) {
     } };
   });
   const aggregate = {};
-  for (const action of ['all', 'search', 'symbols', 'map', 'dossier']) {
+  for (const action of ['all', 'search', 'symbols', 'map']) {
     const selected = results.filter((row) => action === 'all' || row.action === action);
     if (!selected.length) continue;
     aggregate[action] = { count: selected.length, totalChars: selected.reduce((sum, row) => sum + row.metrics.chars, 0),

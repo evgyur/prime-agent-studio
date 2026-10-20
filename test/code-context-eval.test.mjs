@@ -20,14 +20,14 @@ test('evaluation metrics count unique relevant paths, ranks, noise and empty res
 });
 
 
-test('synthetic repository evaluates search, symbols, map and dossier without project writes', { timeout: 30_000 }, async () => {
+test('synthetic repository evaluates search, symbols and map without project writes', { timeout: 30_000 }, async () => {
   const { mkdtemp, mkdir, writeFile, readFile, rm } = await import('node:fs/promises');
   const { tmpdir } = await import('node:os');
   const { join, dirname } = await import('node:path');
   const { execFileSync } = await import('node:child_process');
   const { evaluate } = await import('../scripts/eval-code-context.mjs');
   const fixture = JSON.parse(await readFile(new URL('./fixtures/code-context-eval/synthetic.json', import.meta.url), 'utf8'));
-  assert.equal(fixture.cases.length, 8);
+  assert.equal(fixture.cases.length, 6);
   const project = await mkdtemp(join(tmpdir(), 'context-eval-fixture-'));
   try {
     execFileSync('git', ['init', '--quiet', project], { timeout: 10_000, stdio: 'pipe' });

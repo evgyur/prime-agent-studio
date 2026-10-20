@@ -3710,6 +3710,62 @@
                     "minimum": 0
                   }
                 }
+              },
+              "codeTools": {
+                "type": "object",
+                "properties": {
+                  "search": {
+                    "type": "object",
+                    "properties": {
+                      "calls": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "useful": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "fallback": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    }
+                  },
+                  "symbols": {
+                    "type": "object",
+                    "properties": {
+                      "calls": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "useful": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "fallback": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    }
+                  },
+                  "map": {
+                    "type": "object",
+                    "properties": {
+                      "calls": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "useful": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "fallback": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    }
+                  }
+                }
               }
             }
           },
@@ -3883,6 +3939,62 @@
                     "cancelled": {
                       "type": "integer",
                       "minimum": 0
+                    }
+                  }
+                },
+                "codeTools": {
+                  "type": "object",
+                  "properties": {
+                    "search": {
+                      "type": "object",
+                      "properties": {
+                        "calls": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "useful": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "fallback": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      }
+                    },
+                    "symbols": {
+                      "type": "object",
+                      "properties": {
+                        "calls": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "useful": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "fallback": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      }
+                    },
+                    "map": {
+                      "type": "object",
+                      "properties": {
+                        "calls": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "useful": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "fallback": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      }
                     }
                   }
                 }

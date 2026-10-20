@@ -165,7 +165,42 @@ export function createPerformance({ api, getContext }) {
     modelHead.append(sortLabel);
     body.append(modelHead, table(data.model.groups, false));
     if (data.project) body.append(node('h3', '', t('performance.projects')), table(data.project.groups, true));
+    body.append(toolsBlock(totals));
     body.append(node('p', 'performance-note', t('metrics.costNote')), node('p', 'performance-note', t('performance.retention')));
+  }
+  // Per-tool usefulness of the local code lookup. Rates need at least five
+  // calls; smaller samples show a placeholder instead of a rate. No charts.
+  function toolsBlock(totals) {
+    const block = node('div', 'performance-tools');
+    block.append(node('h3', '', t('performance.tools')));
+    const tools = node('table', 'performance-table');
+    tools.dataset.group = 'tools';
+    const head = node('tr');
+    for (const label of ['performance.tool', 'performance.calls', 'performance.useful', 'performance.fallback']) {
+      head.append(node('th', '', t(label)));
+    }
+    const thead = node('thead'); thead.append(head); tools.append(thead);
+    const body = node('tbody');
+    for (const tool of ['search', 'symbols', 'map']) {
+      const row = totals.codeTools?.[tool] || { calls: 0, useful: 0, fallback: 0 };
+      const tr = node('tr');
+      const cells = [
+        [`studio_code_${tool}`, `studio_code_${tool}`],
+        [number(row.calls), t('performance.calls')],
+        [row.calls >= 5 ? percent(row.useful / row.calls) : t('performance.smallSample'), t('performance.useful')],
+        [row.calls >= 5 ? percent(row.fallback / row.calls) : t('performance.smallSample'), t('performance.fallback')],
+      ];
+      cells.forEach(([value, label], index) => {
+        const cell = node(index ? 'td' : 'th', '', value);
+        if (!index) cell.scope = 'row';
+        cell.dataset.label = label;
+        tr.append(cell);
+      });
+      body.append(tr);
+    }
+    tools.append(body);
+    block.append(tools);
+    return block;
   }
   function table(rows, projects) {
     const table = node('table', 'performance-table');

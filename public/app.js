@@ -47,7 +47,7 @@ import {
 import { createKnowledgeBrowser } from './knowledge.js';
 import { createPerformance } from './performance.js';
 import { renderRunGuard, confirmQuotaBilling } from './run-guards.js';
-import { createContext, pinContextFile } from './context.js';
+import { createContext } from './context.js';
 import { createProjectArchives } from './project-archives.js';
 import { createWorktreesUI } from './worktrees.js';
 import { createRoadmap } from './roadmap.js';
@@ -5142,13 +5142,6 @@ function openContext(context, opener) {
   contextPopup.ui.setDocked({ visible: true });
 }
 $('detail-context').onclick = (event) => openContext(toolContext('session'), event.currentTarget);
-async function pinFileToContext(context, file) {
-  try {
-    await pinContextFile(api, context, { path: file.path });
-    toast(() => tr('context.pinned'));
-  } catch (error) { toast(translateKnown(error.message), true); }
-}
-
 let performancePopup = null;
 function openPerformance(context, opener) {
   if (!performancePopup) {
@@ -5427,7 +5420,6 @@ function createToolInstance(entry) {
   scope.root.hidden = true;
   const ui = createInspector({
     api: inspectorApi,
-    onPinContext: pinFileToContext,
     markdown,
     getModels: () => state.models,
     openModelPicker,
@@ -5620,7 +5612,6 @@ toolViews = createToolViews({
 });
 inspectorUI = createInspector({
   api: inspectorApi,
-  onPinContext: pinFileToContext,
   markdown,
   getModels: () => state.models,
   openModelPicker,

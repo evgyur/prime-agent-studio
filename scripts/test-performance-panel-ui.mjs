@@ -33,6 +33,10 @@ for (let day = 0; day < 12; day++) {
     for (let n = 0; n < count; n++) {
       const base = { ts, project, provider: 'fixture', model }, id = `${day}-${model}-${n}`;
       rows.push({ ...base, id: `${id}-start`, type: 'run_start' }, { ...base, id: `${id}-end`, type: 'run_end', status: n === 3 ? 'stopped' : n === 2 ? 'failed' : 'completed', errorClass: n === 2 ? 'runtime' : null, durationMs: model === 'deep' ? 8000 : 2400, ttftMs: 320 }, { ...base, id: `${id}-usage`, type: 'message_end', usage: { input: 1000, output: 200, cacheRead: 4000, cacheWrite: 500, cost } });
+      if (day === 0 && project === cwd && model === 'swift' && n === 0) {
+        for (let signal = 0; signal < 6; signal++) rows.push({ ts, project, provider: 'fixture', model, id: `signal-search-${signal}`, type: 'tool_execution_end', toolCalls: 1, tool: 'search', hits: 3, files: 2, chars: 40, useful: signal < 4, fallback: signal === 4, callsToEdit: signal < 4 ? 1 : null });
+        for (let signal = 0; signal < 2; signal++) rows.push({ ts, project, provider: 'fixture', model, id: `signal-symbols-${signal}`, type: 'tool_execution_end', toolCalls: 1, tool: 'symbols', hits: 1, files: 1, chars: 10, useful: true, fallback: false, callsToEdit: 2 });
+      }
     }
   }
   await writeFile(join(dataDir, 'metrics', new Date(ts).toISOString().slice(0, 10) + '.jsonl'), jsonl(rows));
@@ -87,6 +91,22 @@ async function chartScale(panel, measure = 'cost') {
     const muted = getComputedStyle(probe).color; probe.remove();
     return style.fontVariantNumeric.includes('tabular-nums') && style.color === muted && rect.left >= bounds.left && rect.right <= bounds.right && Math.ceil(rect.width) >= node.scrollWidth; // scrollWidth is rounded to an integer
   }), true, 'scale uses muted tabular text and fits the panel');
+}
+async function toolsBlock(panel, locale) {
+  const small = locale === 'fr-FR' ? 'échantillon trop petit' : 'sample too small';
+  const rows = panel.locator('[data-group="tools"] tbody tr');
+  await expect(rows).toHaveCount(3);
+  await expect(rows.nth(0).locator('th')).toHaveText('studio_code_search');
+  await expect(rows.nth(1).locator('th')).toHaveText('studio_code_symbols');
+  await expect(rows.nth(2).locator('th')).toHaveText('studio_code_map');
+  // Six search calls show rates (4/6 useful, 1/6 fallback); smaller samples show the placeholder.
+  await expect(rows.nth(0)).toContainText('6');
+  await expect(rows.nth(0)).toContainText('66');
+  await expect(rows.nth(0)).toContainText('16');
+  await expect(rows.nth(0)).not.toContainText(small);
+  await expect(rows.nth(1)).toContainText(small);
+  await expect(rows.nth(2)).toContainText(small);
+  console.log(`PASS usefulness block and small-sample state (${locale})`);
 }
 async function toolbarAligned(panel) {
   const boxes = await panel.locator('.performance-toolbar select, .performance-toolbar button').evaluateAll((nodes) => nodes.map((node) => {
@@ -186,6 +206,11 @@ try {
       await noOverflow(page);
       await chartScale(panel);
       await runStatusGroups(panel);
+      await toolsBlock(panel, locale);
+      await mkdir('test-results/step2e', { recursive: true });
+      await page.screenshot({ path: `test-results/step2e/performance-${width}-${locale}.png`, fullPage: true });
+      await panel.locator('[data-group="tools"]').scrollIntoViewIfNeeded();
+      await page.screenshot({ path: `test-results/step2e/performance-tools-${width}-${locale}.png` });
       if (locale === 'fr-FR') {
         await expect(panel.locator('.performance-kpis dt')).toContainText(['Coût estimé', 'Tokens', 'Taux de cache', 'Exécutions démarrées', 'Durée médiane', 'Latence du premier token']);
         await expect(panel.locator('.performance-kpis')).not.toContainText(/jeton/i);
@@ -296,7 +321,10 @@ try {
       await runStatusGroups(panel);
       await toolbarAligned(panel);
       await chartScale(panel);
+      await toolsBlock(panel, locale);
       const suffix = locale === 'en-US' && theme === 'dark' ? width : `${width}-${locale}-${theme}`;
+      await mkdir('test-results/step2e', { recursive: true });
+      await page.screenshot({ path: `test-results/step2e/performance-classic-${suffix}.png`, fullPage: true });
       await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
       await page.screenshot({ path: `test-results/step3b/performance/classic-${suffix}.png`, fullPage: true });
       await page.keyboard.press('Escape'); await expect(page.locator('.performance-dialog')).not.toBeVisible();

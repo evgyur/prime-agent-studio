@@ -28,7 +28,7 @@
 .performance-table th, .performance-table td { border-bottom: 1px solid var(--line); padding: 8px 5px; text-align: right; overflow-wrap: anywhere; }
 .performance-table thead th { color: var(--muted); font-weight: 500; }
 .performance-table th:first-child { text-align: left; width: 18%; font-weight: 500; }
-.performance-table[data-group="model"] tbody th { font-family: var(--font-mono); }
+.performance-table[data-group="model"] tbody th, .performance-table[data-group="tools"] tbody th { font-family: var(--font-mono); }
 .performance-note { font-size: 11px; color: var(--muted); line-height: 1.6; margin: 8px 0; }
 .performance-dialog { width: 1100px; max-width: calc(100vw - 32px); height: min(850px, calc(100dvh - 32px)); padding: 16px; overflow: hidden; }
 .performance-dialog > button { display: block; margin-left: auto; }

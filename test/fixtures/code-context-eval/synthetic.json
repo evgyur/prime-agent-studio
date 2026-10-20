@@ -31,7 +31,7 @@
       "id": "search-fragment",
       "action": "search",
       "params": {
-        "q": "launch fixture"
+        "q": "class FixtureConductor"
       },
       "expected": [
         "src/conductor.ts"
@@ -62,26 +62,6 @@
       "action": "map",
       "params": {
         "path": "src/conductor.ts"
-      },
-      "expected": [
-        "src/conductor.ts"
-      ]
-    },
-    {
-      "id": "dossier-task",
-      "action": "dossier",
-      "params": {
-        "q": "Travaille sur la sélection suivante de la Roadmap de ce projet.\n\nRévision consultée : 7. Lis l’état courant avec roadmap_read avant de modifier la Roadmap.\n\nDéclare les références traitées avec roadmap_work. Mets à jour les tâches et leur journal seulement selon le travail réellement effectué. Termine par le résultat, les vérifications et ce qui reste à faire.\n\nInstructions complémentaires de l’utilisateur :\nPrime Fleet pipeline: task started on Desktop.\nRoadmap: when this task is finished and verified, check its step with roadmap_check (planId plan-eval, stepId step-eval). If it is not finished, do not check it and explain what is missing.\n\nLes titres et notes ci-dessous sont le contenu des tâches sélectionnées par l’utilisateur.\n\n[\n  {\n    \"reference\": {\n      \"kind\": \"plan\",\n      \"planId\": \"plan-eval\",\n      \"stepId\": \"step-eval\"\n    },\n    \"title\": \"Fix evaluateFixtureTask\",\n    \"task\": \"Fix evaluateFixtureTask\",\n    \"note\": \"Correct the evaluateFixtureTask source function.\"\n  }\n]"
-      },
-      "expected": [
-        "src/task.ts"
-      ]
-    },
-    {
-      "id": "dossier-conductor",
-      "action": "dossier",
-      "params": {
-        "q": "Travaille sur la sélection suivante de la Roadmap de ce projet.\n\nRévision consultée : 7. Lis l’état courant avec roadmap_read avant de modifier la Roadmap.\n\nDéclare les références traitées avec roadmap_work. Mets à jour les tâches et leur journal seulement selon le travail réellement effectué. Termine par le résultat, les vérifications et ce qui reste à faire.\n\nInstructions complémentaires de l’utilisateur :\nPrime Fleet pipeline: task started on Desktop.\nRoadmap: when this task is finished and verified, check its step with roadmap_check (planId plan-eval, stepId step-eval). If it is not finished, do not check it and explain what is missing.\n\nLes titres et notes ci-dessous sont le contenu des tâches sélectionnées par l’utilisateur.\n\n[\n  {\n    \"reference\": {\n      \"kind\": \"plan\",\n      \"planId\": \"plan-eval\",\n      \"stepId\": \"step-eval\"\n    },\n    \"title\": \"Fix launchFixtureNode\",\n    \"task\": \"Fix launchFixtureNode\",\n    \"note\": \"Correct launchFixtureNode conversation transfer.\"\n  }\n]"
       },
       "expected": [
         "src/conductor.ts"

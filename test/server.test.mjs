@@ -1249,3 +1249,17 @@ test('quota retry refuses a model override instead of silently replacing the sel
   assert.equal(retry.status, 409, retry.text);
   assert.equal(runtime.controls.length, 1, 'never start an unselected fallback');
 });
+
+
+test('Rust Computer Use status advertises its unsupported boundary without enabling control', async (t) => {
+  const runtime = fakeRuntime();
+  runtime.engine = 'rust';
+  const f = await fixture(t, { runtime });
+  const status = await f.api('/api/computer-use');
+  assert.equal(status.status, 200, status.text);
+  assert.equal(status.json.supported, false);
+  assert.match(status.json.unsupportedReason, /official Rust daemon/);
+  const grant = await f.api('/api/computer-use', { method: 'POST', body: { enabled: true } });
+  assert.equal(grant.status, 409, grant.text);
+  assert.equal(runtime.controls.length, 0);
+});

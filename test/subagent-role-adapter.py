@@ -17,12 +17,7 @@ class RoleAdapterTests(unittest.IsolatedAsyncioTestCase):
             self.calls.append(("native", prompt, kwargs))
             return "native-handle"
 
-        async def host_request(kind, payload):
-            self.calls.append((kind, payload))
-            return {"handle": "role-handle"}
-
-        module = SimpleNamespace(spawn=original, host_request=host_request,
-                                 _spawn_handle_from_payload=lambda payload: payload["handle"])
+        module = SimpleNamespace(spawn=original)
         adapter._RoleLoader(SimpleNamespace(exec_module=lambda module: None)).exec_module(module)
         return module
 
@@ -31,18 +26,15 @@ class RoleAdapterTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await module.spawn("task", name="worker"), "native-handle")
         self.assertEqual(self.calls, [("native", "task", {"name": "worker", "model": None, "thinking": None})])
 
-    async def test_role_preserves_explicit_fields_for_host_validation(self):
+    async def test_legacy_role_is_stripped_for_compatibility(self):
         module = self.module()
-        self.assertEqual(await module.spawn("task", name="worker", role="explore", model="fixture/model", thinking="off"), "role-handle")
-        self.assertEqual(self.calls, [("rlm.run", {"prompt": "task", "kwargs": {
-            "name": "worker", "role": "explore", "model": "fixture/model", "thinking": "off"}})])
+        self.assertEqual(await module.spawn("task", name="worker", role="explore", model="fixture/model", thinking="off"), "native-handle")
+        self.assertEqual(self.calls, [("native", "task", {"name": "worker", "model": "fixture/model", "thinking": "off"})])
 
-    async def test_unsupported_native_contract_fails_before_host_request(self):
+    async def test_unknown_role_is_ignored_not_rejected(self):
         module = self.module()
-        del module._spawn_handle_from_payload
-        with self.assertRaisesRegex(RuntimeError, "updated Studio role adapter"):
-            await module.spawn("task", name="worker", role="review")
-        self.assertEqual(self.calls, [])
+        self.assertEqual(await module.spawn("task", name="worker", role="typo"), "native-handle")
+        self.assertEqual(self.calls, [("native", "task", {"name": "worker", "model": None, "thinking": None})])
 
 
 if __name__ == "__main__":

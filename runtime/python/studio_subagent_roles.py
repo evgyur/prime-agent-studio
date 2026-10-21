@@ -1,4 +1,11 @@
-"""Add Studio's role keyword without modifying the installed native runtime."""
+"""Compatibility shim: accept (and ignore) legacy role keyword.
+
+Per-role routing was removed in 4.4.1. Old conversations may still call
+``rlm.spawn(..., role="explore")``. The native runtime rejects unknown
+keywords, so this loader keeps the keyword accepted but strips it before
+delegating to the native implementation. Only general subagent defaults
+(model/thinking) apply, via the Studio Node hook.
+"""
 import importlib.abc
 import importlib.machinery
 import sys
@@ -17,19 +24,8 @@ class _RoleLoader(importlib.abc.Loader):
         omitted = object()
 
         async def spawn(prompt, *, name, model=None, thinking=None, role=omitted):
-            if role is omitted:
-                return await original(prompt, name=name, model=model, thinking=thinking)
-            if not isinstance(prompt, str):
-                raise TypeError(f"prompt must be str, got {type(prompt).__name__}")
-            if not callable(getattr(module, "host_request", None)) or not callable(getattr(module, "_spawn_handle_from_payload", None)):
-                raise RuntimeError("This Prime Agent version requires an updated Studio role adapter.")
-            kwargs = {"name": name, "role": role}
-            if model is not None:
-                kwargs["model"] = model
-            if thinking is not None:
-                kwargs["thinking"] = thinking
-            payload = await module.host_request("rlm.run", {"prompt": prompt, "kwargs": kwargs})
-            return module._spawn_handle_from_payload(payload)
+            # `role` is legacy: silently ignored for backward compatibility.
+            return await original(prompt, name=name, model=model, thinking=thinking)
 
         module.spawn = spawn
 

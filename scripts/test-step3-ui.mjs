@@ -40,42 +40,13 @@ async function capture(page, options) {
   await expect(page.locator('#toasts .toast')).toHaveCount(0, { timeout: 8000 });
   await page.screenshot(options);
 }
-// Role rows: title and hint above, then the model and reasoning controls in the
-// same columns as the base Model / Reasoning row of the same form.
-async function assertRoleColumns(root, label) {
-  const layout = await root.locator('.subagent-role-row').first().evaluate((row) => {
-    const box = (element) => {
-      const rect = element.getBoundingClientRect();
-      return { left: rect.left, top: rect.top, bottom: rect.bottom, width: rect.width };
-    };
-    const form = row.closest('.subagent-form');
-    return {
-      title: box(row.querySelector('.subagent-role-title')),
-      model: box(row.querySelector('.model-picker-button')),
-      thinking: box(row.querySelector('select')),
-      baseModel: box(form.querySelector('.subagent-model-field .model-picker-button')),
-      baseThinking: box(form.querySelector('.subagent-thinking-field select')),
-    };
-  });
-  const near = (a, b) => Math.abs(a - b) < 2;
-  assert.ok(layout.title.bottom <= layout.model.top + 1 && layout.title.bottom <= layout.thinking.top + 1, `${label}: role title sits above its controls`);
-  assert.ok(near(layout.model.left, layout.baseModel.left) && near(layout.model.width, layout.baseModel.width), `${label}: role model uses the base model column`);
-  assert.ok(near(layout.thinking.left, layout.baseThinking.left) && near(layout.thinking.width, layout.baseThinking.width), `${label}: role reasoning uses the base reasoning column`);
-  if (layout.thinking.top < layout.model.bottom - 1)
-    assert.ok(near(layout.model.top, layout.thinking.top), `${label}: role model and reasoning share one line like the base row`);
-}
-async function chooseRole(page, root, role, id, screenshot) {
-  const button = root.locator(`[data-role-model="${role}"]`);
-  await expect(button).toHaveClass('model-picker-button');
-  await button.focus(); await page.keyboard.press('Enter');
-  await expect(page.locator('#model-dialog')).toBeVisible();
-  await expect(button).toHaveAttribute('aria-expanded', 'true');
-  await expect(page.locator('#model-list .model-choice[data-model-id="fixture/offline"]')).toBeDisabled();
-  if (screenshot) await capture(page, { path: screenshot });
-  await page.locator(`#model-list .model-choice[data-model-id="${id}"]`).click();
-  await expect(page.locator('#model-dialog')).not.toBeVisible();
-  await expect(button).toHaveAttribute('aria-expanded', 'false');
-  await expect(button).toHaveAttribute('value', id);
+// Per-role overrides were removed in 4.4.1: the subagent forms expose only the
+// shared model and reasoning defaults. Role rows must stay absent.
+async function expectNoRoles(root, label) {
+  await expect(root.locator('.subagent-role-row')).toHaveCount(0);
+  await expect(root.locator('[data-role-model]')).toHaveCount(0);
+  await expect(root.locator('[data-role-thinking]')).toHaveCount(0);
+  assert.equal(await root.locator('.subagent-roles').count(), 0, `${label}: no role section`);
 }
 async function noOverflow(page, panel) {
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
@@ -97,7 +68,7 @@ try {
     let confirmedAttempts = 0;
     let fallback = { revision: 'fallback-1', automatic: false, models: ['fixture/swift', 'fixture/deep'] };
     let budgets = { revision: 'budget-1', run: { tokens: 1000, estimatedCost: 1 }, projects: { [cwd]: { tokens: 10000, estimatedCost: 10 } } };
-    let global = { model: '', thinking: '', roles: { implement: { model: 'fixture/missing', thinking: 'high' }, explore: { model: 'fixture/swift', thinking: 'low' }, review: { model: 'fixture/deep', thinking: 'high' } } };
+    let global = { model: '', thinking: '' };
     let project = null;
     await context.route('**/*', async (route) => {
       const request = route.request(), url = new URL(request.url());
@@ -140,49 +111,20 @@ try {
     await page.locator('#open-settings').click();
     await page.locator('#settings-tab-models').click();
     await page.locator('#open-model-config').click();
-    const roles = page.locator('#subagent-settings');
-    for (const role of ['explore', 'implement', 'review']) {
-      await expect(roles.locator(`[data-role-model="${role}"]`)).toBeVisible();
-      await expect(roles.locator(`[data-role-thinking="${role}"]`)).toBeVisible();
-    }
-    await expect(roles.locator('[data-role-model="implement"] .model-picker-name')).toContainText('fixture/missing');
-    await expect(roles.locator('[data-role-model="implement"] .model-picker-provider')).toContainText(/indisponible|unavailable/i);
-    await chooseRole(page, roles, 'implement', 'fixture/deep');
-    await chooseRole(page, roles, 'implement', '');
-    await expect(roles.locator('[data-role-model="implement"] .model-picker-name')).toHaveText(locale.startsWith('fr') ? 'Hériter du défaut' : 'Inherit default');
-    await chooseRole(page, roles, 'implement', 'fixture/deep');
-    await chooseRole(page, roles, 'explore', '');
-    await chooseRole(page, roles, 'explore', 'fixture/swift');
-    await chooseRole(page, roles, 'review', '', `test-results/step3b/role-picker-${suffix}.png`);
-    await chooseRole(page, roles, 'review', 'fixture/deep');
-    await roles.locator('[data-role-thinking="implement"]').selectOption('medium');
-    if (width === 390) {
-      const fields = await roles.locator('.subagent-role-row').first().evaluate((row) => {
-        const model = row.querySelector('.model-picker-button'), thinking = row.querySelector('select');
-        return { modelHeight: model.getBoundingClientRect().height, thinkingHeight: thinking.getBoundingClientRect().height,
-          modelFont: getComputedStyle(model.querySelector('.model-picker-name')).fontSize, thinkingFont: getComputedStyle(thinking).fontSize,
-          providerFont: getComputedStyle(model.querySelector('.model-picker-provider')).fontSize,
-          background: getComputedStyle(thinking).backgroundColor, baseBackground: getComputedStyle(row.closest('.subagent-form').querySelector('.subagent-thinking-field select')).backgroundColor };
-      });
-      assert.equal(fields.modelHeight, fields.thinkingHeight, 'mobile role fields have equal height');
-      assert.equal(fields.modelFont, fields.thinkingFont, 'mobile role fields have equal primary text size');
-      assert.equal(fields.background, fields.baseBackground, 'role thinking uses the base thinking surface');
-      assert.equal(fields.providerFont, '11px', 'mobile picker provider text stays readable');
-    }
-    await assertRoleColumns(roles, `global ${suffix}`);
-    await roles.locator('button[type="submit"]').click();
+    const subagents = page.locator('#subagent-settings');
+    await expectNoRoles(subagents, `global ${suffix}`);
+    // Shared defaults still save without roles.
+    await subagents.locator('#default-subagent-thinking').selectOption('medium');
+    await subagents.locator('button[type="submit"]').click();
     await expect.poll(() => saves.some((s) => s.path === '/api/subagent-defaults')).toBe(true);
-    assert.deepEqual(global.roles.implement, { model: 'fixture/deep', thinking: 'medium' });
-    await roles.scrollIntoViewIfNeeded(); await noOverflow(page, roles);
+    assert.deepEqual(global, { model: '', thinking: 'medium' });
+    assert.ok(!('roles' in global), 'global defaults carry no roles');
+    await subagents.scrollIntoViewIfNeeded(); await noOverflow(page, subagents);
     if (width === 390) {
-      const thinkingBounds = await roles.locator('#default-subagent-thinking').boundingBox();
+      const thinkingBounds = await subagents.locator('#default-subagent-thinking').boundingBox();
       assert.ok(thinkingBounds.width >= 220, `Mobile base reasoning needs >=220px, got ${thinkingBounds.width}`);
     }
-    await capture(page, { path: `test-results/step3b/roles-global-${suffix}.png` });
-    if (width === 390) {
-      await roles.locator('[data-role-thinking="review"]').scrollIntoViewIfNeeded();
-      await capture(page, { path: `test-results/step3b/roles-global-lower-${suffix}.png` });
-    }
+    await capture(page, { path: `test-results/step3b/subagents-global-${suffix}.png` });
     const routing = page.locator('#engine-settings .routing-settings');
     const fallbackForm = routing.locator('[data-routing-form="fallback"]');
     await expect(fallbackForm.locator('[data-fallback-automatic]')).not.toBeChecked();
@@ -206,19 +148,15 @@ try {
     await expect(page.locator('#settings-dialog')).not.toBeVisible();
     if (await page.locator('#toggle-details').getAttribute('aria-pressed') !== 'true') await page.locator('#toggle-details').click();
     await page.locator('#inspector-tab-agents').click();
-    const projectRoles = page.locator('#project-subagent-settings');
-    await projectRoles.locator('.subagent-scope').selectOption('project');
-    await expect(projectRoles.locator('[data-role-model="explore"]')).toBeVisible();
-    await chooseRole(page, projectRoles, 'explore', '');
-    await expect.poll(() => project.roles?.explore?.model || '').toBe('');
-    await chooseRole(page, projectRoles, 'explore', 'fixture/deep');
-    await projectRoles.locator('[data-role-thinking="explore"]').selectOption('high');
-    await expect.poll(() => saves.some((s) => s.path === '/api/project-subagent-defaults')).toBe(true);
-    await expect.poll(() => project.roles.explore).toEqual({ model: 'fixture/deep', thinking: 'high' });
-    await assertRoleColumns(projectRoles, `project ${suffix}`);
-    await projectRoles.scrollIntoViewIfNeeded();
-    await capture(page, { path: `test-results/step3b/roles-project-${suffix}.png` });
-    await noOverflow(page, projectRoles);
+    const projectSubagents = page.locator('#project-subagent-settings');
+    await projectSubagents.locator('.subagent-scope').selectOption('project');
+    await expectNoRoles(projectSubagents, `project ${suffix}`);
+    await projectSubagents.locator('.subagent-thinking-field select').selectOption('high');
+    await expect.poll(() => project).toEqual({ model: '', thinking: 'high' });
+    assert.ok(!('roles' in (project || {})), 'project defaults carry no roles');
+    await projectSubagents.scrollIntoViewIfNeeded();
+    await capture(page, { path: `test-results/step3b/subagents-project-${suffix}.png` });
+    await noOverflow(page, projectSubagents);
     await page.locator('#close-inspector').click();
     const before = controls.length;
     await page.locator('#composer').fill('Check the local fixture only.');

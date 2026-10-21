@@ -4,6 +4,12 @@
 
 Les changements par version. Retrouvez les installateurs et les archives du code source dans les [releases GitHub](https://github.com/zerr0o/prime-agent-studio/releases).
 
+## 4.4.1
+
+- **Réglages des sous-agents simplifiés** : les sélecteurs de rôles Explorer / Implémenter / Réviser sont supprimés. Choisissez le modèle et le niveau de réflexion par défaut globalement ou par projet ; les choix explicites au lancement d’un sous-agent restent prioritaires.
+- **Compatibilité des conversations existantes** : les anciens réglages par rôle n’influencent plus le choix du modèle. Les arguments `role` hérités sont ignorés pour permettre aux anciennes conversations de continuer sans erreur liée au sélecteur supprimé.
+- **Autres contrôles inchangés** : le modèle de suggestion Git, les budgets et le repli sur quota restent disponibles. Le correctif d’installation de Prime Agent 0.9.8 et le Contexte (Bêta) sur activation explicite de la 4.4.0 sont conservés.
+
 ## 4.4.0
 
 - **Installation de Prime Agent corrigée** : le moteur reste fixé à 0.9.8. Studio utilise une source et des empreintes inscrites dans le build, sans analyser le script d’installation distant qui évolue indépendamment. Les archives restent vérifiées avant activation. Corrige le blocage `source_contract_changed` signalé dans l’issue #10.

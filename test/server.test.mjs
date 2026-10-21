@@ -984,19 +984,28 @@ test('message folder reveal accepts outside references without widening content 
   assert.equal(f.runtime.controls.length, 0);
 });
 
-test('subagent role choices validate model availability and thinking before policy writes', async (t) => {
+test('subagent general defaults validate model availability and thinking; legacy roles are stripped', async (t) => {
   const f = await fixture(t);
   const state = (await f.api('/api/subagent-defaults')).json;
-  for (const role of [
-    { model: 'missing/model' },
+  // General defaults are still validated.
+  for (const policy of [
+    { model: 'missing/model', thinking: '' },
     { model: 'openai/gpt-5.6-luna', thinking: 'xhigh' },
   ]) {
     const result = await f.api('/api/subagent-defaults', { method: 'POST', body: {
-      revision: state.revision, policy: { model: '', thinking: '', roles: { review: role } },
+      revision: state.revision, policy,
     } });
     assert.equal(result.status, 400, result.text);
     assert.equal((await f.api('/api/subagent-defaults')).json.revision, state.revision);
   }
+  // Legacy roles are accepted for compatibility but stripped on write and never applied.
+  const legacy = await f.api('/api/subagent-defaults', { method: 'POST', body: {
+    revision: state.revision,
+    policy: { model: '', thinking: '', roles: { review: { model: 'missing/model' } } },
+  } });
+  assert.equal(legacy.status, 200, legacy.text);
+  assert.deepEqual(legacy.json.global, { model: '', thinking: '' });
+  assert.deepEqual(legacy.json.effective, { model: '', thinking: '' });
 });
 
 test('quota fallback preferences are validated and revision protected without starting a run', async (t) => {

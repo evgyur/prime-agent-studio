@@ -18,8 +18,9 @@ test('model labels use catalog names and keep unknown ids readable', () => {
   assert.equal(modelDisplayName('fixture/missing', models), 'fixture/missing');
 });
 
-test('role model controls reuse the shared picker rather than a native model select', async () => {
+test('general subagent defaults keep the shared picker without role selectors', async () => {
   const source = await readFile(new URL('../public/subagent-settings.js', import.meta.url), 'utf8');
-  assert.doesNotMatch(source, /const model = document.createElement\('select'\)/);
-  assert.match(source, /defaultLabel[^]*?routing.inherit/);
+  assert.match(source, /openModelPicker\(\{/);
+  assert.match(source, /defaultLabel[^]*?ui.defaut_du_moteur/);
+  assert.doesNotMatch(source, /subagent-role|draft\.roles|routing\.(explore|implement|review|inherit)/);
 });

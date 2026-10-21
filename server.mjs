@@ -1828,20 +1828,17 @@ export function createApp(options = {}) {
           if (!validPolicy(body.policy))
             throw new HttpError(400, tr('server.reglages_des_sous_agents_invalides'));
           const saved = await subagentDefaults.get(cwd);
+          // Per-role routing was removed in 4.4.1: only general defaults are
+          // validated (legacy `roles` are accepted but stripped on write).
           const effective = effectivePolicy(cwd ? saved.global : body.policy, cwd ? body.policy : null);
-          const choices = [effective, ...Object.values(effective.roles || {}).map((role) => ({
-            model: role.model || effective.model,
-            thinking: role.thinking || effective.thinking,
-          }))];
-          const catalog = choices.some((choice) => choice.model) ? await models() : null;
-          for (const choice of choices) {
-            if (!choice.model) continue;
-            const model = catalog.models?.find((m) => m.id === choice.model);
+          if (effective.model) {
+            const catalog = await models();
+            const model = catalog.models?.find((m) => m.id === effective.model);
             if (!model)
               throw new HttpError(400, tr('server.ce_modele_n_est_pas_disponible_dans_prime_agent'));
             if (model.availability === 'unavailable')
               throw new HttpError(409, tr('model.unavailableSelection'));
-            if (choice.thinking && !model.thinkingLevels?.includes(choice.thinking))
+            if (effective.thinking && !model.thinkingLevels?.includes(effective.thinking))
               throw new HttpError(
                 400,
                 tr('server.ce_niveau_de_reflexion_n_est_pas_compatible_avec_le_modele_chois'),

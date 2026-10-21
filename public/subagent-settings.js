@@ -80,104 +80,6 @@ export function createSubagentSettings({
   byId(`${prefix}-model-label`).setAttribute('for', modelButton.id);
   const option = (value, label) => translatedOption(label, value);
 
-  // Role overrides are sparse: empty fields inherit without pinning a global value.
-  const roles = ['explore', 'implement', 'review'];
-  const roleFields = new Map();
-  const roleSection = document.createElement('div');
-  roleSection.className = 'subagent-roles';
-  const roleNote = document.createElement('p');
-  roleNote.className = 'model-defaults-note';
-  bindText(roleNote, () => tr('routing.rolesNote'));
-  roleSection.append(roleNote);
-  for (const role of roles) {
-    const row = document.createElement('div');
-    row.className = 'subagent-role-row';
-    const title = document.createElement('div');
-    title.className = 'subagent-role-title';
-    const label = document.createElement('strong');
-    const hint = document.createElement('small');
-    bindText(label, () => tr(`routing.${role}`));
-    bindText(hint, () => tr(`routing.${role}Note`));
-    title.append(label, hint);
-    const model = modelButton.cloneNode(true);
-    model.removeAttribute('id');
-    model.dataset.roleModel = role;
-    const thinking = document.createElement('select');
-    thinking.dataset.roleThinking = role;
-    bindAttribute(thinking, 'aria-label', () => `${tr(`routing.${role}`)} · ${tr('ui.reflexion_3')}`);
-    const change = () => {
-      const value = {};
-      if (model.value) value.model = model.value;
-      const selected = getModels().find((entry) => entry.id === (model.value || inheritedRoleModel(role)));
-      if (thinking.value && (!selected || (selected.thinkingLevels || (selected.reasoning ? Object.keys(thinkingLabels) : ['off'])).includes(thinking.value))) value.thinking = thinking.value;
-      draft.roles = { ...draft.roles };
-      if (Object.keys(value).length) draft.roles[role] = value;
-      else delete draft.roles[role];
-      if (!Object.keys(draft.roles).length) delete draft.roles;
-      renderRoles();
-      if (project) void save();
-    };
-    thinking.onchange = change;
-    model.onclick = () => {
-      if (busy || !data || model.matches(':disabled')) return;
-      const turn = generation;
-      openModelPicker({
-        button: model,
-        value: model.value,
-        get title() { return `${tr(`routing.${role}`)} · ${tr('ui.modele')}`; },
-        get defaultLabel() { return tr('routing.inherit'); },
-        get defaultDetail() { return inheritedRoleName(role); },
-        onSelect(id) {
-          if (turn !== generation || busy || !data || model.matches(':disabled')) return;
-          model.value = id || '';
-          change();
-        },
-      });
-    };
-    // Title and hint above; model and reasoning below, in the same columns as
-    // the base Model / Reasoning row of this form (its responsive rules apply).
-    const controls = document.createElement('div');
-    controls.className = 'subagent-controls subagent-role-controls';
-    controls.append(model, thinking);
-    row.append(title, controls);
-    roleSection.append(row);
-    roleFields.set(role, { model, thinking });
-  }
-  $('.subagent-fields').append(roleSection);
-  function inheritedRoleModel(role) {
-    return (project ? data?.global?.roles?.[role]?.model : '') || draft.model || context.mainModel || '';
-  }
-  function inheritedRoleName(role) {
-    const id = inheritedRoleModel(role);
-    return getModels().find((entry) => entry.id === id)?.name || id || tr('ui.modele_natif_sinon_parent');
-  }
-  function renderRoles() {
-    for (const [role, fields] of roleFields) {
-      const value = draft.roles?.[role] || {};
-      const selected = getModels().find((entry) => entry.id === value.model);
-      const unavailable = value.model && (!selected || selected.available === false || selected.availability === 'unavailable');
-      fields.model.value = value.model || '';
-      bindText(fields.model.querySelector('.model-picker-name'), () => selected?.name ||
-        (value.model ? tr('common.unavailable', { value1: value.model }) : tr('routing.inherit')));
-      bindText(fields.model.querySelector('.model-picker-provider'), () => unavailable ? tr('ui.modele_indisponible') :
-        selected?.provider || inheritedRoleName(role));
-      bindAttribute(fields.model, 'title', () => value.model || inheritedRoleModel(role) || tr('routing.inherit'));
-      bindAttribute(fields.model, 'aria-label', () => `${tr(`routing.${role}`)} · ${tr('ui.modele')}: ${
-        selected?.name || value.model || tr('routing.inherit')}${selected ? ` · ${selected.id}` : ''}${unavailable ? ` · ${tr('ui.modele_indisponible')}` : ''}`);
-      fields.thinking.replaceChildren(option('', () => tr('routing.inherit')));
-      const model = getModels().find((entry) => entry.id === (value.model || inheritedRoleModel(role)));
-      const levels = model ? model.thinkingLevels || (model.reasoning ? Object.keys(thinkingLabels) : ['off']) : Object.keys(thinkingLabels);
-      for (const level of levels) fields.thinking.append(option(level, () => thinkingLabels[level] || level));
-      if (value.thinking && !levels.includes(value.thinking)) {
-        const missing = option(value.thinking, () => tr('common.unavailable', { value1: thinkingLabels[value.thinking] || value.thinking }));
-        missing.disabled = true;
-        fields.thinking.append(missing);
-      }
-      fields.thinking.value = value.thinking || '';
-    }
-  }
-
-
   function error(message = '') {
     bindText($('.subagent-error'), () => translateKnown(message));
     $('.subagent-error').hidden = !message;
@@ -219,7 +121,6 @@ export function createSubagentSettings({
       } else draft.thinking = '';
     }
     thinkingSelect.value = draft.thinking;
-    renderRoles();
     if (project) $('.subagent-scope').value = data?.project === null ? 'global' : 'project';
     controls();
   }
@@ -248,9 +149,10 @@ export function createSubagentSettings({
       const response = await api(endpoint());
       if (turn !== generation) return;
       data = response;
-      draft = { ...(project ? data.effective : data.global) };
-      // Preserve sparse project role overrides rather than copying inherited roles.
-      if (project) draft.roles = { ...data.project?.roles };
+      {
+        const source = project ? data.effective : data.global;
+        draft = { model: source?.model || '', thinking: source?.thinking || '' };
+      }
       $('.subagent-reload').hidden = true;
       render();
       savedStatus();
@@ -283,9 +185,10 @@ export function createSubagentSettings({
       const saved = await api(endpoint(), { method: 'POST', body });
       if (turn !== generation) return;
       data = saved;
-      draft = { ...(project ? data.effective : data.global) };
-      // Preserve sparse project role overrides rather than copying inherited roles.
-      if (project) draft.roles = { ...data.project?.roles };
+      {
+        const source = project ? data.effective : data.global;
+        draft = { model: source?.model || '', thinking: source?.thinking || '' };
+      }
       $('.subagent-reload').hidden = true;
       render();
       savedStatus();

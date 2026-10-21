@@ -22,9 +22,8 @@ await writeFile(join(cwd, '.prime/agent/APPEND_SYSTEM.md'), 'EXISTING_APPEND_PRO
 const defaults = createSubagentDefaultsStore({ dataDir: join(root, 'data') });
 let policy = await defaults.set({ revision: '', policy: {
   model: 'fixture/default', thinking: 'high',
-  roles: { explore: { model: 'fixture/role', thinking: 'low' } },
 } });
-const deadline = setTimeout(() => { console.error('Native role fixture exceeded 120 seconds'); process.exit(1); }, 120000);
+const deadline = setTimeout(() => { console.error('Native subagent fixture exceeded 120 seconds'); process.exit(1); }, 120000);
 const requests = [],
   events = [],
   spawned = new Set();
@@ -52,7 +51,7 @@ const provider = createServer(async (req, res) => {
     spawned.add(phase);
     code =
       phase === 'first'
-        ? 'import rlm\ntry:\n    await rlm.spawn("INVALID_ROLE", name="invalid-role", role="typo")\nexcept Exception as error:\n    assert "explore, implement, review" in str(error), str(error)\nelse:\n    raise AssertionError("Unknown role was admitted")\na = await rlm.spawn("CHILD_DEFAULT_FIRST", name="policy-default")\nb = await rlm.spawn("CHILD_EXPLICIT", model="fixture/explicit", thinking="off", name="policy-explicit", role="explore")\nc = await rlm.spawn("CHILD_ROLE", name="policy-role", role="explore")\nprint("CHILDREN_ADMITTED")'
+        ? 'import rlm\na = await rlm.spawn("CHILD_DEFAULT_FIRST", name="policy-default", role="explore")\nb = await rlm.spawn("CHILD_EXPLICIT", model="fixture/explicit", thinking="off", name="policy-explicit", role="legacy-unknown")\nprint("CHILDREN_ADMITTED")'
         : 'import rlm\na = await rlm.spawn("CHILD_PROJECT_SECOND", name="policy-project")\nprint("CHILD_ADMITTED")';
   }
   // Emit a real 0.9.5 progress note before holding this child open for inspection.
@@ -95,7 +94,7 @@ await writeFile(
         api: 'openai-completions',
         baseUrl: `http://127.0.0.1:${provider.address().port}/v1`,
         apiKey: 'fixture-only',
-        models: ['parent', 'default', 'explicit', 'project', 'role'].map((id) => ({
+        models: ['parent', 'default', 'explicit', 'project'].map((id) => ({
           id,
           name: id,
           reasoning: true,
@@ -140,7 +139,7 @@ try {
     onEvent: (e) => events.push(e),
   });
   await until(
-    () => requests.some((r) => r.model === 'default') && requests.some((r) => r.model === 'explicit') && requests.some((r) => r.model === 'role'),
+    () => requests.some((r) => r.model === 'default') && requests.some((r) => r.model === 'explicit'),
   );
   client = createLiveSessionClient(runtime.getLiveEndpoint());
   const live = await until(async () => {
@@ -150,7 +149,6 @@ try {
   const progressChild = live.children.find((child) => child.sessionName === 'policy-default');
   assert.equal(progressChild.progressNote, 'NATIVE_PROGRESS_MARKER');
   assert.ok(Number.isFinite(progressChild.lastActivityAt) && progressChild.lastActivityAt > 0);
-  assert.equal(live.children.find((c) => c.sessionName === 'policy-role')?.thinkingLevel, 'low');
   assert.equal(live.state.model, 'fixture/parent');
   assert.equal(live.state.thinkingLevel, 'medium');
   assert.equal(live.children.find((c) => c.sessionName === 'policy-default')?.thinkingLevel, 'high');
@@ -161,7 +159,6 @@ try {
   assert.match(firstSystem, /EXISTING_APPEND_PROMPT_MUST_SURVIVE/);
   assert.match(firstSystem, /subagent defaults/);
   assert.match(firstSystem, /fixture\/default/);
-  assert.match(firstSystem, /explore/);
   // Same retained root/daemon; a changed project policy updates both the next system prompt and spawn.
   policy = await defaults.set({
     cwd,
@@ -214,7 +211,7 @@ try {
       {
         passed: true,
         checks: [
-          'native role keyword routes model and thinking; explicit values override role',
+          'legacy role arguments ignored; general defaults and explicit model/thinking still apply',
           'native defaults applied to Python delegation',
           'explicit model/thinking preserved',
           'live and historical thinking',
@@ -244,7 +241,7 @@ try {
     }
     assert.ok(rows.every((row) => !['agent_start', 'agent_end', 'turn_start'].includes(row.type)), 'Unused lifecycle events are not recorded');
     const requests = rows.filter((row) => row.type === 'message_end');
-    assert.ok(expectedMetricSessions.size >= 4, 'The existing fixture must expose its parent and three children');
+    assert.ok(expectedMetricSessions.size >= 3, 'The existing fixture must expose its parent and two children');
     for (const id of expectedMetricSessions)
       assert.ok(requests.some((row) => row.sessionId === id), `Missing metrics for session ${id}`);
     assert.equal(new Set(rows.map((row) => row.id)).size, rows.length, 'Event ids must be unique');

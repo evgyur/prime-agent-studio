@@ -985,17 +985,7 @@
   margin: 0;
 }
 
-/* Delegation roles and explicit usage controls share the settings surface. */
-.subagent-roles { container-type: inline-size; margin-top: 16px; border-top: 1px solid var(--line-soft); padding-top: 10px; }
-.subagent-role-row { padding: 9px 0; }
-.subagent-role-title strong { display: block; }
-.subagent-role-row strong { font-size: 12px; font-weight: 600; }
-.subagent-role-row small { display: block; color: var(--muted); font-size: 11px; margin-top: 3px; }
-.subagent-role-row select, .subagent-role-row .model-picker-button { min-width: 0; width: 100%; }
-/* The title replaces the field labels: one shared offset keeps both controls on one line. */
-.subagent-role-controls { margin-top: 8px; }
-.subagent-role-controls > .model-picker-button, .subagent-role-controls > select { margin-top: 0; }
-.model-config-modal .subagent-role-row select { background: var(--surface); border-radius: 8px; }
+/* Explicit usage controls share the settings surface. */
 .routing-section { border-top: 1px solid var(--line); margin-top: 24px; padding-top: 20px; }
 .routing-section h4 { font-size: 12px; font-weight: 600; margin: 22px 0 6px; }
 .routing-toggle { display: flex; align-items: center; gap: 9px; font-size: 12px; margin: 18px 0 7px; }

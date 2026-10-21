@@ -139,9 +139,19 @@ try {
     // Diagnostic error keeps details and retry, no restart, no Studio open.
     await page.locator('#components-install').click();
     await page.evaluate(() =>
-      window.finishPrepare({ failure: { component: 'engine', error: 'validation_failed' } }),
+      window.finishPrepare({
+        failure: {
+          component: 'engine',
+          error: 'validation_failed',
+          logPath: 'C:\\Users\\Studio\\AppData\\Local\\com.primeagent.studio\\engine\\logs\\components.log',
+        },
+      }),
     );
-    await expect(page.locator('#components-status')).toContainText('validation');
+    await expect(page.locator('#components-status')).toContainText(
+      fr ? 'Journal de préparation' : 'Setup log',
+    );
+    await expect(page.locator('#components-status')).toContainText('C:\\Users\\Studio\\AppData\\Local');
+    await expect(page.locator('#components-status')).toContainText('engine\\logs\\components.log');
     await expect(page.locator('#components-install')).toBeVisible();
     // Ready repair proposes the single Restart now: no implicit restart.
     await page.locator('#components-install').click();

@@ -33,6 +33,7 @@ const messages = {
     componentsChecksum:
       'L’intégrité ou la structure du téléchargement est invalide. Aucun composant altéré n’est activé.',
     componentsCancelled: 'Préparation annulée. Vous pouvez réessayer.',
+    componentsLogPath: 'Journal de préparation : ',
     componentsEngineVersion:
       'Cette version de Studio nécessite Prime Agent 0.9.8 avec ses modules et ressources complets. Installez la version proposée, ou choisissez un paquet compatible.',
     componentsNetwork: 'Le téléchargement a échoué. Vérifiez la connexion réseau et réessayez.',
@@ -161,6 +162,7 @@ const messages = {
     componentsChecksum:
       'The download integrity or archive structure is invalid. No altered component is activated.',
     componentsCancelled: 'Preparation cancelled. You can try again.',
+    componentsLogPath: 'Setup log: ',
     componentsEngineVersion:
       'This Studio version requires Prime Agent 0.9.8 with complete modules and resources. Install the proposed version, or select a compatible package.',
     componentsNetwork: 'Download failed. Check your network connection and try again.',
@@ -382,7 +384,9 @@ function renderComponents(result) {
   if (result.failure) {
     latestComponents = undefined;
     $('components-status').textContent =
-      `${componentNames[result.failure.component] || ''} : ${componentError(result.failure.error)}`;
+      `${componentNames[result.failure.component] || ''} : ${componentError(result.failure.error)}${
+        typeof result.failure.logPath === 'string' ? ` ${t.componentsLogPath}${result.failure.logPath}` : ''
+      }`;
     return;
   }
   latestComponents = result;

@@ -407,13 +407,12 @@ test('Rust core refuses unsupported Studio 4.4 contracts before creating a sessi
     [{ budget: { tokens: 1000 } }, /budgets are unavailable/],
     [{ codeContext: { enabled: true } }, /indexed code context is unavailable/],
     [{ quotaAuthorization: {} }, /quota fallback is unavailable/],
-    [{ goalRecovery: { goalId: 'goal-1' } }, /recovery is not enabled/],
     [{ allowQuestions: true }, /separate Rust tools bridge/],
   ]) {
     await assert.rejects(f.runtime.start({ cwd: f.runtime.agentHome, message: 'test', ...input }), message);
   }
   assert.equal(f.commands.filter((command) => command.type === 'create').length, before);
-  assert.equal(f.runtime.canRecoverGoals, false);
+  assert.equal(f.runtime.canRecoverGoals, true);
 });
 
 
@@ -424,5 +423,5 @@ test('default Rust bridge is wired into native create and allows Studio question
   assert.match(prompt, /Studio helpers for this active turn/);
   assert.match(prompt, /question, knowledge_search/);
   assert.equal(f.commands.filter((command) => command.type === 'prompt').length, 1);
-  assert.equal(f.runtime.canRecoverGoals, false);
+  assert.equal(f.runtime.canRecoverGoals, true);
 });

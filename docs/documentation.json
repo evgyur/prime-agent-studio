@@ -190,6 +190,15 @@
         "fr": "36e6ecce08c06072e9d78b6f33eb76c9cc321be8b40b378e8d05b4dcfff35e54",
         "en": "e4df5ee54a6a92e37390fa9747fe23b80410642de88284139f02efb4d1a7a245"
       }
+    },
+    {
+      "id": "rust-recovery",
+      "fr": "docs/rust-recovery.md",
+      "en": "docs/en/rust-recovery.md",
+      "reviewed": {
+        "fr": "094d0032ff8b598bb6a81822f36f5074afa2cda85b906be572d2bb8d81e30084",
+        "en": "e55252def01c04567c7c119563c679fc1043969bbccdea4d5690e23d91c026f3"
+      }
     }
   ]
 }

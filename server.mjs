@@ -2274,14 +2274,18 @@ export function createApp(options = {}) {
         // off forever. Pure file check only, TTL-gated, never a worker
         // spawn; failures keep the last cached verdict.
         if (typeof computer.refreshBackends === 'function') await computer.refreshBackends().catch(() => {});
-        return json(
-          res,
-          200,
-          computer.status({
+        return json(res, 200, {
+          ...computer.status({
             ...(url.searchParams.get('sessionId') ? { sessionId: url.searchParams.get('sessionId') } : {}),
             ...(url.searchParams.get('runId') ? { runId: url.searchParams.get('runId') } : {}),
           }),
-        );
+          ...(rustOptIn
+            ? {
+                supported: false,
+                unsupportedReason: 'Computer Use is unavailable with the official Rust daemon.',
+              }
+            : {}),
+        });
       }
       if (method === 'POST' && path === '/api/computer-use') {
         const admission = computer.status().controlRevision;

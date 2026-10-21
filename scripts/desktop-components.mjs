@@ -229,6 +229,7 @@ if (isDirectInvocation(import.meta.url)) {
       type: 'failure',
       component: error.component,
       error: /^[a-z_]+$/.test(error.message) ? error.message : 'preparation_failed',
+      logPath: join(options.dataRoot, 'engine/logs/components.log'),
     });
   } finally {
     process.stdin.destroy();

@@ -61,7 +61,7 @@ export const messages = {
   "routing.loading": {"en": "Loading controls…", "fr": "Chargement des contrôles…"},
 
   "context.empty": { en: "No indexed sources", fr: "Aucune source indexée" },
-  "docking.context": {"en": "Context", "fr": "Contexte"},
+  "docking.context": {"en": "Context (Beta)", "fr": "Contexte (Bêta)"},
   "context.subtitle": {"en": "Source context for this conversation", "fr": "Contexte source de cette conversation"},
   "context.enabled": {"en": "Enable project context", "fr": "Activer le contexte du projet"},
   "context.sessionEnabled": {"en": "Use in this conversation", "fr": "Utiliser dans cette conversation"},

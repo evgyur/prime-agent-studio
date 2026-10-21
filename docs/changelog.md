@@ -4,6 +4,14 @@
 
 Les changements par version. Retrouvez les installateurs et les archives du code source dans les [releases GitHub](https://github.com/zerr0o/prime-agent-studio/releases).
 
+## 4.4.0
+
+- **Installation de Prime Agent corrigée** : le moteur reste fixé à 0.9.8. Studio utilise une source et des empreintes inscrites dans le build, sans analyser le script d’installation distant qui évolue indépendamment. Les archives restent vérifiées avant activation. Corrige le blocage `source_contract_changed` signalé dans l’issue #10.
+- **Diagnostic de réparation** : un échec affiche le chemin de `components.log`, en français et en anglais (PR #11).
+- **Contexte (Beta)** : le nouveau contexte de projet est désactivé par défaut et nécessite une activation explicite. Son onglet porte la mention Beta. Il propose un index local de code et des outils de recherche, de symboles et de carte du projet ; aucun service d’embeddings distant n’est utilisé.
+- **Routage et budgets** : rôles de sous-agents, modèles auxiliaires, repli sur quota et budgets configurables. Le choix des modèles utilise le sélecteur partagé ; les actions de quota affichent le nom du modèle concerné.
+- **Performance** : les exécutions arrêtées sont exclues du calcul du taux de réussite. Cette version stable reprend aussi les mesures de consommation et la jauge de contexte de la 4.4.0-beta.2.
+
 ## 4.4.0-beta.2
 
 - **Onglet Performance** : un nouvel onglet outil de l’espace modulaire montre votre consommation pour ce projet ou tous les projets, sur aujourd’hui, 7, 30 ou 90 jours : coût estimé, tokens, taux de cache, runs, durée médiane et latence du premier token, un graphique par jour, un classement de vos modèles sur votre propre travail (taux de réussite, coût par run réussi, latence, erreurs) et un tableau par projet. Il suit le projet actif ou reste verrouillé sur un projet ; en disposition classique et sur mobile, il s’ouvre depuis l’onglet Session. Il se met à jour à l’affichage, après chaque run ou avec Actualiser, jamais sur un minuteur.

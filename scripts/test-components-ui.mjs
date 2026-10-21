@@ -150,6 +150,7 @@ try {
     await expect(page.locator('#components-status')).toContainText(
       fr ? 'Journal de préparation' : 'Setup log',
     );
+    await expect(page.locator('#components-status')).toContainText('validation');
     await expect(page.locator('#components-status')).toContainText('C:\\Users\\Studio\\AppData\\Local');
     await expect(page.locator('#components-status')).toContainText('engine\\logs\\components.log');
     await expect(page.locator('#components-install')).toBeVisible();

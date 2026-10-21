@@ -2,11 +2,11 @@
 
 **English** · [Français](../context.md) · [← Back to README](../../README.md)
 
-## Context tab
+## Context tab (Beta)
 
-Open **Context** from the modular workspace's **Add tab** menu. In classic mode and on mobile, open it from **Session**. Like other tools, a Context tab follows the selected conversation unless you lock it.
+Open **Context (Beta)** from the modular workspace's **Add tab** menu. In classic mode and on mobile, open it from **Session**. Like other tools, a Context tab follows the selected conversation unless you lock it.
 
-The panel shows the local index state and project exclusions. Project and conversation switches control automatic context. They do not remove messages already sent to a provider. The panel updates from events, not a polling timer. Remote access to this source data requires authenticated full control; consultation mode does not expose it.
+The panel shows the local index state and project exclusions. Project context is disabled by default: turn on the project switch to start indexing. Project and conversation switches then control automatic context. They do not remove messages already sent to a provider. The panel updates from events, not a polling timer. Remote access to this source data requires authenticated full control; consultation mode does not expose it.
 
 **Rebuild** recreates the derived index. Exclusions are project-relative patterns. **Excluded files and reasons** lists automatic omissions and their total. Sensitive filenames and project exclusions are not searchable. **Include generated files** opts into indexing and searching lockfiles, generated and minified sources; it never bypasses sensitive filenames or project exclusions. The index is local; there is no embedding service or semantic search in V1. An agent may send relevant excerpts to its configured provider as ordinary conversation context.
 

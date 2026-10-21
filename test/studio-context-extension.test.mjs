@@ -72,7 +72,7 @@ test('new context hygiene obeys launch and live project/session switches; legacy
     process.env.PRIME_STUDIO_CODE_CONFIG=JSON.stringify({...config,enabled:false});check(false);
     process.env.PRIME_STUDIO_CODE_CONFIG=JSON.stringify({...config,sessionEnabled:false});check(false);
     process.env.PRIME_STUDIO_CODE_CONFIG=JSON.stringify({...config,sessionEnabled:undefined});check(false);
-    process.env.PRIME_STUDIO_CODE_CONFIG=JSON.stringify(config);check(true);
+    writeFileSync(settings,JSON.stringify({enabled:true}));process.env.PRIME_STUDIO_CODE_CONFIG=JSON.stringify(config);check(true);
     check(false,{...ctx,cwd:root});
     writeFileSync(settings,JSON.stringify({enabled:false}));check(false);
     writeFileSync(settings,JSON.stringify({enabled:true,sessions:{session:false}}));check(false);

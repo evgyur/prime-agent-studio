@@ -4,6 +4,14 @@
 
 Changes by version. See [GitHub releases](https://github.com/zerr0o/prime-agent-studio/releases) for installers and source archives.
 
+## 4.4.0
+
+- **Prime Agent setup fixed**: the engine remains pinned to 0.9.8. Studio uses a source and digests recorded in the build instead of parsing a remote installer script that changes independently. Archives are still verified before activation. Fixes the `source_contract_changed` blocker reported in issue #10.
+- **Repair diagnostics**: failures show the `components.log` path in English and French (PR #11).
+- **Context (Beta)**: the new project context system is disabled by default and requires explicit opt-in. Its tab is marked Beta. It provides a local code index and search, symbol and project-map tools; no remote embedding service is used.
+- **Routing and budgets**: subagent roles, auxiliary models, quota fallback and configurable budgets. Model choices use the shared picker; quota actions display the affected model name.
+- **Performance**: stopped runs are excluded from the success-rate calculation. This stable release also includes usage metrics and the context gauge from 4.4.0-beta.2.
+
 ## 4.4.0-beta.2
 
 - **Performance tab**: a new tool tab in the modular workspace shows your usage for this project or all projects, over today, 7, 30 or 90 days: estimated cost, tokens, cache rate, runs, median duration and time to first token, a daily chart, a ranking of your models on your own work (success rate, cost per completed run, latency, errors) and a by-project table. It follows the active project or stays locked to one; in classic and mobile layouts it opens from the Session tab. It refreshes when shown, after each run or with Refresh, never on a timer.

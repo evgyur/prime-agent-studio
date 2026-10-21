@@ -32,7 +32,8 @@ async function fixture(t, extraOptions = {}) {
 
 test('context routes validate ownership, paths, line ranges and origin without providers', { timeout: 15000 }, async (t) => {
   const f = await fixture(t);
-  assert.equal((await f.api()).body.enabled, true);
+  assert.equal((await f.api()).body.enabled, false, 'project context is disabled by default');
+  assert.equal((await f.api(f.route, 'PATCH', { enabled: true })).status, 200);
   assert.equal((await f.api(f.route + '?sessionId=other')).status, 404);
   assert.equal((await f.api('/api/projects/' + '0'.repeat(64) + '/context')).status, 404);
   assert.equal((await f.api(f.route, 'PATCH', { pins: [{ path: 'code.js' }] })).status, 400, 'legacy pins are rejected');
@@ -47,6 +48,7 @@ test('context routes validate ownership, paths, line ranges and origin without p
 
 test('serialized settings preserve concurrent updates and runtime config', { timeout: 15000 }, async (t) => {
   const f = await fixture(t);
+  await f.api(f.route, 'PATCH', { enabled: true });
   const results = await Promise.all([
     f.api(f.route, 'PATCH', { exclusions: ['other.js'] }),
     f.api(f.route, 'PATCH', { sessionId: 'fixture-session', sessionEnabled: false }),
@@ -130,7 +132,7 @@ test('run configuration reactivates an evicted writer without waiting for its sc
   t.after(() => service.close());
   assert.equal((await service.runtimeConfig(f.cwd, 'fixture-session')).enabled, false);
   assert.equal(statusCalls, 0);
-  await f.api(f.route, 'PATCH', { sessionId: 'fixture-session', sessionEnabled: true });
+  await f.api(f.route, 'PATCH', { enabled: true, sessionId: 'fixture-session', sessionEnabled: true });
   const config = await service.runtimeConfig(f.cwd, 'fixture-session');
   assert.equal(config.enabled, true);
   const { project, options } = await admission;
@@ -147,11 +149,30 @@ test('generated sources require a validated project opt-in and pass to index and
   const f = await fixture(t);
   assert.equal((await f.api()).body.includeGenerated, false);
   assert.equal((await f.api(f.route, 'PATCH', { includeGenerated: 'yes' })).status, 400);
-  assert.equal((await f.api(f.route, 'PATCH', { includeGenerated: true })).status, 200);
+  assert.equal((await f.api(f.route, 'PATCH', { enabled: true, includeGenerated: true })).status, 200);
   assert.equal((await f.api()).body.includeGenerated, true);
   assert.equal((await f.app.context.runtimeConfig(f.cwd, 'fixture-session')).includeGenerated, true);
   const found = await f.api(f.route + '/search', 'POST', { q: 'fixture' });
   assert.equal(found.body.results[0].includeGenerated, true);
   await f.app.context.ensureAll();
   assert.ok(f.calls.some((call) => call.includeGenerated === true));
+});
+test('project context is disabled by default, opt-in persists, tab is labeled Beta', { timeout: 15000 }, async (t) => {
+  const f = await fixture(t);
+  const fresh = await f.api();
+  assert.equal(fresh.body.enabled, false);
+  assert.equal(fresh.body.index.state, 'disabled');
+  assert.equal((await f.app.context.runtimeConfig(f.cwd, 'fixture-session')).enabled, false);
+  assert.deepEqual((await f.api(f.route + '/search', 'POST', { q: 'fixture' })).body, { state: 'disabled', results: [] });
+  assert.equal((await f.api(f.route + '/rebuild', 'POST')).status, 409);
+  assert.equal((await f.api(f.route, 'PATCH', { enabled: true })).status, 200);
+  assert.equal((await f.api()).body.enabled, true);
+  assert.equal((await f.app.context.runtimeConfig(f.cwd, 'fixture-session')).enabled, true);
+  assert.equal(JSON.parse(await readFile(join(f.dataDir, 'code-index', f.id, 'settings.json'), 'utf8')).enabled, true);
+  await f.api(f.route, 'PATCH', { enabled: false });
+  assert.equal((await f.api()).body.enabled, false);
+  const table = await readFile('public/translations.js', 'utf8');
+  assert.ok(table.includes('"en": "Context (Beta)"') && table.includes('"fr": "Contexte (Bêta)"'));
+  const html = await readFile('index.html', 'utf8');
+  assert.ok(html.includes('docking.context">Context (Beta)'));
 });

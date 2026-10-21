@@ -20,7 +20,7 @@ function contextEnabled(ctx) {
       if (!inside(data, path)) return false;
       settings = JSON.parse(readFileSync(path, 'utf8'));
     } catch (error) { if (error.code !== 'ENOENT') return false; }
-    return settings?.enabled !== false && settings?.sessions?.[sessionId] !== false;
+    return settings?.enabled === true && settings?.sessions?.[sessionId] !== false;
   } catch { return false; }
 }
 

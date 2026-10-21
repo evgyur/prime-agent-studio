@@ -2,11 +2,11 @@
 
 [English](en/context.md) · **Français** · [← Retour au README](../README.fr.md)
 
-## Onglet Contexte
+## Onglet Contexte (Bêta)
 
-Ouvrez **Contexte** depuis **Ajouter un onglet** dans l’espace modulaire. En mode classique et sur mobile, ouvrez-le depuis **Session**. Comme les autres outils, cet onglet suit la conversation sélectionnée, sauf si vous le verrouillez.
+Ouvrez **Contexte (Bêta)** depuis **Ajouter un onglet** dans l’espace modulaire. En mode classique et sur mobile, ouvrez-le depuis **Session**. Comme les autres outils, cet onglet suit la conversation sélectionnée, sauf si vous le verrouillez.
 
-Le panneau présente l’état de l’index local et les exclusions du projet. Des interrupteurs contrôlent le contexte automatique par projet et par conversation. Ils ne retirent pas les messages déjà envoyés à un fournisseur. Le panneau se met à jour par événements, sans interrogation périodique. À distance, ces données source sont réservées au contrôle complet authentifié ; le mode consultation ne les expose pas.
+Le panneau présente l’état de l’index local et les exclusions du projet. Le contexte du projet est désactivé par défaut : activez l’interrupteur du projet pour indexer. Des interrupteurs contrôlent ensuite le contexte automatique par projet et par conversation. Ils ne retirent pas les messages déjà envoyés à un fournisseur. Le panneau se met à jour par événements, sans interrogation périodique. À distance, ces données source sont réservées au contrôle complet authentifié ; le mode consultation ne les expose pas.
 
 **Reconstruire** recrée l’index dérivé. Les exclusions sont des motifs relatifs au projet. **Fichiers exclus et motifs** présente les omissions automatiques et leur total. Les noms sensibles et les exclusions du projet ne sont pas recherchables. **Inclure les fichiers générés** active l’indexation et la recherche des verrous de dépendances, sources générées et minifiées ; ce réglage ne contourne jamais les noms sensibles ni les exclusions du projet. L’index reste local ; la V1 n’utilise ni service d’embeddings ni recherche sémantique. Un agent peut envoyer des extraits pertinents à son fournisseur configuré comme contexte ordinaire de conversation.
 

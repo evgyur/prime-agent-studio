@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setImmediate as nextTick } from 'node:timers/promises';
 import { createAgentRuntime, createEventProjection } from '../lib/agent.mjs';
-import { createRustAgentRuntime, parseRustModelList } from '../lib/rust-agent-runtime.mjs';
+import { createRustAgentRuntime, createNativeOnlyTools, parseRustModelList } from '../lib/rust-agent-runtime.mjs';
 
 test('Rust catalogue uses the executable available-model list, excluding JS-only registrations', async () => {
   assert.deepEqual(
@@ -135,7 +135,7 @@ test('Rust opt-in requires the JavaScript metadata package and rejects JS-only p
 
 async function fixture(
   t,
-  { completion = { enabled: false }, holdPrompt = false, cleanupError = false, endTurn } = {},
+  { completion = { enabled: false }, holdPrompt = false, cleanupError = false, endTurn, nativeOnly = false } = {},
 ) {
   const cwd = await mkdtemp(join(tmpdir(), 'prime-rust-runtime-'));
   const events = [],
@@ -247,7 +247,7 @@ async function fixture(
           close: async () => {},
         };
       },
-      makeTools: (config) => {
+      makeTools: nativeOnly ? createNativeOnlyTools : (config) => {
         toolsConfig = config;
         return {
           ready: Promise.resolve(),
@@ -396,4 +396,22 @@ test('cancellation aborts and revokes live commands before slow bridge cleanup',
   release();
   await Promise.all([cancelling, duplicate]);
   assert.equal((await f.run.done).status, 'stopped');
+});
+
+
+test('Rust core refuses unsupported Studio 4.4 contracts before creating a session', async (t) => {
+  const f = await fixture(t, { nativeOnly: true });
+  await f.run.done;
+  const before = f.commands.filter((command) => command.type === 'create').length;
+  for (const [input, message] of [
+    [{ budget: { tokens: 1000 } }, /budgets are unavailable/],
+    [{ codeContext: { enabled: true } }, /indexed code context is unavailable/],
+    [{ quotaAuthorization: {} }, /quota fallback is unavailable/],
+    [{ goalRecovery: { goalId: 'goal-1' } }, /recovery is not enabled/],
+    [{ allowQuestions: true }, /separate Rust tools bridge/],
+  ]) {
+    await assert.rejects(f.runtime.start({ cwd: f.runtime.agentHome, message: 'test', ...input }), message);
+  }
+  assert.equal(f.commands.filter((command) => command.type === 'create').length, before);
+  assert.equal(f.runtime.canRecoverGoals, false);
 });

@@ -135,7 +135,7 @@ test('Rust opt-in requires the JavaScript metadata package and rejects JS-only p
 
 async function fixture(
   t,
-  { completion = { enabled: false }, holdPrompt = false, cleanupError = false, endTurn, nativeOnly = false } = {},
+  { completion = { enabled: false }, holdPrompt = false, cleanupError = false, endTurn, nativeOnly = false, realBridge = false } = {},
 ) {
   const cwd = await mkdtemp(join(tmpdir(), 'prime-rust-runtime-'));
   const events = [],
@@ -247,7 +247,7 @@ async function fixture(
           close: async () => {},
         };
       },
-      makeTools: nativeOnly ? createNativeOnlyTools : (config) => {
+      makeTools: nativeOnly ? createNativeOnlyTools : realBridge ? undefined : (config) => {
         toolsConfig = config;
         return {
           ready: Promise.resolve(),
@@ -271,7 +271,7 @@ async function fixture(
     await runtime.close();
     await rm(cwd, { recursive: true, force: true });
   });
-  const run = await runtime.start({ cwd, message: 'test', onEvent: (e) => events.push(e) });
+  const run = await runtime.start({ cwd, message: 'test', ...(realBridge ? { allowQuestions: true } : {}), onEvent: (e) => events.push(e) });
   return {
     runtime,
     run,
@@ -413,5 +413,16 @@ test('Rust core refuses unsupported Studio 4.4 contracts before creating a sessi
     await assert.rejects(f.runtime.start({ cwd: f.runtime.agentHome, message: 'test', ...input }), message);
   }
   assert.equal(f.commands.filter((command) => command.type === 'create').length, before);
+  assert.equal(f.runtime.canRecoverGoals, false);
+});
+
+
+test('default Rust bridge is wired into native create and allows Studio questions', async (t) => {
+  const f = await fixture(t, { realBridge: true });
+  assert.equal((await f.run.done).status, 'completed');
+  const prompt = f.commands.find((command) => command.type === 'create').config.appendSystemPrompt.join('\n');
+  assert.match(prompt, /Studio helpers for this active turn/);
+  assert.match(prompt, /question, knowledge_search/);
+  assert.equal(f.commands.filter((command) => command.type === 'prompt').length, 1);
   assert.equal(f.runtime.canRecoverGoals, false);
 });

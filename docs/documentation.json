@@ -181,6 +181,15 @@
         "fr": "835c01315c007495cadd20ca8f975bb144afae88bc214c4a2bc4f27a6e478b07",
         "en": "fb99e3a6e556440866621c0b7dcecd560bf768661d1f246cdfab8120a64c6cbd"
       }
+    },
+    {
+      "id": "rust-studio-tools",
+      "fr": "docs/rust-studio-tools.md",
+      "en": "docs/en/rust-studio-tools.md",
+      "reviewed": {
+        "fr": "36e6ecce08c06072e9d78b6f33eb76c9cc321be8b40b378e8d05b4dcfff35e54",
+        "en": "e4df5ee54a6a92e37390fa9747fe23b80410642de88284139f02efb4d1a7a245"
+      }
     }
   ]
 }

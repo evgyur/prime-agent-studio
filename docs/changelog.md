@@ -4,6 +4,47 @@
 
 Les changements par version. Retrouvez les installateurs et les archives du code source dans les [releases GitHub](https://github.com/zerr0o/prime-agent-studio/releases).
 
+## 4.4.0-beta.2
+
+- **Onglet Performance** : un nouvel onglet outil de l’espace modulaire montre votre consommation pour ce projet ou tous les projets, sur aujourd’hui, 7, 30 ou 90 jours : coût estimé, tokens, taux de cache, runs, durée médiane et latence du premier token, un graphique par jour, un classement de vos modèles sur votre propre travail (taux de réussite, coût par run réussi, latence, erreurs) et un tableau par projet. Il suit le projet actif ou reste verrouillé sur un projet ; en disposition classique et sur mobile, il s’ouvre depuis l’onglet Session. Il se met à jour à l’affichage, après chaque run ou avec Actualiser, jamais sur un minuteur.
+- **Jauge de contexte** : une ligne discrète « Contexte x % · Cache y % » sous chaque zone de saisie (éditeur principal, onglets modulaires, mobile), mise à jour sur les événements du run. Au repos, elle montre la dernière requête. Orange à 80 %, rouge à 95 %.
+- **Consommation plus claire dans le panneau Session** : entrée hors cache, sortie, lecture et écriture du cache, taux de cache, et totaux qui incluent les sous-agents sans double comptage. Le chiffre de l’agent principal n’inclut plus une partie de la consommation des sous-agents, et son détail reste ouvert pendant les actualisations du panneau.
+- **Mesures d’utilisation** : le Studio enregistre des métadonnées sans contenu pour chaque requête, sous-agents compris (tokens, cache, coût estimé, statuts, durées), les conserve 90 jours dans le dossier de données et reprend les sessions existantes en arrière-plan. Aucun prompt, réponse ni contenu d’outil n’est enregistré.
+
+## 4.3.8-beta.3
+
+- **Copier l’identifiant d’une conversation** : le menu d’une conversation propose **Copier l’identifiant de la conversation**. Il copie l’identifiant enregistré, utile avec l’API publique ou pour le support. Contribution de [@evgyur](https://github.com/evgyur) dans la [#8](https://github.com/zerr0o/prime-agent-studio/pull/8).
+
+## 4.3.8-beta.2
+
+- **La fenêtre se rouvre là où vous l’avez laissée** : la fenêtre principale garde sa position, sa taille et son état agrandi d’un démarrage à l’autre. Une fenêtre plus grande que son écran est réduite pour y tenir, et une fenêtre restée sur un écran débranché revient sur l’écran principal.
+
+## 4.3.8-beta.1
+
+- **Agents en attente visibles dans le panneau Session** : dans « Agents en cours », un agent qui attend votre réponse affiche le point ambre de question utilisé dans la barre latérale et les onglets, à la place de l’indicateur de chargement. L’indicateur revient une fois la réponse envoyée. Contribution de [@evgyur](https://github.com/evgyur) dans la [#7](https://github.com/zerr0o/prime-agent-studio/pull/7).
+
+## 4.3.7
+
+- **Messages vocaux** : un microphone dans le compositeur enregistre un message et le transcrit, puis envoie le texte ou l’ajoute au brouillon (**Envoyer après la transcription**). Activez-le dans Préférences › Outils › Messages vocaux, avec **Groq** (la clé Groq des Fournisseurs, ou `GROQ_API_KEY`) ou un serveur **Whisper local** comme whisper.cpp ; ce réglage est propre à chaque PC. Après une erreur temporaire, **Réessayer** renvoie le même enregistrement. Contribution de [@evgyur](https://github.com/evgyur) dans la [#6](https://github.com/zerr0o/prime-agent-studio/pull/6).
+- **Plusieurs questions à la fois** : l’agent peut poser de 1 à 6 questions en un seul appel. Parcourez-les sur une seule ligne, ← Question 2/3 →, répondez à chacune par une option ou votre propre texte, ou passez-la : une question passée affiche une coche et « Question passée », et un second clic annule. Envoyez ensuite toutes les réponses ensemble. Une réponse libre est toujours possible, y compris pour une question unique. L’API publique accepte `{ values: [...] }` pour plusieurs questions ; une question unique garde son format.
+- **La barre latérale ne remplace plus une conversation ouverte** : en espace modulaire, choisir une conversation, un run ou un projet l’ouvre dans un nouvel onglet juste à droite de la conversation active, ou sélectionne son onglet existant. À huit conversations ouvertes, le Studio demande de fermer un onglet au lieu d’en remplacer un.
+- **Fenêtres étroites et mobile** : c’est toujours l’éditeur visible qui envoie. L’éditeur d’un onglet masqué ne peut plus envoyer un texte périmé.
+- **Dans chaque onglet** : les onglets secondaires affichent le bouton Derniers messages au-dessus de leur zone de saisie, et n’ajoutent plus de barre « question(s) en attente » redondante.
+- **Mises à jour** : l’option beta n’indique plus qu’il n’y a aucune vérification automatique.
+
+## 4.3.6-beta.2
+
+- **Messages vocaux** : un microphone dans le compositeur enregistre un message, le transcrit et envoie le texte. Activez-le dans Préférences › Outils › Messages vocaux, avec **Groq** (la clé Groq des Fournisseurs, ou `GROQ_API_KEY`) ou un serveur **Whisper local** comme whisper.cpp. Ce réglage est propre à chaque PC. Contribution de [@evgyur](https://github.com/evgyur) dans la [#6](https://github.com/zerr0o/prime-agent-studio/pull/6).
+- **Envoyer ou garder en brouillon** : désactivez **Envoyer après la transcription** pour ajouter le texte transcrit au brouillon sans l’envoyer, et le compléter d’abord.
+- **Dictée fiable** : après une erreur temporaire (limite de débit, délai dépassé, service indisponible), **Réessayer** renvoie le même enregistrement. Si la conversation d’origine n’existe plus, **Copier le texte** conserve la transcription. Le microphone utilise toujours l’éditeur visible, y compris sur mobile.
+
+## 4.3.6-beta.1
+
+- **Plusieurs questions à la fois** : l’agent peut poser de 1 à 6 questions en un seul appel. Parcourez-les sur une seule ligne, ← Question 2/3 →, répondez à chacune par une option ou votre propre texte, passez celles que vous voulez, puis envoyez toutes les réponses ensemble. Une réponse libre est toujours possible, y compris pour une question unique. L’API publique accepte `{ values: [...] }` pour plusieurs questions ; une question unique garde son format.
+- **La barre latérale ne remplace plus une conversation ouverte** : en espace modulaire, choisir une conversation, un run ou un projet l’ouvre dans un nouvel onglet juste à droite de la conversation active, ou sélectionne son onglet existant. À huit conversations ouvertes, le Studio demande de fermer un onglet au lieu d’en remplacer un.
+- **Fenêtres étroites et mobile** : c’est toujours l’éditeur visible qui envoie. L’éditeur d’un onglet masqué ne peut plus envoyer un texte périmé.
+- **Derniers messages dans chaque onglet** : les onglets secondaires affichent le même bouton Derniers messages, centré au-dessus de leur zone de saisie.
+
 ## 4.3.5
 
 - **Ordre des Roadmaps synchronisé** : déplacer un plan, un jalon ou un élément de backlog se propage maintenant aux autres PC. Auparavant, chaque PC gardait son propre ordre lors d’une fusion : deux PC pouvaient rester différents indéfiniment tout en affichant « synchronisé ». L’ordre de la Roadmap modifiée le plus récemment l’emporte ; en cas d’égalité, tous les PC choisissent le même. Au premier cycle après la mise à jour, chaque Roadmap distante est fusionnée de nouveau une fois pour résorber les écarts existants.

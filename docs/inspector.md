@@ -10,7 +10,21 @@ Retrouvez le projet, l’état de la session, les exécutions actives et l’exp
 
 Le statut du chat distingue aussi une attente de quota, un fournisseur indisponible et l’utilisation du modèle de secours choisi dans les préférences. Ces indications suivent les événements du moteur ; elles ne modifient ni le modèle sélectionné ni les limites de reprise.
 
-La consommation additionne les données enregistrées par Prime Agent sur la branche actuelle de la conversation : tokens entrants, sortants et en cache. Le coût estimé apparaît uniquement si le moteur le fournit ; il ne correspond pas à la facturation de votre abonnement. Ces totaux concernent l’agent principal, pas l’ensemble de ses délégations.
+La consommation additionne les données enregistrées par Prime Agent sur la branche actuelle de la conversation : tokens entrants hors cache, sortants, lus depuis le cache et écrits dans le cache. Le **taux de cache** est la part des tokens d’entrée servis par le cache : lus ÷ (entrants + lus + écrits), sans les tokens sortants. Le coût estimé apparaît uniquement si le moteur le fournit ; sinon il reste **inconnu**, pas nul. Il ne correspond pas à la facturation de votre abonnement.
+
+Le total inclut les sous-agents : chaque requête est comptée une seule fois, avec sa consommation propre, y compris pour un sous-agent encore en cours. Le détail de l’agent principal reste disponible. Son état ouvert ou fermé est conservé pendant les actualisations et au retour dans la session. Le total est marqué **partiel** si un sous-agent est introuvable, si son historique dépasse 16 Mio ou au-delà de 200 sous-agents. Le coût des résumés de compaction n’est pas inclus ici.
+
+Sous la zone de saisie, une ligne discrète indique **Contexte x % · Cache y %**, dans chaque onglet de conversation et sur mobile. Pendant une exécution, elle reprend la mesure du moteur et se met à jour à chaque message, compaction ou fin de tour, sans interrogation périodique. Au repos, elle montre la taille de la **dernière requête** par rapport à la fenêtre du modèle, comme l’indique son infobulle. Elle passe en orange à 80 % et en rouge à 95 % ; elle disparaît quand la valeur est inconnue, par exemple juste après une compaction.
+
+## Performance
+
+Ajoutez **Performance** avec le menu **Ajouter un onglet** de l’espace modulaire. L’onglet suit le projet de la conversation active ; son verrou conserve ce projet, même si la conversation source est fermée. En disposition classique et sur mobile, le bouton **Performance** de Session ouvre la même vue dans une fenêtre.
+
+Choisissez **Ce projet** ou **Tous les projets**, puis Aujourd’hui, 7, 30 ou 90 jours. La période initiale est de 7 jours, avec des journées UTC. La vue réunit le coût estimé, les quatre catégories de tokens, le taux de cache, les exécutions démarrées, terminées et échouées, la durée médiane et le délai médian du premier jeton. Les anciennes sessions sans chronométrage indiquent **Non disponible**. Un coût absent reste **Inconnu**, avec le nombre de messages concernés.
+
+Le graphique quotidien montre le coût ou les tokens. Le tableau des modèles classe vos propres tâches par coût ou nombre d’exécutions. Le taux de réussite est le nombre d’exécutions terminées avec succès divisé par les exécutions finies, arrêts compris. Le coût par exécution terminée inclut le coût total de la période. Les erreurs HTTP 4xx et 5xx sont comptées séparément. **Tous les projets** ajoute un tableau avec leurs noms, sans chemins.
+
+Les mesures se chargent à l’ouverture, à la fin d’une exécution si la vue est visible, ou avec **Actualiser**, sans interrogation périodique. Une reprise d’historique, une lecture incomplète ou une limite atteinte sont signalées avec **Réessayer**. Le journal conserve 90 jours. Contrairement au bloc Session, il inclut les résumés de compaction enregistrés.
 
 ## Agents
 

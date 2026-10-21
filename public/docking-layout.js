@@ -67,20 +67,21 @@ export const PANEL_IDS = Object.freeze([
   'agents',
   'files',
   'preferences',
+  'performance',
 ]);
 
 /** Maximum conversation instances mounted at once, legacy primary included. */
 export const MAX_CONVERSATIONS = 8;
 
 /** Tool kinds that support extra lockable instances (all non-conversation kinds). */
-export const TOOL_KINDS = Object.freeze(['roadmap', 'session', 'agents', 'files', 'preferences']);
+export const TOOL_KINDS = Object.freeze(['roadmap', 'session', 'agents', 'files', 'preferences', 'performance']);
 
 /** Maximum tool tabs mounted at once, the five singleton primaries included. */
 export const MAX_TOOL_PANELS = 16;
 
 const CONV_REF_PATTERN = /^conv:[A-Za-z0-9_-]{1,64}$/;
-const TOOL_REF_PATTERN = /^tool:(roadmap|session|agents|files|preferences):[A-Za-z0-9_-]{1,64}$/;
-const SINGLETON_SET = new Set(['roadmap', 'session', 'agents', 'files', 'preferences']);
+const TOOL_REF_PATTERN = /^tool:(roadmap|session|agents|files|preferences|performance):[A-Za-z0-9_-]{1,64}$/;
+const SINGLETON_SET = new Set(TOOL_KINDS);
 
 /**
  * True for the legacy primary 'conversation' or a dynamic instance ref

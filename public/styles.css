@@ -1347,6 +1347,82 @@ a.sidebar-settings {
   width: 17px;
   height: 17px;
 }
+.voice-open {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  color: var(--muted);
+  background: transparent;
+  transition:
+    color 0.15s,
+    background 0.15s;
+}
+.voice-open[hidden] {
+  display: none;
+}
+.voice-open:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+.voice-open:disabled {
+  opacity: 0.4;
+}
+.voice-open svg {
+  width: 19px;
+  height: 19px;
+}
+.voice-dialog .modal-heading {
+  margin-bottom: 0;
+}
+.voice-elapsed {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.voice-dialog .voice-provider,
+.voice-dialog .voice-status {
+  margin: 10px 0 0;
+}
+.voice-dialog .voice-status {
+  color: var(--text);
+}
+.voice-dialog .voice-preview {
+  max-height: 180px;
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+.voice-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 24px;
+}
+@media (max-width: 760px) {
+  .voice-open {
+    width: 44px;
+    height: 44px;
+  }
+  .voice-actions button {
+    min-height: 44px;
+  }
+}
 .composer-footnote {
   display: flex;
   align-items: center;
@@ -1356,6 +1432,32 @@ a.sidebar-settings {
   color: var(--faint);
   margin-top: 12px;
   padding: 0 3px;
+}
+.composer-context-gauge {
+  font-size: 10px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.composer-context-gauge[hidden] {
+  display: none !important;
+}
+.composer-context-gauge[data-level="warning"] {
+  color: var(--warning, #b68a46);
+}
+.composer-context-gauge[data-level="danger"] {
+  color: var(--danger, #d06b6b);
+}
+.composer-footnote > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 480px) {
+  .composer-footnote { gap: 8px; }
+  .composer-context-gauge { font-size: 9px; }
 }
 .composer-footnote > span:first-child {
   display: flex;
@@ -2046,9 +2148,15 @@ a.sidebar-settings {
   height: 10px;
 }
 .active-run-label {
+  min-width: 0;
+  flex: 1;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+.active-run > .spinner,
+.active-run > .question-dot {
+  flex-shrink: 0;
 }
 .popover-menu {
   position: fixed;
@@ -4422,7 +4530,7 @@ a.sidebar-settings {
   }
 }
 @media (pointer: coarse) {
-  .composer-footnote {
+  .composer-footnote:not(:has(.composer-context-gauge:not([hidden]))) {
     display: none;
   }
 }

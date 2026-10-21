@@ -35,8 +35,10 @@ const titles = {
   agents: 'docking.agents',
   files: 'docking.files',
   preferences: 'docking.preferences',
+  performance: 'docking.performance',
 };
 const tabPaths = {
+  performance: 'M4 3v18h17M8 17v-5m5 5V7m5 10V4',
   conversation: 'M21 4H3v13h5l4 4 4-4h5V4Z',
   roadmap: 'M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3V6Zm6-3v15m6-12v15',
   session: 'M5 3h10l4 4v14H5V3Zm10 0v5h4M8 12h8M8 16h6',
@@ -1178,7 +1180,8 @@ export function createDocking({
       if (!dialog.open) focusTab(focusPanel);
     }
   }
-  function openPanel(id, groupId) {
+  // index (optional) inserts a closed panel at that position of groupId.
+  function openPanel(id, groupId, index) {
     if (!active || !isPanelId(id) || !panels[id]) return;
     if (!canOpenPanel(id)) {
       if (isConversationPanel(id)) toast?.(() => tr('docking.conversation_limit'), true);
@@ -1189,7 +1192,7 @@ export function createDocking({
     const target = groupsOf(layout).find((group) => group.id === groupId);
     commit(
       target && target !== group
-        ? movePanel(layout, { panel: id, targetGroupId: target.id })
+        ? movePanel(layout, { panel: id, targetGroupId: target.id, index })
         : group
           ? activatePanel(layout, id)
           : movePanel(layout, { panel: id, targetGroupId: groupsOf(layout)[0].id }),

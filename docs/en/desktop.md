@@ -41,6 +41,7 @@ Progress shows actual stages and received bytes, without an invented overall per
 ## Window and background work
 
 - **Closing the window** hides it and keeps the icon near the clock. Agents, the server and mobile access continue.
+- The window reopens where you left it: same position, size and maximized state, even after a restart. A window larger than its screen is resized to fit, and a window left on a disconnected screen returns to the main screen.
 - Clicking this icon or launching the shortcut again brings back the same window.
 - The icon’s menu offers **Open Studio**, **Studio preferences** and **Quit application**. Quitting first stops the verified Studio server, then closes the application. Active agents or operations require confirmation. If stopping fails, the application stays open and shows the reason.
 - In **Preferences → System**, **Start with Windows** is disabled by default. Enabling it starts Studio in the background when you sign in, without opening its window. Background startup errors are logged without opening a window; open Studio to access recovery controls.

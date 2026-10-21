@@ -1,7 +1,7 @@
 // Real Prime Agent and Python, isolated accounts/sessions and a local deterministic provider.
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { mkdtemp, mkdir, writeFile, readFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createAgentRuntime } from '../lib/agent.mjs';
@@ -9,6 +9,7 @@ import { createLiveSessionClient } from '../lib/live-session-client.mjs';
 import { createSubagentDefaultsStore } from '../lib/subagent-defaults.mjs';
 import { createStore } from '../lib/store.mjs';
 import { createSessionInspector } from '../lib/session-inspector.mjs';
+import { createMetrics } from '../lib/metrics.mjs';
 
 const root = await mkdtemp(join(tmpdir(), 'prime-subagent-native-'));
 const cwd = join(root, 'project'),
@@ -115,7 +116,10 @@ await writeFile(
     telemetry: { enabled: false, noticeShown: true },
   }),
 );
+const metricsDir = process.env.PRIME_STUDIO_TEST_METRICS ? join(root, 'metrics', 'raw') : undefined;
+const expectedMetricSessions = new Set();
 const runtime = createAgentRuntime({
+  metricsDir,
   agentHome,
   sessionDir,
   subagentPolicyFile: defaults.file,
@@ -177,6 +181,8 @@ try {
     getRun: () => null,
   });
   const saved = await inspector.inspect(cwd, first.sessionId);
+  expectedMetricSessions.add(first.sessionId);
+  for (const agent of saved.agents) if (agent.sessionId) expectedMetricSessions.add(agent.sessionId);
   assert.equal(saved.agents.find((a) => a.name === 'policy-default')?.thinking, 'high');
   assert.equal(saved.agents.find((a) => a.name === 'policy-explicit')?.thinking, 'off');
   assert.equal(saved.agents.find((a) => a.name === 'policy-project')?.thinking, 'low');
@@ -220,4 +226,34 @@ try {
   client?.close();
   await runtime.close();
   await new Promise((done) => provider.close(done));
+  if (metricsDir) {
+    const rows = [];
+    for (const name of await readdir(metricsDir)) {
+      if (!name.endsWith('.jsonl')) continue;
+      assert.match(name, /^\d{4}-\d{2}-\d{2}--/, 'Raw files are partitioned by UTC day');
+      const content = await readFile(join(metricsDir, name), 'utf8');
+      assert.doesNotMatch(content, /ROOT_FIRST|CHILD_DEFAULT_FIRST|NATIVE_PROGRESS_MARKER|Fixture completed|fixture-only|authorization/i);
+      rows.push(...content.trim().split('\n').filter(Boolean).map(JSON.parse));
+    }
+    assert.ok(rows.every((row) => !['agent_start', 'agent_end', 'turn_start'].includes(row.type)), 'Unused lifecycle events are not recorded');
+    const requests = rows.filter((row) => row.type === 'message_end');
+    assert.ok(expectedMetricSessions.size >= 4, 'The existing fixture must expose its parent and three children');
+    for (const id of expectedMetricSessions)
+      assert.ok(requests.some((row) => row.sessionId === id), `Missing metrics for session ${id}`);
+    assert.equal(new Set(rows.map((row) => row.id)).size, rows.length, 'Event ids must be unique');
+    assert.equal(new Set(requests.map((row) => `${row.sessionId}:${row.messageTs}`)).size, requests.length, 'Each provider message is captured once');
+    assert.ok(rows.some((row) => row.depth > 0 && row.parentSession), 'Child lineage comes from event context');
+    const metrics = createMetrics({ dataDir: root, sessionDir, artifactDir: join(agentHome, 'session-artifacts') });
+    try {
+      await metrics.refresh();
+      const first = await metrics.summary();
+      await metrics.refresh();
+      const second = await metrics.summary();
+      assert.equal(first.totals.messages, requests.length, 'Live events and persisted history must deduplicate');
+      assert.equal(second.totals.messages, first.totals.messages, 'Repeated ingestion must be idempotent');
+      console.log(JSON.stringify({ metricsPassed: true, sessions: expectedMetricSessions.size, messages: requests.length, records: rows.length, root }, null, 2));
+    } finally {
+      await metrics.close();
+    }
+  }
 }

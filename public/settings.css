@@ -928,3 +928,59 @@
     white-space: normal;
   }
 }
+
+.voice-settings-row .engine-field {
+  width: 100%;
+}
+.voice-settings-row .engine-field > select {
+  margin-top: 12px;
+}
+.voice-settings-group {
+  margin-top: 14px;
+}
+.voice-settings-group[hidden] {
+  display: none;
+}
+.voice-settings-row input[type='url'] {
+  display: block;
+  width: 100%;
+  min-height: 43px;
+  padding: 9px 11px;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.voice-settings-row .engine-field .voice-settings-group > p {
+  margin-top: 8px;
+}
+.voice-key-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+}
+.voice-key-row .voice-key-status {
+  margin: 0;
+  color: var(--muted);
+}
+.voice-key-row .voice-key-status.voice-key-missing {
+  color: var(--amber);
+}
+
+.voice-switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+.voice-settings-row .engine-field .voice-switch-row label {
+  margin: 0 0 5px;
+  color: var(--text);
+}
+.voice-settings-row .engine-field .voice-switch-row p {
+  margin: 0;
+}

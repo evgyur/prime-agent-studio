@@ -112,10 +112,10 @@ For an archive installation, replace Studio's files while keeping `.local`, then
 | Start here | Guides |
 | --- | --- |
 | **Set up** | [Windows app](docs/en/desktop.md) · [Configuration](docs/en/configuration.md) · [Providers](docs/en/providers.md) |
-| **Work** | [Projects and conversations](docs/en/navigation.md) · [Roadmap](docs/en/roadmap.md) · [Project knowledge](docs/en/knowledge.md) |
+| **Work** | [Projects and conversations](docs/en/navigation.md) · [Voice messages](docs/en/voice.md) · [Roadmap](docs/en/roadmap.md) · [Project knowledge](docs/en/knowledge.md) |
 | **Use tools** | [Agents and files](docs/en/inspector.md) · [Commands and skills](docs/en/commands.md) · [MCP](docs/en/mcp.md) · [Computer Use](docs/en/computer-use.md) |
 | **Connect** | [Mobile access](docs/en/lan.md) · [PWA](docs/en/pwa.md) · [Public API](docs/en/api.md) |
-| **Contribute** | [Development](docs/en/development.md) · [Translations](docs/en/translations.md) · [Changelog](docs/en/changelog.md) |
+| **Contribute** | [Development](docs/en/development.md) · [Translations](docs/en/translations.md) · [Changelog](docs/en/changelog.md) · [Discussions](https://github.com/zerr0o/prime-agent-studio/discussions) |
 
 ## License and attribution
 

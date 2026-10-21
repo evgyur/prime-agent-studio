@@ -41,6 +41,7 @@ La progression expose les étapes réelles et les octets reçus, sans pourcentag
 ## Fenêtre et arrière-plan
 
 - **Fermer la fenêtre** la masque et conserve l’icône près de l’horloge. Les agents, le serveur et les accès mobiles continuent.
+- La fenêtre se rouvre là où vous l’avez laissée : même position, même taille, agrandie ou non, y compris après un redémarrage. Une fenêtre plus grande que son écran est réduite pour y tenir, et une fenêtre restée sur un écran débranché revient sur l’écran principal.
 - Un clic sur cette icône ou un nouveau lancement du raccourci retrouve la même fenêtre.
 - Le menu de l’icône propose **Ouvrir le Studio**, **Préférences du Studio** et **Quitter l’application**. Quitter arrête d’abord le serveur Studio vérifié, puis ferme l’application. Une confirmation est demandée si des agents ou une opération travaillent. Si l’arrêt échoue, l’application reste ouverte et affiche la cause.
 - Dans **Préférences → Système**, **Démarrer avec Windows** est désactivé par défaut. L’activer lance le Studio en arrière-plan à votre connexion, sans ouvrir sa fenêtre. Une erreur au démarrage en arrière-plan est journalisée sans ouvrir de fenêtre ; ouvrez le Studio pour accéder au secours.

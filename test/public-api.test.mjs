@@ -454,6 +454,31 @@ test('runs start, report, interact, stream, accept direct messages, and stop', a
   });
   assert.equal(answered.status, 200);
   assert.equal(answered.json.answered, true);
+  const batch = {
+    id: 'batch-1', method: 'input', kind: 'questions', status: 'pending', allowCustom: true,
+    title: 'Questions (2)',
+    questions: ['First?', 'Second?'].map((question, index) => ({ id: `q${index + 1}`, question,
+      options: [{ id: 'o1', label: 'A', description: 'First' }, { id: 'o2', label: 'B', description: 'Second' }],
+    })),
+  };
+  control.emit({ kind: 'interaction', request: batch });
+  const batchRun = await f.api(`/api/v1/runs/${runId}`, { headers: auth });
+  assert.deepEqual(batchRun.json.interactions.find((item) => item.id === batch.id), batch);
+  let received;
+  control.respond = async (id, response) => { received = { id, response }; return batch; };
+  const values = [{ option: 1 }, { text: 'Custom' }];
+  const batchReply = await f.api(`/api/v1/runs/${runId}/interactions`, {
+    method: 'POST', body: { id: batch.id, response: { values } }, headers: auth,
+  });
+  assert.equal(batchReply.status, 200);
+  assert.deepEqual(received, { id: batch.id, response: { values } });
+  const resolved = { ...batch, status: 'answered', answers: [
+    { question: 'First?', answer: 'B', wasCustom: false, skipped: false },
+    { question: 'Second?', answer: 'Custom', wasCustom: true, skipped: false },
+  ] };
+  control.emit({ kind: 'interaction', request: resolved });
+  assert.deepEqual((await f.api(`/api/v1/runs/${runId}`, { headers: auth })).json.interactions
+    .find((item) => item.id === batch.id).answers, resolved.answers);
   assert.equal(
     (
       await f.api(`/api/v1/runs/${runId}/interactions`, {

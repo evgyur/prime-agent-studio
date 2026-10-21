@@ -8,8 +8,19 @@ const pathKey = (value) =>
     .toLowerCase();
 const time = (value) => (typeof value === 'number' ? value : Date.parse(value)) || 0;
 
-export const hasPendingQuestion = (run) =>
-  run?.status === 'running' && run.interactions?.some((request) => request.status === 'pending');
+export function pendingQuestionCount(run) {
+  if (run?.status !== 'running' || !Array.isArray(run.interactions)) return 0;
+  // A replayed answer supersedes an older pending snapshot of that request.
+  const current = new Map();
+  for (const request of run.interactions) {
+    if (request && typeof request === 'object') current.set(request.id || request, request);
+  }
+  return [...current.values()].filter(
+    (request) => request.status === 'pending' && request.answer === undefined,
+  ).length;
+}
+
+export const hasPendingQuestion = (run) => pendingQuestionCount(run) > 0;
 
 export function conversationActivity(session, runs, unread = false) {
   const matching = runs.filter(

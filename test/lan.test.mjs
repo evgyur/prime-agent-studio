@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { request } from 'node:http';
+import { ClientRequest, request } from 'node:http';
 import { mkdtemp, mkdir, writeFile, appendFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -9,6 +9,83 @@ import { createLanGateway, hashAccessCode, isPrivateIPv4 } from '../lib/lan.mjs'
 
 const ACCESS_CODE = '49283175';
 const delay = (milliseconds) => new Promise((done) => setTimeout(done, milliseconds));
+
+test('voice uploads require authenticated full control and preserve bounded binary audio', async (t) => {
+  const timeouts = [];
+  const originalSetTimeout = ClientRequest.prototype.setTimeout;
+  t.mock.method(ClientRequest.prototype, 'setTimeout', function (ms, callback) {
+    timeouts.push({ path: this.path, ms });
+    return originalSetTimeout.call(this, ms, callback);
+  });
+  for (const readOnly of [false, true]) {
+    const calls = [];
+    const voiceDir = await mkdtemp(join(tmpdir(), 'studio-voice-lan-'));
+    t.after(() => rm(voiceDir, { recursive: true, force: true }));
+    await writeFile(join(voiceDir, 'voice.json'), JSON.stringify({ provider: 'whisper', timeoutMs: 600000 }));
+    const f = await fixture(
+      t,
+      { readOnly },
+      {
+        voice: {
+          dataDir: voiceDir,
+          env: {},
+          fetchImpl: async (url, init) => {
+            calls.push({ url, init });
+            return Response.json({ text: 'A synthetic voice prompt.' });
+          },
+        },
+      },
+    );
+    const body = Buffer.concat([Buffer.from('OggS'), Buffer.alloc(32)]);
+    const headers = { 'Content-Type': 'audio/ogg;codecs=opus' };
+    assert.equal((await f.api('/api/voice/transcribe', { method: 'POST', body, headers })).status, 401);
+    const Cookie = await f.authenticate();
+    const status = await f.api('/api/voice', { headers: { Cookie } });
+    assert.equal(status.status, 200);
+    assert.equal(status.json.provider, 'whisper');
+    assert.doesNotMatch(status.text, /127\.0\.0\.1|inference/);
+    // Settings (with the Whisper URL) are full control only, like other Preferences.
+    const settings = await f.api('/api/voice/settings', { headers: { Cookie } });
+    assert.equal(settings.status, readOnly ? 404 : 200, settings.text);
+    const patch = await f.api('/api/voice/settings', {
+      method: 'PATCH',
+      body: JSON.stringify({ timeoutMs: 600000 }),
+      headers: { Cookie, 'Content-Type': 'application/json' },
+    });
+    assert.equal(patch.status, readOnly ? 405 : 200, patch.text);
+    const response = await f.api('/api/voice/transcribe', {
+      method: 'POST',
+      body,
+      headers: { ...headers, Cookie },
+    });
+    assert.equal(response.status, readOnly ? 405 : 200, response.text);
+    if (!readOnly) {
+      assert.deepEqual(response.json, { text: 'A synthetic voice prompt.' });
+      assert.ok(
+        timeouts.find(({ path }) => path === '/api/voice/transcribe')?.ms > status.json.timeoutMs,
+        'The remote proxy must allow the full configured transcription deadline',
+      );
+      assert.equal(timeouts.find(({ path }) => path === '/api/voice')?.ms, 35000);
+      assert.deepEqual(Buffer.from(await calls[0].init.body.get('file').arrayBuffer()), body);
+      assert.equal(calls[0].init.headers, undefined, 'Local Whisper receives no provider credential');
+      for (const [extra, status] of [
+        [{ 'Content-Type': 'text/plain' }, 415],
+        [{ 'Content-Length': 10 * 1024 * 1024 + 1 }, 413],
+        [{ Origin: 'https://untrusted.example' }, 403],
+      ]) {
+        const result = await f.api('/api/voice/transcribe', {
+          method: 'POST',
+          body,
+          headers: { ...headers, Cookie, ...extra },
+        });
+        assert.equal(result.status, status, result.text);
+      }
+      assert.equal((await f.api('/api/voice/transcribe', { headers: { Cookie } })).status, 404);
+    }
+    assert.equal(calls.length, readOnly ? 0 : 1);
+    assert.equal(f.runtime.controls.length, 0);
+  }
+});
 
 async function until(check, timeout = 2500) {
   const deadline = Date.now() + timeout;

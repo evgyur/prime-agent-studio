@@ -111,8 +111,8 @@ function assertInvariants(doc, label) {
 }
 
 test('PANEL_IDS is the fixed V4 set and ratios bound splits', () => {
-  assert.deepEqual([...PANEL_IDS], ['conversation', 'roadmap', 'session', 'agents', 'files', 'preferences']);
-  assert.deepEqual([...TOOL_KINDS], ['roadmap', 'session', 'agents', 'files', 'preferences']);
+  assert.deepEqual([...PANEL_IDS], ['conversation', 'roadmap', 'session', 'agents', 'files', 'preferences', 'performance']);
+  assert.deepEqual([...TOOL_KINDS], ['roadmap', 'session', 'agents', 'files', 'preferences', 'performance']);
   assert.equal(MAX_CONVERSATIONS, 8);
   assert.equal(MAX_TOOL_PANELS, 16);
   assert.equal(MIN_RATIO, 0.15);

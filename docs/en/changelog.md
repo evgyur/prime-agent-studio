@@ -4,6 +4,47 @@
 
 Changes by version. See [GitHub releases](https://github.com/zerr0o/prime-agent-studio/releases) for installers and source archives.
 
+## 4.4.0-beta.2
+
+- **Performance tab**: a new tool tab in the modular workspace shows your usage for this project or all projects, over today, 7, 30 or 90 days: estimated cost, tokens, cache rate, runs, median duration and time to first token, a daily chart, a ranking of your models on your own work (success rate, cost per completed run, latency, errors) and a by-project table. It follows the active project or stays locked to one; in classic and mobile layouts it opens from the Session tab. It refreshes when shown, after each run or with Refresh, never on a timer.
+- **Context gauge**: a quiet "Context x % · Cache y %" line under every composer (main editor, modular tabs, mobile), updated on run events. When idle, it shows the last request. Amber at 80 %, red at 95 %.
+- **Clearer usage in the Session panel**: uncached input, output, cache read and cache write, cache rate, and totals that include subagents without double counting. The main agent figure no longer includes part of the subagents' usage, and its details stay open while the panel refreshes.
+- **Usage metrics**: Studio records content-free metadata for every request, subagents included (tokens, cache, estimated cost, statuses, durations), keeps it 90 days in the data folder and backfills existing sessions in the background. No prompt, response or tool content is stored.
+
+## 4.3.8-beta.3
+
+- **Copy a conversation ID**: the conversation menu now offers **Copy conversation ID**. It copies the saved conversation ID, useful with the public API or for support. Contributed by [@evgyur](https://github.com/evgyur) in [#8](https://github.com/zerr0o/prime-agent-studio/pull/8).
+
+## 4.3.8-beta.2
+
+- **The window reopens where you left it**: the main window keeps its position, size and maximized state across restarts. A window larger than its screen is resized to fit, and a window left on a disconnected screen returns to the main screen.
+
+## 4.3.8-beta.1
+
+- **Waiting agents are visible in the Session panel**: in "Running agents", an agent waiting for your answer shows the amber question dot used in the sidebar and tabs, in place of the spinner. The spinner comes back once you answer. Contributed by [@evgyur](https://github.com/evgyur) in [#7](https://github.com/zerr0o/prime-agent-studio/pull/7).
+
+## 4.3.7
+
+- **Voice messages**: a microphone in the composer records a message and transcribes it, then sends the text or adds it to the draft (**Send after transcription**). Turn it on in Preferences › Tools › Voice messages, with **Groq** (the Groq key from Providers, or `GROQ_API_KEY`) or a **local Whisper** server such as whisper.cpp; the setting is per PC. After a temporary failure, **Retry** resends the same recording. Contributed by [@evgyur](https://github.com/evgyur) in [#6](https://github.com/zerr0o/prime-agent-studio/pull/6).
+- **Several questions at once**: the agent can ask 1 to 6 questions in one call. Browse them on one line, ← Question 2/3 →, answer each with an option or your own text, or skip it: a skipped question shows a check and "Question skipped", and pressing again undoes it. Then send all answers together. Free text is always available, including for a single question. The public API accepts `{ values: [...] }` for several questions; a single question keeps its format.
+- **The sidebar no longer replaces an open conversation**: in the modular workspace, picking a conversation, run or project opens it in a new tab right after the active conversation, or focuses its existing tab. At eight open conversations, Studio asks you to close a tab instead of replacing one.
+- **Narrow windows and mobile**: the visible editor always sends. A hidden tab's editor can no longer send stale text.
+- **Every tab**: secondary tabs show the Latest messages button above their composer, and no longer add a redundant "question(s) waiting" bar.
+- **Updates**: the beta option no longer says there is no automatic check.
+
+## 4.3.6-beta.2
+
+- **Voice messages**: a microphone in the composer records a message, transcribes it and sends the text. Turn it on in Preferences › Tools › Voice messages, with **Groq** (the Groq key from Providers, or `GROQ_API_KEY`) or a **local Whisper** server such as whisper.cpp. The setting is specific to each PC. Contributed by [@evgyur](https://github.com/evgyur) in [#6](https://github.com/zerr0o/prime-agent-studio/pull/6).
+- **Send or keep as draft**: turn off **Send after transcription** to add the transcribed text to the draft without sending it, so you can complete it first.
+- **Reliable dictation**: after a temporary failure (rate limit, timeout, service unavailable), **Retry** resends the same recording. If the original conversation is gone, **Copy text** keeps the transcript. The microphone always uses the visible editor, including on mobile.
+
+## 4.3.6-beta.1
+
+- **Several questions at once**: the agent can ask 1 to 6 questions in one call. Browse them on a single line, ← Question 2/3 →, answer each with an option or your own text, skip any, then send all answers together. A free-text answer is always available, including for a single question. The public API accepts `{ values: [...] }` for several questions; a single question keeps its format.
+- **The sidebar no longer replaces an open conversation**: in the modular workspace, picking a conversation, run or project opens it in a new tab right after the active conversation, or focuses its existing tab. At eight open conversations, Studio asks you to close a tab instead of replacing one.
+- **Narrow windows and mobile**: the visible editor always sends. A hidden tab's editor can no longer send stale text.
+- **Latest messages in every tab**: secondary tabs show the same Latest messages button, centered above their composer.
+
 ## 4.3.5
 
 - **Roadmap order syncs**: moving a plan, milestone or backlog entry now reaches other PCs. Before, each PC kept its own order when merging, so two PCs could stay different forever while both showed "synced". The order of the most recently edited roadmap wins; on a tie, every PC picks the same one. On the first cycle after updating, each remote roadmap is merged again once so existing differences heal.

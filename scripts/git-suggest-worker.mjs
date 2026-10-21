@@ -41,7 +41,11 @@ try {
     if (!needle || !needle.includes('/')) return null;
     return available.find((m) => `${m.provider}/${m.id}`.toLowerCase() === needle) || null;
   };
-  let model = match(auxiliary) || match(defaultModel) || null;
+  const configuredAuxiliary = typeof auxiliary === 'string' && auxiliary.trim();
+  let model = match(auxiliary);
+  if (configuredAuxiliary && !model)
+    fail('Configured auxiliary model is unavailable. Update the auxiliary model in engine settings.', 'NO_AUXILIARY_MODEL');
+  model ||= match(defaultModel);
   if (!model && typeof defaultCatalog.getPreferredDefaultModelId === 'function') {
     try {
       const preferred = defaultCatalog.getPreferredDefaultModelId();

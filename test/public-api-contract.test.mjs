@@ -38,6 +38,7 @@ test('operations: agreed IDs, methods, /api/v1 prefix and scope coverage', () =>
     machine: ['read'],
     projects: ['read'],
     models: ['read'],
+    metrics: ['read'],
     sessions: ['read'],
     messages: ['read'],
     createRun: ['read', 'runs:write'],

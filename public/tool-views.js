@@ -170,7 +170,7 @@ export function createToolViews({ read, write, getSnapshot, create, onChange = (
     ]),
   );
   for (const kind of TOOL_KINDS) {
-    if (!entries.has(kind))
+    if (!entries.has(kind) && entries.size < MAX_STORED_TOOLS)
       entries.set(kind, {
         id: kind,
         kind,
@@ -202,6 +202,8 @@ export function createToolViews({ read, write, getSnapshot, create, onChange = (
         sessionId: null,
       };
     const result = resolveToolTarget(entry.locked ? entry.target : null, snapshot);
+    // Performance pins a project, not the continued existence of a session.
+    if (entry.kind === 'performance') result.unavailable = snapshot.ready !== false && !result.project;
     if (result.promoted) {
       entry.target = result.promoted;
       persist();

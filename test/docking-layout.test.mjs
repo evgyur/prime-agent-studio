@@ -111,8 +111,8 @@ function assertInvariants(doc, label) {
 }
 
 test('PANEL_IDS is the fixed V4 set and ratios bound splits', () => {
-  assert.deepEqual([...PANEL_IDS], ['conversation', 'roadmap', 'session', 'agents', 'files', 'preferences']);
-  assert.deepEqual([...TOOL_KINDS], ['roadmap', 'session', 'agents', 'files', 'preferences']);
+  assert.deepEqual([...PANEL_IDS], ['conversation', 'roadmap', 'session', 'agents', 'files', 'preferences', 'performance', 'context']);
+  assert.deepEqual([...TOOL_KINDS], ['roadmap', 'session', 'agents', 'files', 'preferences', 'performance', 'context']);
   assert.equal(MAX_CONVERSATIONS, 8);
   assert.equal(MAX_TOOL_PANELS, 16);
   assert.equal(MIN_RATIO, 0.15);
@@ -125,12 +125,19 @@ test('panel id helpers classify singletons, legacy, and dynamic refs', () => {
   assert.ok(isConversationPanel('conv:slot-12'), 'dynamic ref');
   assert.ok(isConversationPanel('conv:Aa0-_'), 'charset');
   assert.ok(isToolPanel('tool:roadmap:a'), 'dynamic tool ref');
+  assert.ok(isPanelId('context'), 'Context primary');
+  assert.ok(isToolPanel('tool:context:a'), 'Context instance');
+  assert.equal(toolKindOf('tool:context:a'), 'context');
+  assert.equal(isConversationPanel('context'), false);
+  assert.equal(isToolPanel('context'), false);
+  assert.equal(isPanelId('tool:context:'), false, 'Context requires nonce');
+  assert.equal(isPanelId(`tool:context:${'x'.repeat(65)}`), false, 'Context nonce remains bounded');
   assert.ok(isToolPanel('tool:preferences:Aa0-_'), 'tool charset');
   assert.equal(toolKindOf('tool:session:xyz'), 'session', 'tool kind');
   assert.equal(toolKindOf('tool:files:slot-1'), 'files', 'tool slot kind');
   // Contract: fixed primaries map to themselves (parent registry uses this
   // for all five primary ids); dynamic refs map to their kind.
-  for (const kind of ['roadmap', 'session', 'agents', 'files', 'preferences'])
+  for (const kind of TOOL_KINDS)
     assert.equal(toolKindOf(kind), kind, `fixed primary ${kind} maps to itself`);
   assert.equal(toolKindOf('conversation'), null, 'legacy conversation has no tool kind');
   assert.equal(toolKindOf('conv:a'), null, 'conversation instance has no tool kind');
@@ -165,6 +172,19 @@ test('panel id helpers classify singletons, legacy, and dynamic refs', () => {
   assert.equal(isPanelId('inspector'), false, 'removed whole-inspector panel rejected');
   assert.equal(isPanelId('conv:'), false, 'bad ref');
   assert.equal(isPanelId('tool:roadmap:'), false, 'bad tool ref');
+});
+
+test('Context primary and instance restore, move and close independently', () => {
+  const restored = validateLayout({ version: 4, root: group('tools', ['conversation', 'context', 'tool:context:locked'], 'tool:context:locked') });
+  assertInvariants(restored, 'Context restored');
+  assert.equal(restored.root.active, 'tool:context:locked');
+  const closed = closePanel(restored, 'context');
+  assert.deepEqual(openPanels(closed), ['conversation', 'tool:context:locked']);
+  assert.equal(closed.root.active, 'tool:context:locked');
+  const reopened = movePanel(closed, { panel: 'context', targetGroupId: 'tools' });
+  assertInvariants(reopened, 'Context reopened');
+  assert.equal(reopened.root.active, 'context');
+  assert.deepEqual(openPanels(reopened), ['conversation', 'tool:context:locked', 'context']);
 });
 
 test('default layout matches the contract', () => {

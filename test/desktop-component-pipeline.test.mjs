@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { runComponents, recordComponentFailure } from '../scripts/desktop-components.mjs';
 import { COMPONENT_POLICY } from '../lib/desktop-components.mjs';
 
@@ -592,6 +593,22 @@ test('recordComponentFailure persists only allowlisted fields and never leaks st
   assert.equal(third.error, 'server_validation_failed');
   const raw = lines.join('\n');
   assert.ok(!/Error:|secret|token|Bearer|PATH=/i.test(raw));
+});
+
+test('component helper returns the absolute log path on failure', async (t) => {
+  const f = await fixture(t);
+  const helper = resolve('scripts/desktop-components.mjs');
+  const child = spawnSync(
+    process.execPath,
+    [helper, JSON.stringify({ action: 'invalid', dataRoot: f.dataRoot })],
+    {
+      encoding: 'utf8',
+    },
+  );
+  assert.equal(child.status, 0, child.stderr);
+  const failure = JSON.parse(child.stdout);
+  assert.equal(failure.error, 'action_invalid');
+  assert.equal(failure.logPath, join(f.dataRoot, 'engine/logs/components.log'));
 });
 
 test('unknown runtime probe is not a restart: ready plus running plus app match stays quiet', async (t) => {

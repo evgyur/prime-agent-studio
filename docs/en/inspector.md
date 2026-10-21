@@ -10,7 +10,21 @@ Find the project, session status, active runs and conversation export. Tracking 
 
 Chat status also distinguishes a usage-limit wait, an unavailable provider and use of the backup model selected in preferences. These indicators follow engine events; they change neither the selected model nor recovery limits.
 
-Usage adds up Prime Agent’s recorded data on the conversation’s current branch: input, output and cached tokens. Estimated cost appears only when the engine provides it; it does not represent your subscription bill. These totals cover the main agent, not all of its delegations.
+Usage adds up Prime Agent’s recorded data on the conversation’s current branch: uncached input, output, cache read and cache write tokens. The **cache rate** is the share of input tokens served from the cache: read ÷ (input + read + write), excluding output tokens. Estimated cost appears only when the engine provides it; otherwise it stays **unknown**, not zero. It does not represent your subscription bill.
+
+The total includes subagents: each request counts once, with its own usage, including a subagent that is still running. The main agent’s figures remain available in the details. The disclosure keeps its open or closed state across refreshes and when returning to the session. The total is marked **partial** when a subagent is missing, its history exceeds 16 MiB, or beyond 200 subagents. Compaction summary costs are not included here.
+
+Below the composer, a quiet line shows **Context x % · Cache y %**, in every conversation tab and on mobile. During a run it uses the engine’s measurement and updates on each message, compaction or turn end, without periodic polling. When idle, it shows the size of the **last request** against the model’s window, as its tooltip says. It turns amber at 80 % and red at 95 %; it is hidden when the value is unknown, for example right after a compaction.
+
+## Performance
+
+Add **Performance** through the modular workspace’s **Add tab** menu. The tab follows the active conversation’s project; its lock keeps that project, even after the source conversation closes. In classic layout and on mobile, the **Performance** button in Session opens the same view in a dialog.
+
+Choose **This project** or **All projects**, then Today, 7, 30 or 90 days. The default period is 7 days, using UTC days. The view shows estimated cost, all four token categories, cache rate, runs started, succeeded, failed and stopped, median duration and median time to first token. Older sessions without timing show **Not available**. Missing cost stays **Unknown**, with the number of affected messages.
+
+The daily chart shows cost or tokens. The model table ranks your own work by cost or run count. Success rate is succeeded runs divided by succeeded plus failed runs. Manual stops and budget stops are excluded. Their count appears separately in the indicators and in the tables’ success-rate tooltip. With no succeeded or failed runs, the rate is **Not available**. Cost per completed run includes the period’s total cost. HTTP 4xx and 5xx errors are counted separately. **All projects** adds a table of project display names, without paths. A **Code lookup usefulness** block lists calls, useful share, fallback share, and sample size per tool (`studio_code_search`, `studio_code_symbols`, `studio_code_map`). A call counts as useful when a returned file is opened within the next five tool calls; it counts as fallback when a shell search (`grep`, `rg`, `findstr`, `Select-String`) or a manual read follows within the next three calls. Only counts are recorded, never paths or contents. Below five calls, rates show **sample too small** instead of a percentage.
+
+Metrics load when the view opens, after a run finishes while it is visible, or with **Refresh**, without periodic polling. History backfill, incomplete reads and read limits show a notice with **Retry**. The ledger retains 90 days. Unlike the Session usage block, it includes recorded compaction summaries.
 
 ## Agents
 

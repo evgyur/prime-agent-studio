@@ -5,6 +5,7 @@ import { mkdtemp, mkdir, writeFile, appendFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { createApp } from '../server.mjs';
+import { metricsProjectId } from '../lib/metrics.mjs';
 import { createLanGateway, hashAccessCode, isPrivateIPv4 } from '../lib/lan.mjs';
 
 const ACCESS_CODE = '49283175';
@@ -916,6 +917,21 @@ test('LAN full control reaches former local-only routes, consultation stays bloc
     assert.notEqual(response.status, 404, `full GET ${path}`);
     noSecrets(response.json ?? response.text);
   }
+  // Context is available on authenticated phones with full control only.
+  const contextPath = `/api/projects/${metricsProjectId(full.cwd)}/context`;
+  assert.equal((await full.api(contextPath, { headers: fullHeaders })).status, 200);
+  for (const [method, suffix, body] of [
+    ['PATCH', '', '{"enabled":false}'],
+    ['POST', '/search', '{"q":"fixture"}'],
+    ['POST', '/rebuild', '{}'],
+  ]) {
+    const response = await full.api(contextPath + suffix, { method, headers: fullHeaders, body });
+    assert.ok((suffix === '/rebuild' ? [409] : [200, 202]).includes(response.status), `${method} ${suffix}: ${response.text}`);
+  }
+  const roContext = `/api/projects/${metricsProjectId(ro.cwd)}/context`;
+  assert.equal((await ro.api(roContext, { headers: roHeaders })).status, 404);
+  assert.equal((await ro.api(roContext + '/events', { headers: roHeaders })).status, 404);
+  assert.equal((await ro.api(roContext, { method: 'PATCH', headers: roHeaders, body: '{"enabled":false}' })).status, 405);
   // Providers list exposes metadata only, never stored keys.
   const providers = (await full.api('/api/providers', { headers: fullHeaders })).json;
   assert.ok(Array.isArray(providers.providers));
@@ -1010,4 +1026,24 @@ test('LAN full control reaches former local-only routes, consultation stays bloc
   }
   // Health metadata never leaves the PC, even for full control.
   assert.equal((await full.api('/api/health', { headers: fullHeaders })).status, 404);
+});
+
+test('routing and budget preferences require authenticated full control over LAN', async (t) => {
+  for (const readOnly of [false, true]) {
+    const f = await fixture(t, { readOnly });
+    const Cookie = await f.authenticate();
+    for (const path of ['/api/quota-fallback', '/api/budgets']) {
+      assert.equal((await f.api(path)).status, 401);
+      const state = await f.api(path, { headers: { Cookie } });
+      assert.equal(state.status, readOnly ? 404 : 200, state.text);
+      const write = await f.api(path, { method: 'PUT', body: JSON.stringify(state.json),
+        headers: { Cookie, 'Content-Type': 'application/json' } });
+      assert.equal(write.status, readOnly ? 405 : 200, write.text);
+    }
+    const retry = await f.api('/api/runs/00000000-0000-0000-0000-000000000000/quota-retry', {
+      method: 'POST', body: JSON.stringify({ model: 'test/model' }),
+      headers: { Cookie, 'Content-Type': 'application/json' },
+    });
+    assert.equal(retry.status, readOnly ? 405 : 404);
+  }
 });

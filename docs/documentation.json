@@ -3,6 +3,15 @@
   "languages": ["fr", "en"],
   "pages": [
     {
+      "id": "context",
+      "fr": "docs/context.md",
+      "en": "docs/en/context.md",
+      "reviewed": {
+        "fr": "2765c491c3d26f7a9d1ea14f175e9dbb6c4e19859b0db3e900abc0029484a317",
+        "en": "d0e673b352aed9a4ca6cefd5e4cd04d40ca47ea196ee03c5ac6f7734cd9572d4"
+      }
+    },
+    {
       "id": "computer-use",
       "fr": "docs/computer-use.md",
       "en": "docs/en/computer-use.md",
@@ -25,8 +34,8 @@
       "fr": "docs/desktop.md",
       "en": "docs/en/desktop.md",
       "reviewed": {
-        "fr": "5d14403984ed1e21f31b1f75225b58687a9cc521643d5ce843292414666f562e",
-        "en": "f829ac8a62d9f1470d8acc23d9c8f2e7f4998a27758c1805900aa526c8a7c39a"
+        "fr": "f4a2dabd9eb2cf79c29b6e2c04624f71b45d6540965daf7e556ad05889ea249f",
+        "en": "770d80eca0282939554c6402507551d637692af73db70b0a1ac28447c4f079a4"
       }
     },
     {
@@ -34,8 +43,8 @@
       "fr": "README.fr.md",
       "en": "README.md",
       "reviewed": {
-        "fr": "c70972c99105945d62e269d0c0a7d2ab65bb3020267c8e92d2bfc64008482da9",
-        "en": "86b316646bf695433827e962d223c9d27e5287a2fee5aad7363f0e5cb97f9a60"
+        "fr": "33e12dee08bb7b274e2ecc2f2791f81ae7d2a75a82f341599dad82768901faa8",
+        "en": "3901b2d090c84411cd01c58e0a6e20ed3b23360655ce2877baf42236ceb69203"
       }
     },
     {
@@ -43,8 +52,8 @@
       "fr": "docs/changelog.md",
       "en": "docs/en/changelog.md",
       "reviewed": {
-        "fr": "7de6700372010100477b5df10ed889c25c563901fe21d5ca9e1b6034511b547e",
-        "en": "885028a4d2ef8c6c0db63ae0d5cb94f73f188bcc36b6ab44e4ce9eaf8c3b6778"
+        "fr": "f2d6041b96d405c4322f4ee0b67b1c922548347710c6a33a347cb5028770e88f",
+        "en": "47a0fe086a4e7ef766511d3566fe149aa4222d373cf5677d5f652a7c498cd0e7"
       }
     },
     {
@@ -61,8 +70,8 @@
       "fr": "docs/configuration.md",
       "en": "docs/en/configuration.md",
       "reviewed": {
-        "fr": "2c524dacd075bb081ab8f6ae340fc4e666de9a3c6c2024c189be74b5004ec41c",
-        "en": "5fda251507eff6b73ab50a79bfbb7979cbc1f231741c5a3a947cca610c69bc39"
+        "fr": "a39a7bb78fae195791b61febfb491d624040993686431ab7bbb6db2333415f92",
+        "en": "92309f83e93cc76f87494ab040410b641f9880cf407a31510ebf6209a146da07"
       }
     },
     {
@@ -70,8 +79,8 @@
       "fr": "docs/development.md",
       "en": "docs/en/development.md",
       "reviewed": {
-        "fr": "c6627f3c0500c0c5f7f50946c67fdad8a3c59131081eedad0579039763457459",
-        "en": "30cdc98ec18943045e77f98afe5e5362d58763240b35de6d0bdfa5293de66c32"
+        "fr": "ccf18ed621f0ad0d26fa4f9c4db8c3481ac673799649f04545f67f6c39329582",
+        "en": "677e77793b23d2e5afb82fb239e9353f47ff0e47240eb0c5151f5719cecf2bfd"
       }
     },
     {
@@ -79,8 +88,8 @@
       "fr": "docs/inspector.md",
       "en": "docs/en/inspector.md",
       "reviewed": {
-        "fr": "29b432737ac5de007b9d42d5e116f1356ad8cd99f32dcdd9a5578886e4df0df9",
-        "en": "af7bcb39d7e6e06fb29047a98c0931d9183dc2e385ff9e05fb0a6c5e7c7273a5"
+        "fr": "837591eba142f604cbd7b9c098a62e0712d4c9f1fb82a9b1e4c51ed46263de8a",
+        "en": "523ddecaa229aae218363eb28dd3361194f8a2381a5733a3324f27087b0e45e4"
       }
     },
     {
@@ -151,8 +160,8 @@
       "fr": "docs/api.md",
       "en": "docs/en/api.md",
       "reviewed": {
-        "fr": "cf73218e10914a6047f49c325457ab9de033d3e33db78a06f5ce24316af7129e",
-        "en": "359712b758d5fa716a6af0293bb2ff2f43ecdfb9a425145eaa6df1fc788f5e22"
+        "fr": "4724f9cad70c775fd8a6287f894b90c9be60405560c3c60df9cb108da4d27760",
+        "en": "f40d795ef05470b10338457b5b757224f63b57070c12fafd72521ae1e4c9ea5b"
       }
     },
     {

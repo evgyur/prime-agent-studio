@@ -27,7 +27,7 @@ import {
   selectComposerCommand,
   createComposer,
 } from './composer.js';
-import { createInspector } from './inspector.js';
+import { createInspector, renderComposerGauge } from './inspector.js';
 import { fileLinkRenderer, bindFileLinks } from './file-links.js';
 import { createSessionActivity } from './session-activity.js';
 import { parseAgentEnvelope } from './agent-messages.js';
@@ -45,6 +45,9 @@ import {
   sessionOriginDevice,
 } from './project-navigation.js';
 import { createKnowledgeBrowser } from './knowledge.js';
+import { createPerformance } from './performance.js';
+import { renderRunGuard, confirmQuotaBilling } from './run-guards.js';
+import { createContext } from './context.js';
 import { createProjectArchives } from './project-archives.js';
 import { createWorktreesUI } from './worktrees.js';
 import { createRoadmap } from './roadmap.js';
@@ -94,6 +97,124 @@ let toolViews = null;
 let convViews = null;
 let voiceUI = null;
 const viewHistoryPages = new WeakMap();
+const composerMetrics = new Map();
+const inspectorRequests = new Map();
+function metricsKey(cwd, sessionId) {
+  return sessionId && cwd ? `${cwd}\0${sessionId}` : '';
+}
+// Share in-flight inspector reads with visible Session/Agents tools. The gauge
+// retains numeric fields only, never agent previews, prompts or tool arguments.
+function inspectorApi(url, options) {
+  if (!url.startsWith('/api/inspector?')) return api(url, options);
+  const params = new URL(url, location.href).searchParams;
+  const key = metricsKey(params.get('cwd'), params.get('sessionId'));
+  const run = runningForSession(params.get('sessionId'));
+  const revision = `${run?.id || ''}:${run?.contextRevision || 0}`;
+  const requestKey = `${key}\0${revision}`;
+  if (inspectorRequests.has(requestKey)) return inspectorRequests.get(requestKey);
+  // Share only reads of the same run/revision. A pre-event response must not
+  // consume the event's refresh, even if it finishes during the debounce.
+  // One closing tool must not abort the shared read needed by another pane.
+  const pending = api(url).then((data) => {
+    const entry = composerMetrics.get(key);
+    if (entry && run === runningForSession(params.get('sessionId')) &&
+        revision === `${run?.id || ''}:${run?.contextRevision || 0}`) {
+      entry.data = {
+        contextUsage: data.contextUsage ?? data.session?.contextUsage,
+        session: { lastRequestUsage: data.session?.lastRequestUsage },
+      };
+      entry.dataKey = revision;
+      refreshComposerGauges();
+    }
+    return data;
+  }).finally(() => inspectorRequests.delete(requestKey));
+  inspectorRequests.set(requestKey, pending);
+  return pending;
+}
+function lastRequestMetrics(view) {
+  const run = view ? runForView(view) : activeRun();
+  const messages = isRunning(run) ? [...(run.base || []), ...(run.messages || [])] : view?.history || state.history;
+  const last = messages.findLast((message) => message.role === 'assistant' && message.usage &&
+    !message.streaming && !['error', 'aborted'].includes(message.stopReason));
+  // Compaction invalidates the previous request size until a new response lands.
+  const compact = messages.findLastIndex((message) => message.customType === 'compaction');
+  if (!last || messages.indexOf(last) < compact) return null;
+  const own = last.ownUsage ?? last.usage;
+  const fields = ['input', 'output', 'cacheRead', 'cacheWrite'];
+  if (!fields.every((key) => Number.isFinite(own[key] ?? 0) && (own[key] ?? 0) >= 0)) return null;
+  // Native calculateContextTokens uses these four buckets. This idle snapshot
+  // intentionally omits trailing-message estimates and is labelled not live.
+  const tokens = fields.reduce((sum, key) => sum + (own[key] || 0), 0);
+  const model = state.models.find((item) => item.id === [last.provider, last.model].filter(Boolean).join('/') || item.id === last.model);
+  if (!model?.contextWindow || !tokens) return null;
+  const prompt = (own.input || 0) + (own.cacheRead || 0) + (own.cacheWrite || 0);
+  return {
+    contextUsage: { tokens, contextWindow: model.contextWindow, percent: tokens / model.contextWindow * 100 },
+    lastRequest: true,
+    session: { lastRequestUsage: {
+      input: own.input || 0, output: own.output || 0,
+      cacheRead: own.cacheRead || 0, cacheWrite: own.cacheWrite || 0,
+      cacheHitRatio: prompt ? (own.cacheRead || 0) / prompt : null,
+    } },
+  };
+}
+// Event-driven: assistant completion, compaction/done, view changes and load.
+// Idle views use their last OWN request and catalog window, with no network.
+function refreshComposerGauges() {
+  if (!state.initialized || document.hidden) return;
+  const targets = dockingUI?.active && convViews
+    ? dockingUI.visiblePanels().map((id) => convViews.byId(id)).filter(Boolean)
+    : [convViews?.focused() || null];
+  for (const view of targets) {
+    const element = dockingUI?.active && view?.id !== PRIMARY_VIEW_ID
+      ? view?.composerNodes?.contextGauge
+      : $('composer-context-gauge');
+    if (!element) continue;
+    const sessionId = view ? view.sessionId : state.sessionId;
+    const cwd = view?.execCwd || view?.projectCwd || execCwdOf();
+    const key = metricsKey(cwd, sessionId);
+    element.dataset.contextKey = key;
+    if (!key || !state.online || (state.projectOverview && view?.id === PRIMARY_VIEW_ID)) {
+      renderComposerGauge(element, null);
+      continue;
+    }
+    let entry = composerMetrics.get(key);
+    if (!entry) {
+      entry = { data: null, dataKey: null, requestKey: null, timer: null };
+      composerMetrics.set(key, entry);
+      if (composerMetrics.size > 30) {
+        const oldest = composerMetrics.keys().next().value;
+        clearTimeout(composerMetrics.get(oldest)?.timer);
+        composerMetrics.delete(oldest);
+      }
+    }
+    const run = view ? runForView(view) : activeRun();
+    const fallback = lastRequestMetrics(view);
+    const running = isRunning(run);
+    const requestKey = `${run?.id || ''}:${run?.contextRevision || 0}`;
+    renderComposerGauge(element, running && entry.dataKey === requestKey ? entry.data : fallback);
+    if (!running || !state.inspectorAvailable) continue;
+    if (entry.requestKey === requestKey) continue;
+    entry.requestKey = requestKey;
+    clearTimeout(entry.timer);
+    entry.timer = setTimeout(() => {
+      entry.timer = null;
+      if (document.hidden || element.dataset.contextKey !== key ||
+          !element.closest('.composer-area')?.getClientRects().length || !isRunning(run)) {
+        entry.requestKey = null;
+        return;
+      }
+      if (entry.dataKey === requestKey) return;
+      const params = new URLSearchParams({ cwd, sessionId });
+      void inspectorApi(`/api/inspector?${params}`).catch(() => {
+        if (entry.requestKey !== requestKey) return;
+        entry.data = null;
+        entry.dataKey = null;
+        if (element.dataset.contextKey === key) renderComposerGauge(element, lastRequestMetrics(view));
+      });
+    }, 1000);
+  }
+}
 let settingsDockApi = null;
 let conversationPicker = null;
 const getDocking = () => dockingUI;
@@ -232,6 +353,7 @@ const icons = {
   refresh: 'M20 7v5h-5M4 17v-5h5M6.1 7a7 7 0 0 1 11.6-2L20 8M4 16l2.3 3A7 7 0 0 0 17.9 17',
   alert: 'm12 3 10 18H2L12 3Zm0 5v6m0 3v.01',
   user: 'M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0ZM4 21v-3a8 5 0 0 1 16 0v3',
+  activity: 'M4 3v18h17M8 17v-5m5 5V7m5 10V4',
   brain: 'M12 4C8 0 4 4 5 7c-5 1-4 7-1 8-1 5 5 8 8 4 3 4 9 1 8-4 3-1 4-7-1-8 1-3-3-7-7-3Zm0 0v15',
   tool: 'M21 3a6 6 0 0 1-8 8L5 21l-3-3 9-9a6 6 0 0 1 8-8l-4 4 3 3 3-5Z',
 };
@@ -1147,6 +1269,7 @@ function resizeComposer(textarea = null, view = null) {
 // update background panes. Units missing (primary pre-enable, classic) falls
 // back to the host singletons, which mirror the focused view — identical.
 function updateComposer(view = null) {
+  refreshComposerGauges();
   const target = view || convViews?.focused();
   // The focused view uses its live editor: its pane while docked, the host otherwise.
   const units = (target && convViews?.isFocused(target.id) ? convViews.liveUnits(target) : target?.units) || null;
@@ -1161,6 +1284,12 @@ function updateComposer(view = null) {
   const viewSessionId = target?.sessionId ?? state.sessionId;
   const run = target ? runForView(target) : activeRun();
   const running = isRunning(run);
+  const guardRun = run || (target?.guardRunToken === target?.token ? state.runs.get(target?.guardRunId) : null) || [...state.runs.values()].filter((entry) => viewSessionId && entry.sessionId === viewSessionId).sort((a, b) => String(b.startedAt).localeCompare(String(a.startedAt)))[0];
+  renderRunGuard(node('composer-form', 'form'), guardRun, {
+    models: state.models,
+    disabled: state.readOnly || !state.online || state.sending || running,
+    onRetry: (failed, model) => void retryQuotaRun(failed, model, target),
+  });
   const isPrimaryTarget = !target || target.id === PRIMARY_VIEW_ID;
   const viewLoading = target ? !!target.loading : state.loading;
   const viewOverview = isPrimaryTarget ? state.projectOverview : false;
@@ -3603,9 +3732,26 @@ function applyRunEvent(run, e) {
       if (state.viewRunId === run.id)
         toast(() => tr('ui.le_debut_de_cette_execution_sera_recharge_depuis_l_historique_a_l'));
       break;
+    case 'budget':
+      run.budget = e.budget;
+      document.dispatchEvent(new CustomEvent('studio-budget-update', { detail: { run } }));
+      updateComposer(convViews?.byRun(run.id) || undefined);
+      break;
     case 'done':
+      run.quota = e.quota || run.quota;
+      for (const entry of toolViews?.entries.values() || [])
+        if (entry.kind === 'performance') entry.ui?.runDone();
+      performancePopup?.ui.runDone();
       void finishRun(run, e);
       break;
+  }
+  if (
+    (e.kind === 'message' && (e.message?.role === 'assistant' || e.message?.customType === 'compaction')) ||
+    e.kind === 'done' ||
+    (['runtime', 'status'].includes(e.kind) && ['compacting', 'turn_end'].includes(e.status))
+  ) {
+    run.contextRevision = (run.contextRevision || 0) + 1;
+    refreshComposerGauges();
   }
   if (convViews?.composerLive?.()) {
     // Coalesce live deltas per frame; never repaint the full history in the SSE callback.
@@ -3654,6 +3800,45 @@ function subscribe(run) {
     void refreshOverview();
   };
 }
+async function retryQuotaRun(failed, model, origin = null) {
+  if (state.readOnly || !state.online || state.sending || isRunning(origin ? runForView(origin) : activeRun())) return;
+  const token = origin?.token;
+  const candidate = failed.quota?.candidates?.find((entry) => entry.model === model);
+  if (!candidate || candidate.reason === 'unavailable') return;
+  const confirmBillingChange = candidate.automaticEligible !== true && !['eligible', 'automatic_disabled'].includes(candidate.reason);
+  state.sending = true;
+  try {
+    if (confirmBillingChange && !await confirmQuotaBilling(failed.model || failed.quota.provider, model, state.models)) return;
+    // Closing a modal after navigation never sends into a different conversation.
+    if (state.readOnly || !state.online || (origin && (convViews?.byId(origin.id) !== origin || origin.token !== token))) return;
+    if (isRunning(origin ? runForView(origin) : activeRun())) return;
+    updateComposer(origin || undefined);
+    const retryPath = `/api/runs/${encodeURIComponent(failed.id)}/quota-retry`;
+    let run;
+    try {
+      run = await api(retryPath, { method: 'POST', body: { model, ...(confirmBillingChange ? { confirmBillingChange: true } : {}) } });
+    } catch (error) {
+      // Identity may have changed since the candidate list was generated.
+      // The server asks for fresh consent; retry once, never auto-confirm or loop.
+      if (confirmBillingChange || error.code !== 'quota_confirmation_required') throw error;
+      if (!await confirmQuotaBilling(failed.model || failed.quota.provider, model, state.models)) return;
+      if (state.readOnly || !state.online || (origin && (convViews?.byId(origin.id) !== origin || origin.token !== token))) return;
+      if (isRunning(origin ? runForView(origin) : activeRun())) return;
+      run = await api(retryPath, { method: 'POST', body: { model, confirmBillingChange: true } });
+    }
+    Object.assign(run, { initialized: true, base: [...(failed.base || []), ...(failed.messages || [])], messages: [], lastSeq: 0, currentMessage: null });
+    state.runs.set(run.id, run);
+    failed.quota = { ...failed.quota, retryRunId: run.id };
+    if (origin && convViews?.byId(origin.id) === origin && origin.token === token) {
+      origin.viewRunId = run.id;
+      if (convViews.isFocused(origin.id)) state.viewRunId = run.id;
+      else convViews.refreshView(origin.id);
+    } else if (!origin && state.sessionId === failed.sessionId) state.viewRunId = run.id;
+    subscribe(run);
+    renderNavigation();
+  } catch (error) { toast(translateKnown(error.message), true); }
+  finally { state.sending = false; updateComposer(origin || undefined); }
+}
 async function finishRun(run, e) {
   run.replayedDone = true;
   run.status = e.status || 'completed';
@@ -3678,6 +3863,10 @@ async function finishRun(run, e) {
   } else if (e.status === 'stopped' || e.status === 'cancelled') toast(() => tr('ui.l_agent_a_ete_arrete'));
   const finishOrigin = convViews?.byRun(run.id) || null;
   const finishViewToken = finishOrigin?.token;
+  if (finishOrigin && (run.quota || run.budget)) {
+    finishOrigin.guardRunId = run.id;
+    finishOrigin.guardRunToken = finishOrigin.token;
+  }
   if (convViews && finishOrigin) {
     if (finishOrigin.kind === 'new' && run.sessionId) {
       finishOrigin.sessionId = run.sessionId;
@@ -3697,6 +3886,19 @@ async function finishRun(run, e) {
     state.history = [...run.base, ...run.messages];
     saveSelection();
     scheduleMessages();
+  }
+  if (e.quota?.retryRunId) {
+    const retryId = e.quota.retryRunId;
+    const retry = state.runs.get(retryId) || {
+      id: retryId, sessionId: run.sessionId, cwd: run.cwd, status: 'running',
+      model: e.quota.automaticModel || run.model, thinking: run.thinking,
+      startedAt: new Date().toISOString(), initialized: true,
+      base: [...(run.base || []), ...(run.messages || [])], messages: [], lastSeq: 0, currentMessage: null,
+    };
+    state.runs.set(retryId, retry);
+    if (finishOrigin && finishOrigin.viewRunId === run.id) finishOrigin.viewRunId = retryId;
+    if (state.viewRunId === run.id) state.viewRunId = retryId;
+    subscribe(retry);
   }
   if (run.sessionId && (finishOrigin || state.viewRunId === run.id)) {
     try {
@@ -3734,6 +3936,7 @@ async function finishRun(run, e) {
   await refreshOverview();
   renderNavigation();
   computerUseUI?.notifyRunFinished();
+  updateComposer(finishOrigin || undefined);
 }
 async function sendMessage(event) {
   event?.preventDefault();
@@ -4743,7 +4946,7 @@ function closeSessionMenu() {
   $('session-menu-button').setAttribute('aria-expanded', 'false');
 }
 function openSessionMenu(id, anchor) {
-  if (state.readOnly) return;
+  if (state.readOnly || !id) return;
   closeProjectMenu();
   sessionMenuAnchor = anchor;
   state.menuSessionId = id;
@@ -4802,7 +5005,8 @@ async function menuAction(action) {
     } else if (action === 'unread') {
       if (id === state.sessionId && state.projectCwd) selectProject(state.projectCwd);
       await sessionActivity.markUnread(id);
-    } else if (action === 'export') await exportSession(id);
+    } else if (action === 'copy-id') await copyText(id);
+    else if (action === 'export') await exportSession(id);
   } catch (e) {
     toast(translateKnown(e.message), true);
   }
@@ -4914,7 +5118,57 @@ for (const id of ['project-knowledge', 'detail-project-knowledge'])
     const selected = project();
     if (selected) knowledgeUI.open(selected, event.currentTarget);
   };
+let contextPopup = null;
+function openContext(context, opener) {
+  if (!contextPopup) {
+    const dialog = document.createElement('dialog');
+    dialog.className = 'modal context-dialog';
+    bindAttribute(dialog, 'aria-label', () => tr('docking.context'));
+    const close = el('button', 'secondary-button');
+    bindText(close, () => tr('ui.fermer'));
+    close.onclick = () => dialog.close();
+    const ui = createContext({ api, getContext: () => contextPopup.context });
+    dialog.append(close, ui.root);
+    document.body.append(dialog);
+    dialog.addEventListener('close', () => {
+      ui.setDocked({ visible: false });
+      contextPopup.opener?.focus({ preventScroll: true });
+    });
+    contextPopup = { dialog, ui };
+  }
+  contextPopup.context = context;
+  contextPopup.opener = opener;
+  contextPopup.dialog.showModal();
+  contextPopup.ui.setDocked({ visible: true });
+}
+$('detail-context').onclick = (event) => openContext(toolContext('session'), event.currentTarget);
+let performancePopup = null;
+function openPerformance(context, opener) {
+  if (!performancePopup) {
+    const dialog = document.createElement('dialog');
+    dialog.className = 'modal performance-dialog';
+    dialog.setAttribute('aria-label', tr('docking.performance'));
+    const close = el('button', 'secondary-button');
+    bindText(close, () => tr('ui.fermer'));
+    close.onclick = () => dialog.close();
+    const ui = createPerformance({ api, getContext: () => performancePopup.context });
+    dialog.append(close, ui.root);
+    document.body.append(dialog);
+    dialog.addEventListener('close', () => {
+      ui.setDocked({ visible: false });
+      performancePopup.opener?.focus({ preventScroll: true });
+    });
+    performancePopup = { dialog, ui };
+  }
+  performancePopup.context = context;
+  performancePopup.opener = opener;
+  performancePopup.dialog.showModal();
+  performancePopup.ui.setDocked({ visible: true });
+}
+$('detail-performance').onclick = (event) => openPerformance(toolContext('session'), event.currentTarget);
 function bindToolSession(entry, own) {
+  own('detail-context').onclick = (event) => openContext(toolContext(entry.id), event.currentTarget);
+  own('detail-performance').onclick = (event) => openPerformance(toolContext(entry.id), event.currentTarget);
   const context = () => toolContext(entry.id);
   own('copy-project-path').onclick = () => {
     const value = context();
@@ -5100,7 +5354,7 @@ function toolLockState(id) {
   return {
     locked: entry.locked,
     unavailable: context.unavailable || !context.projectCwd || !state.initialized,
-    label: `${tr(entry.locked ? 'docking.unlock' : 'docking.lock')} · ${tr(entry.locked ? 'docking.locked' : 'docking.following', { name: toolTargetLabel(context) })}`,
+    label: `${tr(entry.locked ? 'docking.unlock' : 'docking.lock')} · ${tr(entry.kind === 'performance' ? entry.locked ? 'performance.locked' : 'performance.following' : entry.locked ? 'docking.locked' : 'docking.following', { name: entry.kind === 'performance' ? context.project?.name || tr('docking.unavailable') : toolTargetLabel(context) })}`,
   };
 }
 function updateToolPanels() {
@@ -5134,6 +5388,16 @@ function updateToolPanels() {
   dockingUI?.refreshTitles();
 }
 function createToolInstance(entry) {
+  if (entry.kind === 'context') {
+    const ui = createContext({ api, getContext: () => toolContext(entry.id) });
+    document.body.append(ui.root);
+    return { ui, root: ui.root };
+  }
+  if (entry.kind === 'performance') {
+    const ui = createPerformance({ api, getContext: () => toolContext(entry.id) });
+    document.body.append(ui.root);
+    return { ui, root: ui.root };
+  }
   if (entry.kind === 'roadmap') {
     const ui = makeToolRoadmap(entry);
     return { ui, root: ui.root };
@@ -5155,7 +5419,7 @@ function createToolInstance(entry) {
   }
   scope.root.hidden = true;
   const ui = createInspector({
-    api,
+    api: inspectorApi,
     markdown,
     getModels: () => state.models,
     openModelPicker,
@@ -5347,7 +5611,7 @@ toolViews = createToolViews({
   },
 });
 inspectorUI = createInspector({
-  api,
+  api: inspectorApi,
   markdown,
   getModels: () => state.models,
   openModelPicker,
@@ -5476,6 +5740,8 @@ dockingUI = createDocking({
     roadmap: $('roadmap-panel'),
     ...(hasInspectorSplit() ? inspectorUI.roots() : { inspector: $('details-panel') }),
     preferences: $('settings-dialog'),
+    ...(toolViews.ensure('performance') ? { performance: toolViews.entries.get('performance').root } : {}),
+    ...(toolViews.ensure('context') ? { context: toolViews.entries.get('context').root } : {}),
   },
   read: readStorage,
   write: writeStorage,
@@ -6027,7 +6293,7 @@ document.addEventListener('click', (e) => {
 });
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
-    if (document.querySelector('.inspector-viewer:modal') || $('knowledge-dialog').open) return;
+    if (document.querySelector('.inspector-viewer:modal, .performance-dialog:modal, .context-dialog:modal') || $('knowledge-dialog').open) return;
     closeProjectMenu();
     closeSessionMenu();
     closeSidebar();
@@ -6101,7 +6367,10 @@ onLanguageChange(() => {
   resizeComposer();
 });
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && state.initialized) void refreshOverview();
+  if (!document.hidden && state.initialized) {
+    refreshComposerGauges();
+    void refreshOverview();
+  }
 });
 window.addEventListener('online', () => {
   if (state.initialized) void refreshOverview();

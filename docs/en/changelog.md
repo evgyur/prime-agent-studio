@@ -4,6 +4,31 @@
 
 Changes by version. See [GitHub releases](https://github.com/zerr0o/prime-agent-studio/releases) for installers and source archives.
 
+## 4.4.1
+
+- **Simpler subagent settings**: the Explore / Implement / Review role selectors have been removed. Choose the default model and thinking level globally or per project; explicit choices when launching a subagent still take priority.
+- **Existing conversations stay compatible**: saved role-specific settings no longer affect model selection. Legacy `role` arguments are ignored, so older conversations can continue without errors caused by the removed selector.
+- **Other controls are unchanged**: the Git suggestion model, budgets and quota fallback remain available. The pinned Prime Agent 0.9.8 setup fix and the opt-in Context (Beta) feature from 4.4.0 are preserved.
+
+## 4.4.0
+
+- **Prime Agent setup fixed**: the engine remains pinned to 0.9.8. Studio uses a source and digests recorded in the build instead of parsing a remote installer script that changes independently. Archives are still verified before activation. Fixes the `source_contract_changed` blocker reported in issue #10.
+- **Repair diagnostics**: failures show the `components.log` path in English and French (PR #11).
+- **Context (Beta)**: the new project context system is disabled by default and requires explicit opt-in. Its tab is marked Beta. It provides a local code index and search, symbol and project-map tools; no remote embedding service is used.
+- **Routing and budgets**: subagent roles, auxiliary models, quota fallback and configurable budgets. Model choices use the shared picker; quota actions display the affected model name.
+- **Performance**: stopped runs are excluded from the success-rate calculation. This stable release also includes usage metrics and the context gauge from 4.4.0-beta.2.
+
+## 4.4.0-beta.2
+
+- **Performance tab**: a new tool tab in the modular workspace shows your usage for this project or all projects, over today, 7, 30 or 90 days: estimated cost, tokens, cache rate, runs, median duration and time to first token, a daily chart, a ranking of your models on your own work (success rate, cost per completed run, latency, errors) and a by-project table. It follows the active project or stays locked to one; in classic and mobile layouts it opens from the Session tab. It refreshes when shown, after each run or with Refresh, never on a timer.
+- **Context gauge**: a quiet "Context x % · Cache y %" line under every composer (main editor, modular tabs, mobile), updated on run events. When idle, it shows the last request. Amber at 80 %, red at 95 %.
+- **Clearer usage in the Session panel**: uncached input, output, cache read and cache write, cache rate, and totals that include subagents without double counting. The main agent figure no longer includes part of the subagents' usage, and its details stay open while the panel refreshes.
+- **Usage metrics**: Studio records content-free metadata for every request, subagents included (tokens, cache, estimated cost, statuses, durations), keeps it 90 days in the data folder and backfills existing sessions in the background. No prompt, response or tool content is stored.
+
+## 4.3.8-beta.3
+
+- **Copy a conversation ID**: the conversation menu now offers **Copy conversation ID**. It copies the saved conversation ID, useful with the public API or for support. Contributed by [@evgyur](https://github.com/evgyur) in [#8](https://github.com/zerr0o/prime-agent-studio/pull/8).
+
 ## 4.3.8-beta.2
 
 - **The window reopens where you left it**: the main window keeps its position, size and maximized state across restarts. A window larger than its screen is resized to fit, and a window left on a disconnected screen returns to the main screen.

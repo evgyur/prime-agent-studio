@@ -81,15 +81,34 @@ export function transformDaemonStream(source, { required = false, supervisorRequ
   return { source: supervisor.source, changed: worker.changed || supervisor.changed };
 }
 
+// Per-run policy is captured while the daemon loads extensions, not inherited
+// from another conversation or from the supervisor's ambient environment.
+export function transformDaemonClientEnv(source, { required = false } = {}) {
+  const marker = '/* Studio run policy env. */';
+  const declaration = /((?:export )?(?:const|var) DAEMON_CLIENT_ENV_KEYS = \[)/g;
+  const matches = [...source.matchAll(declaration)];
+  if (!matches.length && !required && !source.includes(marker)) return { source, changed: false };
+  if (matches.length !== 1) throw new Error('Studio run policy adapter requires an update for this engine.');
+  const addition = `${marker} "PRIME_STUDIO_BUDGET", "PRIME_STUDIO_QUOTA_FILE",`;
+  if (source.includes(marker)) {
+    if (!source.includes(`${matches[0][0]}${addition}`))
+      throw new Error('Studio run policy adapter is partially applied.');
+    return { source, changed: false };
+  }
+  return { changed: true, source: source.replace(declaration, `$1${addition}`) };
+}
+
 export async function load(url, context, nextLoad) {
   const result = await nextLoad(url, context);
   if (!packageRoot || !url.startsWith('file:') || result.format !== 'module') return result;
   const path = relative(packageRoot, fileURLToPath(url)).replaceAll('\\', '/');
   const unbundled = path === 'dist/modes/daemon/daemon-mode.js';
   const supervisor = path === 'dist/modes/daemon/daemon-supervisor.js';
-  if (!unbundled && !supervisor && !/^dist\/bundle\/[^/]+\.m?js$/.test(path)) return result;
+  const protocol = path === 'dist/modes/daemon/daemon-protocol.js';
+  if (!unbundled && !supervisor && !protocol && !/^dist\/bundle\/[^/]+\.m?js$/.test(path)) return result;
   const source =
     typeof result.source === 'string' ? result.source : Buffer.from(result.source).toString('utf8');
-  const transformed = transformDaemonStream(source, { required: unbundled, supervisorRequired: supervisor });
-  return transformed.changed ? { ...result, source: transformed.source } : result;
+  const policy = transformDaemonClientEnv(source, { required: protocol });
+  const transformed = transformDaemonStream(policy.source, { required: unbundled, supervisorRequired: supervisor });
+  return transformed.changed || policy.changed ? { ...result, source: transformed.source } : result;
 }

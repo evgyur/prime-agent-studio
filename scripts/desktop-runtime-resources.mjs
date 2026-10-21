@@ -19,6 +19,7 @@ export const desktopRuntimeScripts = [
   'kernel-catalog-worker.mjs',
   'native-skill-resources.mjs',
   'studio-knowledge-worker.mjs',
+  'studio-code-worker.mjs',
   'provider-auth-worker.mjs',
   'mcp-probe-worker.mjs',
   'mcp-oauth-worker.mjs',
@@ -41,6 +42,8 @@ const missingIn280 = desktopRuntimeScripts.filter(
       'stop-server.mjs',
       'desktop-runtime-resources.mjs',
       'studio-knowledge-worker.mjs',
+      // New context engine worker was not part of the 2.8.0 repair set.
+      'studio-code-worker.mjs',
     ].includes(name),
 );
 export const desktop280Identity = '3aaa070e42d268e555a705e67656c5428fc62478c07d86e1ba363be4e96fc6ef';

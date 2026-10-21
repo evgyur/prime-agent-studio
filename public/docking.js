@@ -35,8 +35,12 @@ const titles = {
   agents: 'docking.agents',
   files: 'docking.files',
   preferences: 'docking.preferences',
+  performance: 'docking.performance',
+  context: 'docking.context',
 };
 const tabPaths = {
+  performance: 'M4 3v18h17M8 17v-5m5 5V7m5 10V4',
+  context: 'M4 4h16v16H4zM8 8h8M8 12h8M8 16h5',
   conversation: 'M21 4H3v13h5l4 4 4-4h5V4Z',
   roadmap: 'M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3V6Zm6-3v15m6-12v15',
   session: 'M5 3h10l4 4v14H5V3Zm10 0v5h4M8 12h8M8 16h6',

@@ -7,6 +7,7 @@ import { gzipSync } from 'node:zlib';
 import { createServer } from 'node:http';
 import { archivePath, extractTgz, extractZip } from '../lib/component-archives.mjs';
 import {
+  ALLOWED_ENGINE_ORIGINS,
   COMPONENT_POLICY,
   selectedEnvironment,
   diagnoseComponents,
@@ -206,6 +207,80 @@ test('official installer origin contract, exact inventory match and corrupt dige
     /checksum_missing/,
   );
   assert.throws(() => verifyDigest(Buffer.from('corrupt'), '0'.repeat(64)), /checksum_mismatch/);
+});
+test('engine 0.9.8 release source and SHA-256 are pinned; rotated inventory fails closed', () => {
+  // Short-term issue #10 fix: engine downloads never parse the mutable install.sh.
+  assert.deepEqual([...ALLOWED_ENGINE_ORIGINS], [
+    'https://pub-728493de92a943e2a9b2d17b4719f318.r2.dev',
+  ]);
+  const releaseUrl = `${ALLOWED_ENGINE_ORIGINS[0]}/releases/v${COMPONENT_POLICY.engine}`;
+  assert.equal(releaseUrl, 'https://pub-728493de92a943e2a9b2d17b4719f318.r2.dev/releases/v0.9.8');
+  assert.match(COMPONENT_POLICY.engineSha256, /^[a-f0-9]{64}$/);
+  // Exact official SHA256SUMS entries captured 2026-10-21; all four artifacts verified byte-for-byte.
+  const inventory = [
+    'd7b72785119efc28bfbca8ec4a7f47a1fcdcf47fcd8cebdb60bffaa79e3e1274  prime-agent-0.9.8.tgz',
+    '3efd07d12eafa4c3f1a9fdb16420c276f9162482498ef29e07de4704c2c5c669  prime-agent-ai-0.9.8.tgz',
+    '301b7c0c2598fce5378ac26063c531b22424e44e3e8dbc2f179e796cfa1928b4  prime-agent-core-0.9.8.tgz',
+    'fd161813688e5e4bea0ae6847779e0e4d33525e8145380979119229dd27165d4  prime-agent-tui-0.9.8.tgz',
+  ].join('\n') + '\n';
+  assert.equal(checksum(inventory, 'prime-agent-0.9.8.tgz'), COMPONENT_POLICY.engineSha256);
+  for (const [name, sha] of Object.entries(COMPONENT_POLICY.engineDeps))
+    assert.equal(checksum(inventory, name), sha);
+  assert.equal(Object.keys(COMPONENT_POLICY.engineDeps).length, 3);
+  const rotated = `e${inventory.slice(1)}`;
+  assert.notEqual(checksum(rotated, 'prime-agent-0.9.8.tgz'), COMPONENT_POLICY.engineSha256);
+  assert.throws(() => checksum(inventory, 'prime-agent-0.9.8-windows-x64.zip'), /checksum_missing/);
+});
+test('prepareComponents never fetches install.sh and fails closed on rotated engine inventory', async (t) => {
+  const dataRoot = await fixture(t);
+  const fetched = [];
+  const npmTar = tar([{ name: 'package/bin/npm-cli.js', text: 'console.log("10.9.4")\n' }]);
+  const { createHash } = await import('node:crypto');
+  const integrity = `sha512-${createHash('sha512').update(npmTar).digest('base64')}`;
+  assert.match(integrity, /^sha512-[A-Za-z0-9+/]{86}==$/);
+  const releaseUrl = `${ALLOWED_ENGINE_ORIGINS[0]}/releases/v${COMPONENT_POLICY.engine}`;
+  const rotatedInventory = [
+    'e7b72785119efc28bfbca8ec4a7f47a1fcdcf47fcd8cebdb60bffaa79e3e1274  prime-agent-0.9.8.tgz',
+    '3efd07d12eafa4c3f1a9fdb16420c276f9162482498ef29e07de4704c2c5c669  prime-agent-ai-0.9.8.tgz',
+    '301b7c0c2598fce5378ac26063c531b22424e44e3e8dbc2f179e796cfa1928b4  prime-agent-core-0.9.8.tgz',
+    'fd161813688e5e4bea0ae6847779e0e4d33525e8145380979119229dd27165d4  prime-agent-tui-0.9.8.tgz',
+  ].join('\n') + '\n';
+  const download = async (url) => {
+    fetched.push(url);
+    if (url.includes('install.sh')) throw new Error('must_not_fetch_installer');
+    if (url === `https://registry.npmjs.org/npm/${COMPONENT_POLICY.npm}`)
+      return Buffer.from(
+        JSON.stringify({
+          version: COMPONENT_POLICY.npm,
+          dist: {
+            tarball: `https://registry.npmjs.org/npm/-/npm-${COMPONENT_POLICY.npm}.tgz`,
+            integrity,
+          },
+        }),
+      );
+    if (url === `https://registry.npmjs.org/npm/-/npm-${COMPONENT_POLICY.npm}.tgz`) return npmTar;
+    if (url === `${releaseUrl}/SHA256SUMS`) return Buffer.from(rotatedInventory);
+    throw new Error(`unexpected_download:${url}`);
+  };
+  const deps = {
+    checkNode() {},
+    download,
+    execute: async (path, args) => (args.includes('--version') ? COMPONENT_POLICY.npm : 'studio-shell-ok'),
+    validateEngine: async () => {
+      throw new Error('must_not_validate_rotated_engine');
+    },
+  };
+  const error = await prepareComponents(
+    { dataRoot, env: { PRIME_AGENT_KERNEL_PYTHON: 'external-python' } },
+    deps,
+  ).then(
+    () => null,
+    (failure) => failure,
+  );
+  assert.equal(error?.message, 'source_contract_changed');
+  assert.equal(error?.component, 'engine');
+  assert.ok(fetched.includes(`${releaseUrl}/SHA256SUMS`));
+  assert.ok(!fetched.some((url) => url.includes('install.sh')), 'engine downloads never parse install.sh');
 });
 test('local network fixtures cover byte progress, size limits, redirect downgrade and cancellation', async (t) => {
   const server = createServer((req, res) => {

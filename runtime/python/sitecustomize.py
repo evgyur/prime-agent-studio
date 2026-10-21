@@ -5,6 +5,9 @@ to the agent process tree and never changes the user's Python installation.
 """
 import os
 
+if os.environ.get("PRIME_STUDIO_SUBAGENT_POLICY"):
+    import studio_subagent_roles
+
 if os.name == "nt" and os.environ.get("PRIME_GUI_SILENT") == "1":
     import functools
     import importlib.abc

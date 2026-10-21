@@ -217,6 +217,8 @@ function completionFixture() {
     refreshModelCatalog() {},
     refreshOverview: async () => {},
     renderNavigation() {},
+    composerUpdates: [],
+    updateComposer(view) { f.composerUpdates.push(view?.id); },
     computerUseUI: null,
     sessionActivity: { observe() {} },
   });
@@ -253,6 +255,7 @@ test('background completion canonicalizes its pane and current globals after foc
     ['a80', 'canonical-answer'],
   );
   assert.equal(f.state.history, f.a.history);
+  assert.deepEqual(f.composerUpdates, [f.a.id], 'finished run updates only its origin composer');
   assert.ok(
     f.paints.filter((id) => id === f.a.id).length >= 2,
     'primary host repaints even if completion began in background',

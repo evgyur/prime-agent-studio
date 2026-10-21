@@ -1,5 +1,7 @@
 import { formatMessage as tr, requestLanguage } from './public/i18n-core.js';
 import { createVoice } from './lib/voice.mjs';
+import { createMetrics, metricsProjectId } from './lib/metrics.mjs';
+import { createContextService } from './lib/context-service.mjs';
 import { createServer } from 'node:http';
 import { isModelAvailabilityError } from './lib/model-availability.mjs';
 import { readFile, stat, mkdir } from 'node:fs/promises';
@@ -25,7 +27,9 @@ import { createModelConfigStore } from './lib/model-config.mjs';
 import { createModelDefaultsStore } from './lib/model-defaults.mjs';
 import { createEngineSettingsStore } from './lib/engine-settings.mjs';
 import { createSubagentDefaultsStore } from './lib/subagent-defaults.mjs';
-import { validPolicy } from './runtime/subagent-policy.mjs';
+import { createQuotaFallbackStore, planQuotaFallback, resolveQuotaIdentities } from './lib/quota-fallback.mjs';
+import { createBudgetSettings } from './lib/budgets.mjs';
+import { validPolicy, effectivePolicy } from './runtime/subagent-policy.mjs';
 import { directoryForReference, openDirectory } from './lib/open-directory.mjs';
 import { openTerminal } from './lib/open-terminal.mjs';
 import { createDirectoryPicker } from './lib/pick-directory.mjs';
@@ -97,6 +101,8 @@ const publicRun = ({
   worktreeId,
   projectCwd,
   computerUse,
+  quota,
+  budget,
 }) => {
   const { text, attachments } = splitFileMessage(prompt);
   return {
@@ -116,6 +122,8 @@ const publicRun = ({
     ...(typeof worktreeId === 'string' && worktreeId ? { worktreeId } : {}),
     ...(typeof projectCwd === 'string' && projectCwd ? { projectCwd } : {}),
     ...(computerUse === undefined ? {} : { computerUse: !!computerUse }),
+    ...(quota ? { quota } : {}),
+    ...(budget ? { budget } : {}),
   };
 };
 
@@ -204,6 +212,15 @@ export function createApp(options = {}) {
       dataDir,
       initialCwd: options.initialCwd || process.env.PRIME_AGENT_GUI_INITIAL_CWD || ROOT,
     });
+  const context = options.context || createContextService({ dataDir, store, index: options.codeIndex });
+  const contextStartup = setTimeout(() => { void context.ensureAll().catch(() => {}); }, 0);
+  contextStartup.unref();
+  const metrics = createMetrics({
+    dataDir,
+    sessionDir,
+    artifactDir: join(agentHome, 'session-artifacts'),
+    resolveProject: (cwd) => store.knowledgeProject(cwd),
+  });
   const worktrees =
     options.worktrees ||
     createWorktrees({
@@ -237,6 +254,8 @@ export function createApp(options = {}) {
     ...options.networkOptions,
   });
   const subagentDefaults = createSubagentDefaultsStore({ dataDir });
+  const quotaFallback = createQuotaFallbackStore({ dataDir });
+  const budgets = createBudgetSettings({ dataDir });
   const runs = new Map(),
     sessionLocks = new Set();
   const eventProjections = new WeakMap();
@@ -395,7 +414,10 @@ export function createApp(options = {}) {
       cliPath: process.env.PRIME_AGENT_CLI,
       kernelRoot: process.env.PRIME_AGENT_GUI_KERNEL_ROOT,
       ...(rustOptIn ? {} : { subagentPolicyFile: subagentDefaults.file }),
+      quotaFallback,
+      metricsDir: metrics.rawDir,
       knowledge: { dataDir },
+      codeContext: { dataDir },
       roadmap: { config: roadmapBridge.config },
       computer: { config: computerBridge.config },
     });
@@ -509,6 +531,7 @@ export function createApp(options = {}) {
     }
     if (!parsed?.ok) {
       if (parsed?.code === 'NO_MODEL') throw new HttpError(409, tr('git.suggest_no_model'));
+      if (parsed?.code === 'NO_AUXILIARY_MODEL') throw new HttpError(409, tr('engine.auxiliary_unavailable'));
       throw new HttpError(502, tr('git.suggest_failed'));
     }
     return String(parsed.text || '');
@@ -790,11 +813,78 @@ export function createApp(options = {}) {
       .filter((r) => r.status === 'running' || r.status === 'stopping')
       .map(withComputerFlag);
   }
+  async function retryQuota(run, model, { automatic = false, confirmBillingChange = false } = {}) {
+    if ((!run.finished && !run.quotaFinalizing) || run.status !== 'failed' || !run.quota || !run.sessionId)
+      throw new HttpError(409, 'Quota retry requires a failed run with an existing conversation.');
+    if (run.quotaRetryPending || run.quotaRetryRunId)
+      throw new HttpError(409, 'This quota failure has already been retried.');
+    run.quotaRetryPending = true;
+    try {
+      const settings = await quotaFallback.get();
+      const catalog = await models();
+      const selected = catalog.models?.find((item) => item.id === model);
+      if (!settings.models.includes(model) || model === run.model || !selected || selected.availability === 'unavailable')
+        throw new HttpError(409, 'This fallback model is no longer available. Review the fallback list.');
+      const latestIdentities = await resolveQuotaIdentities({ agentHome, models: [run.model, model] });
+      // Keep the failing run's account proof, never replace it with a new login.
+      const identities = { ...latestIdentities, [run.model]: run.quotaIdentity };
+      const plan = planQuotaFallback({ failure: run.quota, currentModel: run.model, settings,
+        identities, availableModels: catalog.models });
+      if (automatic && (!plan.candidates.some((item) => item.model === model && item.automaticEligible) ||
+          run.apiRequestId || run.quotaChain.includes(model)))
+        throw new HttpError(409, 'Automatic retry is not authorized for this account and model.');
+      const sameAccount = plan.candidates.some((item) => item.model === model &&
+        ['eligible', 'automatic_disabled'].includes(item.reason));
+      if (!automatic && !sameAccount && !confirmBillingChange)
+        throw Object.assign(new HttpError(409, 'Confirm that this retry may change provider account or billing, including pay-per-use.'),
+          { code: 'quota_confirmation_required' });
+      const input = { ...run.retryInput, cwd: run.cwd, sessionId: run.sessionId, model,
+        thinking: selected.thinkingLevels?.includes(run.thinking) ? run.thinking : '' };
+      const authorize = () => {
+        if (run.status !== 'failed' || closing)
+          throw new HttpError(409, 'Quota retry was cancelled.');
+      };
+      const next = await startRun(input, { authorize, requiredModel: model, quotaChain: [...run.quotaChain, run.model],
+        ...(sameAccount ? { quotaAuthorization: { sourceModel: run.model, targetModel: model, identities } } : {}) });
+      if (run.status !== 'failed' || closing) {
+        const admitted = runs.get(next.id);
+        if (admitted) await stopRun(admitted);
+        throw new HttpError(409, 'Quota retry was cancelled.');
+      }
+      run.quotaRetryRunId = next.id;
+      return next;
+    } finally {
+      run.quotaRetryPending = false;
+    }
+  }
+  async function finishQuotaRun(run, event) {
+    run.quotaFinalizing = true;
+    run.status = 'failed';
+    if (run.sessionId) sessionLocks.delete(run.sessionId);
+    try {
+      const next = await retryQuota(run, event.quota.automaticModel, { automatic: true });
+      event = { ...event, quota: { ...event.quota, retryRunId: next.id } };
+    } catch (error) {
+      event = { ...event, quota: { ...event.quota, retryError: error.message } };
+    } finally {
+      run.quotaFinalizing = false;
+    }
+    pushEvent(run, event);
+  }
   function pushEvent(run, event) {
     if (event.kind === 'goal' && event.goal?.goalId && run.sessionId && goalRecovery)
       persistMetadata(
         goalRecovery.updateGoal({ sessionId: run.sessionId, runId: run.id, goalId: event.goal.goalId }),
       );
+    if (event.budget) run.budget = event.budget;
+    if (event.quota) run.quota = event.quota;
+    if (event.kind === 'done' && run.quotaFinalizing) return;
+    if (event.kind === 'done' && event.status === 'failed' && event.quota?.automaticModel &&
+        !run.quotaChecked && !run.apiRequestId && run.sessionId && !closing) {
+      run.quotaChecked = true;
+      void finishQuotaRun(run, event);
+      return;
+    }
     if (event.kind === 'interaction') {
       run.interactions ||= [];
       const index = run.interactions.findIndex((item) => item.id === event.request.id);
@@ -850,7 +940,9 @@ export function createApp(options = {}) {
         desktopNotifications.publish('turnComplete', run);
         void pushService.notify('turnComplete', { sessionId: run.sessionId, runId: run.id }).catch(() => {});
       }
-      if (run.sessionId) sessionLocks.delete(run.sessionId);
+      if (run.sessionId && ![...runs.values()].some((other) => other !== run &&
+          other.sessionId === run.sessionId && !other.finished && ['running', 'stopping'].includes(other.status)))
+        sessionLocks.delete(run.sessionId);
       // Send the finished turn right away instead of waiting for the next cycle.
       if (run.sessionId && !closing) {
         const timer = setTimeout(() => {
@@ -861,7 +953,13 @@ export function createApp(options = {}) {
         timer.unref();
       }
     }
+    if (
+      (event.kind === 'message' && (event.message?.role === 'assistant' || event.message?.customType === 'compaction')) ||
+      event.kind === 'done' ||
+      (['runtime', 'status'].includes(event.kind) && ['compacting', 'turn_end'].includes(event.status))
+    ) inspector.invalidate(run.sessionId);
     publicApi.noteEvent(run, event);
+    metrics.noteEvent(run, event);
     const item = { ...event, seq: ++run.seq };
     const wire = `id: ${item.seq}\ndata: ${JSON.stringify(item)}\n\n`;
     run.events.push({ item, wire });
@@ -1052,7 +1150,7 @@ export function createApp(options = {}) {
     );
   }
 
-  async function startRun(body, { authorize, apiRequestId, recoveryGoal, recoveryContext } = {}) {
+  async function startRun(body, { authorize, apiRequestId, quotaChain = [], quotaAuthorization, requiredModel, recoveryGoal, recoveryContext } = {}) {
     await authorize?.();
     // Admission revision for the Computer Use opt-in: slow validation
     // follows, and a stop landing meanwhile must win. A stale grant is
@@ -1257,6 +1355,8 @@ export function createApp(options = {}) {
         );
       selectedModel = globalComputerModel;
     }
+    if (requiredModel && selectedModel !== requiredModel)
+      throw new HttpError(409, 'The requested fallback conflicts with the active model override. Disable that override before retrying.');
     let selectedThinking =
       (body.thinking ?? settings?.thinking ?? existing?.thinking) || catalog.default?.thinking;
     // Decision thinking applies to Computer Use runs the same way the
@@ -1280,6 +1380,9 @@ export function createApp(options = {}) {
       body.allowQuestions ?? settings?.allowQuestions ?? (await studioPreferences()).allowQuestionsByDefault;
     if (catalog.models?.find((model) => model.id === selectedModel)?.availability === 'unavailable')
       throw new HttpError(409, tr('model.unavailableSelection'));
+    const quotaIdentities = await resolveQuotaIdentities({ agentHome, models: [selectedModel] });
+    const configuredBudget = await budgets.forRun(worktreeAuth?.projectCwd || cwd);
+    const budget = configuredBudget ? { ...configuredBudget, allowQuestions: !apiRequestId && allowQuestions } : null;
     // Check after awaited validation so simultaneous HTTP requests cannot race the lock.
     if (activeRuns().length >= 8)
       throw new HttpError(429, tr('server.huit_sessions_tournent_deja_arretez_en_une_avant_de_continuer'));
@@ -1302,6 +1405,9 @@ export function createApp(options = {}) {
       bytes: 0,
       clients: new Set(),
       finished: false,
+      quotaChain,
+      quotaIdentity: quotaIdentities[selectedModel],
+      retryInput: { ...body, computerUse: false, computerUseBackend: undefined },
     };
     if (worktreeAuth) {
       run.worktreeId = worktreeAuth.entry.id;
@@ -1310,6 +1416,7 @@ export function createApp(options = {}) {
     }
     if (apiRequestId) run.apiRequestId = apiRequestId;
     runs.set(run.id, run);
+    metrics.noteEvent(run, { kind: 'start' });
     try {
       const computerImageCapable = modelSupportsImages(selectedModel, catalog);
       if (body.computerUse === true && !computerImageCapable)
@@ -1345,7 +1452,11 @@ export function createApp(options = {}) {
         await store.setConversationSettings(existing.id, { model: body.model });
       await authorize?.();
       if (recoveryContext) validateRecoveryHistory(await store.history(existing.id), recoveryContext);
+      const codeContext = await context.runtimeConfig(worktreeAuth?.projectCwd || cwd, existing?.id);
+      // V1 indexes the registered root only; never expose wrong-root tools in a task worktree.
+      if (worktreeAuth) codeContext.enabled = false;
       run.handle = await runtime.start({
+        codeContext,
         cwd,
         message: run.prompt,
         ...(images.length ? { images } : {}),
@@ -1380,8 +1491,11 @@ export function createApp(options = {}) {
           }
           if (closing) throw new HttpError(503, 'Studio is shutting down.');
         },
+        quotaAuthorization,
+        budget,
         onEvent: (event) => pushEvent(run, event),
       });
+      void context.notify(metricsProjectId(worktreeAuth?.projectCwd || cwd)).catch(() => {});
       if (existing?.id) await store.consumePastudioModelGate?.(existing.id).catch(() => {});
       if (run.status === 'stopping') void run.handle.cancel();
       Promise.resolve(run.handle.done).then(
@@ -1393,6 +1507,8 @@ export function createApp(options = {}) {
               status: result?.status || 'completed',
               code: result?.code || 0,
               error: result?.error,
+              ...(result?.quota ? { quota: result.quota } : {}),
+              ...(result?.budget ? { budget: result.budget } : {}),
             });
         },
         (error) =>
@@ -1405,6 +1521,7 @@ export function createApp(options = {}) {
           }),
       );
     } catch (error) {
+      metrics.noteEvent(run, { kind: 'done', status: 'failed', code: -1 });
       roadmapBridge.revokeOwner(run.id);
       void computerBridge.revokeOwner(run.id);
       runs.delete(run.id);
@@ -1484,6 +1601,7 @@ export function createApp(options = {}) {
   const publicApi = createPublicApi({
     access: publicApiAccess,
     store,
+    metrics,
     dataDir,
     agentHome,
     version: VERSION,
@@ -1560,6 +1678,7 @@ export function createApp(options = {}) {
         const [overview, version, catalog] = await Promise.all([store.overview(), status(), models()]);
         return json(res, 200, {
           ...overview,
+          projects: overview.projects.map((project) => ({ ...project, metricsId: metricsProjectId(project.cwd) })),
           version,
           models: catalog,
           studioPreferences: await studioPreferences(),
@@ -1583,6 +1702,8 @@ export function createApp(options = {}) {
           runtime: await status(),
           activeRuns: activeRuns().length,
         });
+      if (path === '/api/metrics/summary' && method === 'GET')
+        return json(res, 200, await metrics.summary(Object.fromEntries(url.searchParams)));
       if (path === '/api/system/logs' && method === 'POST') {
         await readBody(req);
         const logs = join(dataDir, 'logs');
@@ -1762,6 +1883,28 @@ export function createApp(options = {}) {
       const mcpJob = path.match(/^\/api\/mcp\/login\/([a-f0-9-]{36})$/);
       if (mcpJob && method === 'GET') return json(res, 200, mcp.job(mcpJob[1]));
       if (mcpJob && method === 'DELETE') return json(res, 200, mcp.cancel(mcpJob[1]));
+      if (path === '/api/budgets' && method === 'GET')
+        return json(res, 200, await budgets.read());
+      if (path === '/api/budgets' && method === 'PUT') {
+        const body = await readBody(req);
+        if (body.projects && typeof body.projects === 'object' && !Array.isArray(body.projects))
+          for (const cwd of Object.keys(body.projects)) await store.findProject(cwd);
+        return json(res, 200, await budgets.write(body));
+      }
+      if (path === '/api/quota-fallback' && method === 'GET')
+        return json(res, 200, await quotaFallback.get());
+      if (path === '/api/quota-fallback' && method === 'PUT') {
+        const body = await readBody(req);
+        if (Array.isArray(body.models)) {
+          const catalog = await models();
+          for (const id of body.models) {
+            const model = catalog.models?.find((model) => model.id === id);
+            if (!model) throw new HttpError(400, tr('server.ce_modele_n_est_pas_disponible_dans_prime_agent'));
+            if (model.availability === 'unavailable') throw new HttpError(409, tr('model.unavailableSelection'));
+          }
+        }
+        return json(res, 200, await quotaFallback.set(body));
+      }
       if (method === 'GET' && path === '/api/model-defaults')
         return json(res, 200, await modelDefaults.get());
       if (
@@ -1792,13 +1935,18 @@ export function createApp(options = {}) {
         if (body.policy !== null) {
           if (!validPolicy(body.policy))
             throw new HttpError(400, tr('server.reglages_des_sous_agents_invalides'));
-          if (body.policy.model) {
-            const model = (await models()).models?.find((m) => m.id === body.policy.model);
+          const saved = await subagentDefaults.get(cwd);
+          // Per-role routing was removed in 4.4.1: only general defaults are
+          // validated (legacy `roles` are accepted but stripped on write).
+          const effective = effectivePolicy(cwd ? saved.global : body.policy, cwd ? body.policy : null);
+          if (effective.model) {
+            const catalog = await models();
+            const model = catalog.models?.find((m) => m.id === effective.model);
             if (!model)
               throw new HttpError(400, tr('server.ce_modele_n_est_pas_disponible_dans_prime_agent'));
             if (model.availability === 'unavailable')
               throw new HttpError(409, tr('model.unavailableSelection'));
-            if (body.policy.thinking && !model.thinkingLevels?.includes(body.policy.thinking))
+            if (effective.thinking && !model.thinkingLevels?.includes(effective.thinking))
               throw new HttpError(
                 400,
                 tr('server.ce_niveau_de_reflexion_n_est_pas_compatible_avec_le_modele_chois'),
@@ -1828,12 +1976,15 @@ export function createApp(options = {}) {
             readBody: () => readBody(req),
           }),
         );
-      if (method === 'GET' && path === '/api/overview')
+      if (method === 'GET' && path === '/api/overview') {
+        const overview = await store.overview();
         return json(res, 200, {
-          ...(await store.overview()),
+          ...overview,
+          projects: overview.projects.map((project) => ({ ...project, metricsId: metricsProjectId(project.cwd) })),
           runs: activeRuns(),
           studioPreferences: await studioPreferences(),
         });
+      }
       if (path === '/api/studio-preferences') {
         if (method === 'GET') return json(res, 200, await studioPreferences());
         if (method === 'PATCH') return json(res, 200, await setStudioPreferencesGuarded(await readBody(req)));
@@ -2009,6 +2160,16 @@ export function createApp(options = {}) {
         );
         return json(res, 200, result);
       }
+      const contextRoute = path.match(/^\/api\/projects\/([a-f0-9]{64})\/context(?:\/(events|rebuild|search))?$/);
+      if (contextRoute) {
+        const [, id, action] = contextRoute;
+        if (!action && method === 'GET') return json(res, 200, await context.get(id, url.searchParams.get('sessionId')));
+        if (!action && method === 'PATCH') return json(res, 200, await context.patch(id, await readBody(req)));
+        if (action === 'events' && method === 'GET') return await context.events(id, url.searchParams.get('sessionId'), req, res);
+        if (action === 'rebuild' && method === 'POST') return json(res, 202, await context.rebuild(id));
+        if (action === 'search' && method === 'POST') return json(res, 200, await context.search(id, await readBody(req)));
+        throw new HttpError(405, 'Method not allowed.');
+      }
       if (method === 'POST' && path === '/api/projects/move')
         return json(res, 200, await store.moveProject(await readBody(req)));
       if (method === 'POST' && path === '/api/sessions/move')
@@ -2020,12 +2181,11 @@ export function createApp(options = {}) {
           return json(res, 200, { cwd: url.searchParams.get('cwd'), exists: false });
         }
       }
-      if ((method === 'POST' || method === 'PATCH') && path === '/api/projects')
-        return json(
-          res,
-          method === 'POST' ? 201 : 200,
-          await store.project(await readBody(req), method === 'PATCH'),
-        );
+      if ((method === 'POST' || method === 'PATCH') && path === '/api/projects') {
+        const result = await store.project(await readBody(req), method === 'PATCH');
+        void context.ensureAll().catch(() => {});
+        return json(res, method === 'POST' ? 201 : 200, result);
+      }
       if (method === 'POST' && path === '/api/projects/pick-directory') {
         const body = await readBody(req);
         const controller = new AbortController();
@@ -2205,10 +2365,17 @@ export function createApp(options = {}) {
       if (method === 'GET' && path === '/api/runs') return json(res, 200, { runs: activeRuns() });
       if (method === 'POST' && path === '/api/runs')
         return json(res, 201, await startRun(await readBody(req)));
-      const runRoute = path.match(/^\/api\/runs\/([a-f0-9-]+)\/(events|stop|interactions)$/);
+      const runRoute = path.match(/^\/api\/runs\/([a-f0-9-]+)\/(events|stop|interactions|quota-retry)$/);
       if (runRoute) {
         const run = runs.get(runRoute[1]);
         if (!run) throw new HttpError(404, tr('server.execution_introuvable_rechargez_son_historique'));
+        if (method === 'POST' && runRoute[2] === 'quota-retry') {
+          const body = await readBody(req);
+          if (Object.keys(body).some((key) => !['model', 'confirmBillingChange'].includes(key)) ||
+              (body.confirmBillingChange !== undefined && typeof body.confirmBillingChange !== 'boolean'))
+            throw new HttpError(400, 'Invalid quota retry.');
+          return json(res, 201, await retryQuota(run, body.model, { confirmBillingChange: body.confirmBillingChange }));
+        }
         if (method === 'POST' && runRoute[2] === 'interactions') {
           return json(res, 200, await respondRun(run, await readBody(req)));
         }
@@ -2294,7 +2461,7 @@ export function createApp(options = {}) {
         (error.code.startsWith('roadmap_') ||
           error.code.startsWith('pastudio_') ||
           error.code.startsWith('computer_use_') ||
-          error.code.startsWith('worktree_'))
+          error.code.startsWith('worktree_') || error.code === 'quota_confirmation_required')
           ? {
               code: error.code,
               // Allowlisted .pastudio pending-contract fields only (server-generated, no secrets).
@@ -2337,6 +2504,8 @@ export function createApp(options = {}) {
     mcp.close?.();
     providers.close?.();
     commands.close?.();
+    clearTimeout(contextStartup);
+    await context.close();
     clearInterval(cleanup);
     clearTimeout(syncStartup);
     clearTimeout(syncSoonTimer);
@@ -2350,6 +2519,7 @@ export function createApp(options = {}) {
     await runtime.close();
     while (pendingMetadata.size) await Promise.all([...pendingMetadata]);
     await store.flush?.();
+    await metrics.close();
     await roadmapRoutes.close();
     await roadmap.close();
     for (const run of runs.values()) for (const client of run.clients) client.end();
@@ -2363,6 +2533,8 @@ export function createApp(options = {}) {
     worktreeRoutes,
     runtime,
     goalRecovery,
+    context,
+    metrics,
     modelConfig,
     modelDefaults,
     engineSettings,

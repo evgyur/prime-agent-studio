@@ -1019,3 +1019,233 @@ test('message folder reveal accepts outside references without widening content 
   assert.equal(opened.length, 4);
   assert.equal(f.runtime.controls.length, 0);
 });
+
+test('subagent general defaults validate model availability and thinking; legacy roles are stripped', async (t) => {
+  const f = await fixture(t);
+  const state = (await f.api('/api/subagent-defaults')).json;
+  // General defaults are still validated.
+  for (const policy of [
+    { model: 'missing/model', thinking: '' },
+    { model: 'openai/gpt-5.6-luna', thinking: 'xhigh' },
+  ]) {
+    const result = await f.api('/api/subagent-defaults', { method: 'POST', body: {
+      revision: state.revision, policy,
+    } });
+    assert.equal(result.status, 400, result.text);
+    assert.equal((await f.api('/api/subagent-defaults')).json.revision, state.revision);
+  }
+  // Legacy roles are accepted for compatibility but stripped on write and never applied.
+  const legacy = await f.api('/api/subagent-defaults', { method: 'POST', body: {
+    revision: state.revision,
+    policy: { model: '', thinking: '', roles: { review: { model: 'missing/model' } } },
+  } });
+  assert.equal(legacy.status, 200, legacy.text);
+  assert.deepEqual(legacy.json.global, { model: '', thinking: '' });
+  assert.deepEqual(legacy.json.effective, { model: '', thinking: '' });
+});
+
+test('quota fallback preferences are validated and revision protected without starting a run', async (t) => {
+  const f = await fixture(t);
+  const initial = await f.api('/api/quota-fallback');
+  assert.equal(initial.status, 200, initial.text);
+  assert.equal(initial.json.automatic, false);
+  const saved = await f.api('/api/quota-fallback', { method: 'PUT', body: {
+    ...initial.json, models: ['openai/gpt-5.6-luna'], automatic: true,
+  } });
+  assert.equal(saved.status, 200, saved.text);
+  assert.equal((await f.api('/api/quota-fallback', { method: 'PUT', body: initial.json })).status, 409);
+  assert.equal((await f.api('/api/quota-fallback', { method: 'PUT', body: {
+    ...saved.json, models: ['missing/model'],
+  } })).status, 400);
+  assert.equal(f.runtime.controls.length, 0);
+});
+
+test('quota retry is an explicit new run in the same conversation, with no loop model mutation', async (t) => {
+  const runtime = fakeRuntime();
+  runtime.getModels = async () => ({ models: [
+    { id: 'openai/source', thinkingLevels: ['off'] },
+    { id: 'openai/gpt-5.6-luna', thinkingLevels: ['off'] },
+  ], default: { model: 'openai/source' } });
+  const f = await fixture(t, { runtime });
+  const settings = (await f.api('/api/quota-fallback')).json;
+  assert.equal((await f.api('/api/quota-fallback', { method: 'PUT', body: {
+    ...settings, models: ['openai/gpt-5.6-luna'],
+  } })).status, 200);
+  const started = await f.run({ sessionId: 'native-session' });
+  assert.equal(started.status, 201, started.text);
+  runtime.controls[0].finish({ status: 'failed', code: 1, error: 'Quota exceeded', quota: {
+    kind: 'usage_limit', resetAt: '2099-01-01T00:00:00.000Z',
+    candidates: [{ model: 'openai/gpt-5.6-luna', automaticEligible: false }], automaticModel: null,
+  } });
+  const unconfirmed = await f.api(`/api/runs/${started.json.id}/quota-retry`, {
+    method: 'POST', body: { model: 'openai/gpt-5.6-luna' },
+  });
+  assert.equal(unconfirmed.status, 409, unconfirmed.text);
+  assert.equal(runtime.controls.length, 1, 'unknown billing requires explicit consent');
+  const retry = await f.api(`/api/runs/${started.json.id}/quota-retry`, {
+    method: 'POST', body: { model: 'openai/gpt-5.6-luna', confirmBillingChange: true },
+  });
+  assert.equal(retry.status, 201, retry.text);
+  assert.notEqual(retry.json.id, started.json.id);
+  assert.equal(retry.json.sessionId, 'native-session');
+  assert.equal(runtime.controls.length, 2);
+  assert.equal(runtime.controls[1].input.model, 'openai/gpt-5.6-luna');
+  assert.equal((await f.api(`/api/runs/${started.json.id}/quota-retry`, {
+    method: 'POST', body: { model: 'openai/gpt-5.6-luna' },
+  })).status, 409);
+});
+
+test('automatic quota retry rechecks stored account and opt-in, and hands off the session lock', async (t) => {
+  const runtime = fakeRuntime();
+  runtime.getModels = async () => ({ models: [
+    { id: 'openai-codex/source', thinkingLevels: ['off'] },
+    { id: 'openai-codex/fallback', thinkingLevels: ['off'] },
+  ], default: { model: 'openai-codex/source' } });
+  const f = await fixture(t, { runtime });
+  await writeFile(join(f.agentHome, 'auth.json'), JSON.stringify({
+    'openai-codex': { type: 'oauth', access: 'fixture-access', refresh: 'fixture-refresh' },
+  }));
+  const initial = (await f.api('/api/quota-fallback')).json;
+  assert.equal((await f.api('/api/quota-fallback', { method: 'PUT', body: {
+    ...initial, automatic: true, models: ['openai-codex/fallback'],
+  } })).status, 200);
+  const started = await f.run({ sessionId: 'native-session', model: 'openai-codex/source' });
+  assert.equal(started.status, 201, started.text);
+  const stream = await f.sse(started.json.id);
+  runtime.controls[0].finish({ status: 'failed', code: 1, error: 'Quota exceeded', quota: {
+    kind: 'usage_limit', candidates: [{ model: 'openai-codex/fallback', automaticEligible: true }],
+    automaticModel: 'openai-codex/fallback',
+  } });
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('quota stream did not finish')), 5000);
+    stream.response.once('end', () => { clearTimeout(timer); resolve(); });
+  });
+  const done = stream.events.find((event) => event.kind === 'done');
+  assert.ok(done.quota.retryRunId);
+  assert.equal(runtime.controls.length, 2);
+  assert.equal(runtime.controls[1].input.sessionId, 'native-session');
+  assert.equal(runtime.controls[1].input.quotaAuthorization.targetModel, 'openai-codex/fallback');
+  assert.equal((await f.run({ sessionId: 'native-session' })).status, 409, 'new run retains session lock');
+});
+
+test('automatic quota retry never trusts event eligibility without a proven account', async (t) => {
+  const runtime = fakeRuntime();
+  runtime.getModels = async () => ({ models: [
+    { id: 'openai/source', thinkingLevels: ['off'] },
+    { id: 'openai/paid', thinkingLevels: ['off'] },
+  ], default: { model: 'openai/source' } });
+  const f = await fixture(t, { runtime });
+  const settings = (await f.api('/api/quota-fallback')).json;
+  await f.api('/api/quota-fallback', { method: 'PUT', body: {
+    ...settings, automatic: true, models: ['openai/paid'],
+  } });
+  const started = await f.run({ sessionId: 'native-session', model: 'openai/source' });
+  const stream = await f.sse(started.json.id);
+  runtime.controls[0].finish({ status: 'failed', code: 1, quota: {
+    kind: 'usage_limit', automaticModel: 'openai/paid',
+  } });
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('quota stream did not finish')), 5000);
+    stream.response.once('end', () => { clearTimeout(timer); resolve(); });
+  });
+  assert.equal(runtime.controls.length, 1);
+  const done = stream.events.find((event) => event.kind === 'done');
+  assert.match(done.quota.retryError, /not authorized/);
+  assert.equal(done.quota.retryRunId, undefined);
+});
+
+test('budgets settings require revision, registered projects and explicit daily scope', async (t) => {
+  const f = await fixture(t);
+  const state = await f.api('/api/budgets');
+  assert.equal(state.status, 200, state.text);
+  assert.equal(state.json.period, 'day');
+  const saved = await f.api('/api/budgets', { method: 'PUT', body: {
+    ...state.json, run: { tokens: 1000, estimatedCost: null },
+    projects: { [f.cwd]: { tokens: 5000, estimatedCost: null } },
+  } });
+  assert.equal(saved.status, 200, saved.text);
+  assert.equal((await f.api('/api/budgets', { method: 'PUT', body: state.json })).status, 409);
+  const invalid = await f.api('/api/budgets', { method: 'PUT', body: {
+    ...saved.json, projects: { [join(f.root, 'unregistered')]: { tokens: 5000 } },
+  } });
+  assert.equal(invalid.status, 404, invalid.text);
+  assert.equal(f.runtime.controls.length, 0);
+  const run = await f.run({ allowQuestions: false });
+  assert.equal(run.status, 201, run.text);
+  assert.equal(f.runtime.controls[0].input.budget.tokens, 1000);
+  assert.equal(f.runtime.controls[0].input.budget.project.tokens, 5000);
+  assert.equal(f.runtime.controls[0].input.budget.allowQuestions, false);
+});
+
+test('quota retry cannot replace the failing run account snapshot during admission', async (t) => {
+  const runtime = fakeRuntime();
+  runtime.getModels = async () => ({ models: [
+    { id: 'openai-codex/source', thinkingLevels: ['off'] },
+    { id: 'openai-codex/fallback', thinkingLevels: ['off'] },
+  ], default: { model: 'openai-codex/source' } });
+  const f = await fixture(t, { runtime });
+  await writeFile(join(f.agentHome, 'auth.json'), JSON.stringify({
+    'openai-codex': { type: 'oauth', access: 'fixture-access', refresh: 'fixture-refresh' },
+  }));
+  const initial = (await f.api('/api/quota-fallback')).json;
+  assert.equal((await f.api('/api/quota-fallback', { method: 'PUT', body: {
+    ...initial, automatic: true, models: ['openai-codex/fallback'],
+  } })).status, 200);
+  const started = await f.run({ sessionId: 'native-session', model: 'openai-codex/source' });
+  assert.equal(started.status, 201, started.text);
+  const stream = await f.sse(started.json.id);
+  // The terminal event was prepared for account A. Deliver it after account B
+  // is stored, as can happen between native completion and server admission.
+  await writeFile(join(f.agentHome, 'auth.json'), JSON.stringify({
+    'openai-codex': { type: 'oauth', access: 'OTHER-ACCOUNT', refresh: 'OTHER-REFRESH' },
+  }));
+  runtime.controls[0].finish({ status: 'failed', code: 1, error: 'Quota exceeded', quota: {
+    kind: 'usage_limit', candidates: [{ model: 'openai-codex/fallback', automaticEligible: true }],
+    automaticModel: 'openai-codex/fallback',
+  } });
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('quota stream did not finish')), 5000);
+    stream.response.once('end', () => { clearTimeout(timer); resolve(); });
+  });
+  const done = stream.events.find((event) => event.kind === 'done');
+  assert.equal(runtime.controls.length, 1, 'must refuse account rotation after failure');
+  assert.equal(started.json.quotaIdentity, undefined, 'identity proof remains private');
+  const refused = await f.api(`/api/runs/${started.json.id}/quota-retry`, {
+    method: 'POST', body: { model: 'openai-codex/fallback' },
+  });
+  assert.equal(refused.status, 409);
+  assert.equal(refused.json.code, 'quota_confirmation_required');
+  assert.equal(runtime.controls.length, 1);
+  const confirmed = await f.api(`/api/runs/${started.json.id}/quota-retry`, {
+    method: 'POST', body: { model: 'openai-codex/fallback', confirmBillingChange: true },
+  });
+  assert.equal(confirmed.status, 201, confirmed.text);
+  assert.equal(runtime.controls.length, 2);
+  assert.equal(runtime.controls[1].input.quotaAuthorization, undefined, 'explicit cross-account consent is not an automatic identity grant');
+});
+
+test('quota retry refuses a model override instead of silently replacing the selected fallback', async (t) => {
+  const runtime = fakeRuntime();
+  runtime.getModels = async () => ({ models: [
+    { id: 'openai/source', thinkingLevels: ['off'] },
+    { id: 'openai/target', thinkingLevels: ['off'] },
+    { id: 'openai/other', thinkingLevels: ['off'] },
+  ], default: { model: 'openai/source' } });
+  let replacement = null;
+  const projectArchives = {
+    recoverPending: async () => {},
+    checkPastudioModelGate: async () => ({ gated: false, model: replacement }),
+  };
+  const f = await fixture(t, { runtime, projectArchives });
+  const state = (await f.api('/api/quota-fallback')).json;
+  await f.api('/api/quota-fallback', { method: 'PUT', body: { ...state, models: ['openai/target'] } });
+  const started = await f.run({ sessionId: 'native-session', model: 'openai/source' });
+  assert.equal(started.status, 201, started.text);
+  runtime.controls[0].finish({ status: 'failed', code: 1, quota: { kind: 'usage_limit' } });
+  replacement = 'openai/other';
+  const retry = await f.api(`/api/runs/${started.json.id}/quota-retry`, { method: 'POST',
+    body: { model: 'openai/target', confirmBillingChange: true },
+  });
+  assert.equal(retry.status, 409, retry.text);
+  assert.equal(runtime.controls.length, 1, 'never start an unselected fallback');
+});

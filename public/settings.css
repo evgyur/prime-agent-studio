@@ -984,3 +984,39 @@
 .voice-settings-row .engine-field .voice-switch-row p {
   margin: 0;
 }
+
+/* Explicit usage controls share the settings surface. */
+.routing-section { border-top: 1px solid var(--line); margin-top: 24px; padding-top: 20px; }
+.routing-section h4 { font-size: 12px; font-weight: 600; margin: 22px 0 6px; }
+.routing-toggle { display: flex; align-items: center; gap: 9px; font-size: 12px; margin: 18px 0 7px; }
+.routing-toggle input { accent-color: var(--accent); width: 15px; height: 15px; flex: 0 0 15px; }
+.routing-settings .routing-toggle span { font-size: 12px; line-height: 1.5; }
+.routing-fallback-list button { min-height: 32px; }
+.routing-fallback-list { list-style: none; padding: 0; margin: 14px 0 10px; counter-reset: models; }
+.routing-fallback-list li { display: flex; align-items: center; gap: 7px; border-bottom: 1px solid var(--line-soft); padding: 10px 0; counter-increment: models; }
+.routing-fallback-list li:not(.routing-empty)::before { content: counter(models, decimal-leading-zero); color: var(--faint); font: 11px var(--font-mono); margin-right: 3px; }
+.routing-model-name { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 12px; }
+.routing-model-name small { display: block; color: var(--muted); font-size: 10px; margin-top: 3px; }
+.routing-fallback-list .routing-empty { color: var(--muted); font-size: 12px; padding: 12px 0; }
+.routing-budget-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
+.routing-budget-grid label { min-width: 0; display: grid; gap: 7px; color: var(--muted); font-size: 11px; }
+.routing-budget-grid input { width: 100%; min-width: 0; box-sizing: border-box; }
+.routing-project { overflow-wrap: anywhere; }
+.routing-result { font-size: 11px; min-height: 0; color: var(--muted); }
+.routing-result:empty { display: none; }
+.run-guard { border: 1px solid var(--line); border-radius: 7px; padding: 11px 13px; margin: 8px 0; background: var(--surface); font-size: 12px; }
+.run-guard h4 { margin: 0 0 5px; color: var(--amber); font-size: 12px; font-weight: 600; }
+.run-guard p { margin: 5px 0; color: var(--muted); font-size: 11px; }
+.run-guard-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+.run-guard-actions button { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+@media (pointer: coarse), (max-width: 600px) {
+  .run-guard-actions button { min-height: 44px; }
+}
+@media (max-width: 600px) {
+  .model-config-modal .subagent-controls { grid-template-columns: minmax(0, 1fr); }
+  .routing-fallback-list li { flex-wrap: wrap; }
+  .routing-model-name { flex-basis: calc(100% - 30px); }
+  .routing-fallback-list button { font-size: 11px; }
+  .routing-section .model-defaults-heading { align-items: flex-start; gap: 10px; }
+}
+

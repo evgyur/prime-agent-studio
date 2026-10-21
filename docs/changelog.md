@@ -4,6 +4,31 @@
 
 Les changements par version. Retrouvez les installateurs et les archives du code source dans les [releases GitHub](https://github.com/zerr0o/prime-agent-studio/releases).
 
+## 4.4.1
+
+- **Réglages des sous-agents simplifiés** : les sélecteurs de rôles Explorer / Implémenter / Réviser sont supprimés. Choisissez le modèle et le niveau de réflexion par défaut globalement ou par projet ; les choix explicites au lancement d’un sous-agent restent prioritaires.
+- **Compatibilité des conversations existantes** : les anciens réglages par rôle n’influencent plus le choix du modèle. Les arguments `role` hérités sont ignorés pour permettre aux anciennes conversations de continuer sans erreur liée au sélecteur supprimé.
+- **Autres contrôles inchangés** : le modèle de suggestion Git, les budgets et le repli sur quota restent disponibles. Le correctif d’installation de Prime Agent 0.9.8 et le Contexte (Bêta) sur activation explicite de la 4.4.0 sont conservés.
+
+## 4.4.0
+
+- **Installation de Prime Agent corrigée** : le moteur reste fixé à 0.9.8. Studio utilise une source et des empreintes inscrites dans le build, sans analyser le script d’installation distant qui évolue indépendamment. Les archives restent vérifiées avant activation. Corrige le blocage `source_contract_changed` signalé dans l’issue #10.
+- **Diagnostic de réparation** : un échec affiche le chemin de `components.log`, en français et en anglais (PR #11).
+- **Contexte (Beta)** : le nouveau contexte de projet est désactivé par défaut et nécessite une activation explicite. Son onglet porte la mention Beta. Il propose un index local de code et des outils de recherche, de symboles et de carte du projet ; aucun service d’embeddings distant n’est utilisé.
+- **Routage et budgets** : rôles de sous-agents, modèles auxiliaires, repli sur quota et budgets configurables. Le choix des modèles utilise le sélecteur partagé ; les actions de quota affichent le nom du modèle concerné.
+- **Performance** : les exécutions arrêtées sont exclues du calcul du taux de réussite. Cette version stable reprend aussi les mesures de consommation et la jauge de contexte de la 4.4.0-beta.2.
+
+## 4.4.0-beta.2
+
+- **Onglet Performance** : un nouvel onglet outil de l’espace modulaire montre votre consommation pour ce projet ou tous les projets, sur aujourd’hui, 7, 30 ou 90 jours : coût estimé, tokens, taux de cache, runs, durée médiane et latence du premier token, un graphique par jour, un classement de vos modèles sur votre propre travail (taux de réussite, coût par run réussi, latence, erreurs) et un tableau par projet. Il suit le projet actif ou reste verrouillé sur un projet ; en disposition classique et sur mobile, il s’ouvre depuis l’onglet Session. Il se met à jour à l’affichage, après chaque run ou avec Actualiser, jamais sur un minuteur.
+- **Jauge de contexte** : une ligne discrète « Contexte x % · Cache y % » sous chaque zone de saisie (éditeur principal, onglets modulaires, mobile), mise à jour sur les événements du run. Au repos, elle montre la dernière requête. Orange à 80 %, rouge à 95 %.
+- **Consommation plus claire dans le panneau Session** : entrée hors cache, sortie, lecture et écriture du cache, taux de cache, et totaux qui incluent les sous-agents sans double comptage. Le chiffre de l’agent principal n’inclut plus une partie de la consommation des sous-agents, et son détail reste ouvert pendant les actualisations du panneau.
+- **Mesures d’utilisation** : le Studio enregistre des métadonnées sans contenu pour chaque requête, sous-agents compris (tokens, cache, coût estimé, statuts, durées), les conserve 90 jours dans le dossier de données et reprend les sessions existantes en arrière-plan. Aucun prompt, réponse ni contenu d’outil n’est enregistré.
+
+## 4.3.8-beta.3
+
+- **Copier l’identifiant d’une conversation** : le menu d’une conversation propose **Copier l’identifiant de la conversation**. Il copie l’identifiant enregistré, utile avec l’API publique ou pour le support. Contribution de [@evgyur](https://github.com/evgyur) dans la [#8](https://github.com/zerr0o/prime-agent-studio/pull/8).
+
 ## 4.3.8-beta.2
 
 - **La fenêtre se rouvre là où vous l’avez laissée** : la fenêtre principale garde sa position, sa taille et son état agrandi d’un démarrage à l’autre. Une fenêtre plus grande que son écran est réduite pour y tenir, et une fenêtre restée sur un écran débranché revient sur l’écran principal.

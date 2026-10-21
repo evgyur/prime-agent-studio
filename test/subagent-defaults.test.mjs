@@ -145,3 +145,56 @@ test('thinking choices use the native capability map and preserve it through mod
   assert.deepEqual(model.thinkingLevels, ['off', 'minimal', 'low', 'medium', 'xhigh', 'max']);
   assert.equal('thinkingLevelMap' in model, false);
 });
+
+test('legacy role settings are accepted but never applied; role argument is stripped', async (t) => {
+  const { store, cwd } = await fixture(t);
+  let state = await store.set({ revision: '', policy: {
+    model: 'fixture/global', thinking: 'high',
+    roles: { explore: { model: 'fixture/explore', thinking: 'low' }, review: { thinking: 'max' } },
+  } });
+  // Legacy roles are stripped on write so old role settings never apply.
+  assert.deepEqual(state.global, { model: 'fixture/global', thinking: 'high' });
+  assert.deepEqual(state.effective, { model: 'fixture/global', thinking: 'high' });
+  state = await store.set({ cwd, revision: state.revision, policy: {
+    model: 'fixture/project', thinking: 'medium', roles: { explore: { thinking: 'off' } },
+  } });
+  assert.deepEqual(state.effective, { model: 'fixture/project', thinking: 'medium' });
+  // Compatibility: a stale `role` kwarg is ignored silently.
+  assert.deepEqual(applySubagentDefaults(cwd, { role: 'explore', name: 'scan' }, store.file), {
+    model: 'fixture/project', thinking: 'medium', name: 'scan',
+  });
+  assert.deepEqual(applySubagentDefaults(cwd, { role: 'typo', name: 'scan' }, store.file), {
+    model: 'fixture/project', thinking: 'medium', name: 'scan',
+  });
+  assert.deepEqual(applySubagentDefaults(cwd, { role: null, name: 'scan' }, store.file), {
+    model: 'fixture/project', thinking: 'medium', name: 'scan',
+  });
+  assert.deepEqual(applySubagentDefaults(cwd, { role: 'review', model: 'fixture/explicit', thinking: null }, store.file), {
+    model: 'fixture/explicit', thinking: null,
+  });
+  assert.doesNotMatch(subagentInstruction(cwd, store.file), /role/);
+  // Old files already containing roles stay readable but roles never apply.
+  await writeFile(store.file, JSON.stringify({
+    version: 1, revision: state.revision,
+    global: { model: 'fixture/global', thinking: 'high', roles: { explore: { model: 'fixture/explore' } } },
+    projects: {},
+  }));
+  assert.deepEqual(policyFor(cwd, store.file), { model: 'fixture/global', thinking: 'high' });
+  assert.deepEqual(applySubagentDefaults(cwd, { role: 'explore', name: 'scan' }, store.file), {
+    model: 'fixture/global', thinking: 'high', name: 'scan',
+  });
+});
+test('general model/thinking stay validated while legacy roles are ignored', async (t) => {
+  const { store, cwd } = await fixture(t);
+  for (const roles of [null, []]) {
+    await assert.rejects(store.set({ revision: '', policy: { model: '', thinking: '', roles } }), { status: 400 });
+  }
+  // Legacy role contents are accepted but stripped on write.
+  for (const roles of [{ typo: {} }, { explore: null }, { explore: { model: 1 } },
+    { explore: { thinking: 'invalid' } }, { explore: { extra: true } }]) {
+    const state = await store.set({ revision: (await store.get(cwd)).revision, policy: { model: '', thinking: '', roles } });
+    assert.deepEqual(state.global, { model: '', thinking: '' });
+  }
+  await assert.rejects(store.set({ revision: '', policy: { model: 'bad\nmodel', thinking: 'high' } }), { status: 400 });
+  await assert.rejects(store.set({ revision: '', policy: { model: '', thinking: 'invalid' } }), { status: 400 });
+});

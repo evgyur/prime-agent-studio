@@ -149,7 +149,10 @@ export function createSubagentSettings({
       const response = await api(endpoint());
       if (turn !== generation) return;
       data = response;
-      draft = { ...(project ? data.effective : data.global) };
+      {
+        const source = project ? data.effective : data.global;
+        draft = { model: source?.model || '', thinking: source?.thinking || '' };
+      }
       $('.subagent-reload').hidden = true;
       render();
       savedStatus();
@@ -182,7 +185,10 @@ export function createSubagentSettings({
       const saved = await api(endpoint(), { method: 'POST', body });
       if (turn !== generation) return;
       data = saved;
-      draft = { ...(project ? data.effective : data.global) };
+      {
+        const source = project ? data.effective : data.global;
+        draft = { model: source?.model || '', thinking: source?.thinking || '' };
+      }
       $('.subagent-reload').hidden = true;
       render();
       savedStatus();

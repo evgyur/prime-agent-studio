@@ -30,7 +30,18 @@ function makeTextNode(text) {
 }
 
 function makeElement(tag) {
+  const classes = new Set();
   const el = {
+    classList: {
+      add(...names) { names.forEach((name) => classes.add(name)); },
+      remove(...names) { names.forEach((name) => classes.delete(name)); },
+      contains(name) { return classes.has(name); },
+      toggle(name, force) {
+        const enabled = force ?? !classes.has(name);
+        if (enabled) classes.add(name); else classes.delete(name);
+        return enabled;
+      },
+    },
     tag,
     nodeType: 1,
     childNodes: [],

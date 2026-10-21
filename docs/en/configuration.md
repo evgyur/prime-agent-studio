@@ -68,11 +68,11 @@ Before writing, Studio saves a `models.json.prime-studio.bak` or `settings.json.
 
 The **Advanced models** card, on the same **Configure** screen, exposes the new native Prime Agent 0.9.7 settings without changing your current values. While fields stay empty, native behavior is preserved: no fallback model or autonomous mode is enabled automatically, and default models stay unchanged.
 
-The **summary and refinement model** (`auxiliaryModel`) serves refinement, compaction summaries and branch summaries. The engine uses the session model when this choice is unset or unusable, or when the selected model cannot fit a branch summary. This is native engine routing, not a measured Studio cost guarantee.
+The **summary and refinement model** (`auxiliaryModel`) serves refinement, compaction summaries and branch summaries. The engine uses the session model when this choice is unset or unusable, or when the selected model cannot fit a branch summary. This is native engine routing, not a measured Studio cost guarantee. The same `auxiliaryModel` also controls Studio Git commit-message suggestions. When unset, Git suggestions use the global default model, not the conversation model. An explicitly configured but unavailable auxiliary model makes the Git suggestion fail clearly, without choosing another model. No project override is added.
 
 The **image model** (`imageModel`) handles turns with attached images when the session model accepts only text. It must support images. Leaving it empty keeps the native explicit refusal for unsupported image turns. It does not replace the Computer Use decision model or enable a separate screenshot-analysis agent.
 
-The **fallback model** (`providerBackupModel`) stays off by default: requests never silently switch models. When set and authenticated, it applies on quota exhaustion or provider outage. Model selectors share the authenticated catalog (`/api/models`, unavailable models excluded); an empty choice deletes the field and restores native behavior.
+The **native fallback model** (`providerBackupModel`) is a legacy engine setting that can change models inside an active loop. Studio now refuses to start a run while this field is set: clear it explicitly and use the Studio fallback list below. Studio does not silently delete the setting. Model selectors share the authenticated catalog (`/api/models`, unavailable models excluded).
 
 The **default service tier** (`defaultServiceTier`) applies to new sessions. **Standard** restores the engine default; **Flex**, **Priority** and **Auto** depend on provider support and may change cost or latency. Saving a default does not change or restart an active session.
 
@@ -81,6 +81,18 @@ The four **default autonomous budgets** (`autonomous.maxContinuations`, `maxTurn
 The **native subagent default** (`subagentDefaultModel`) is a separate native field, labeled distinctly so it cannot be confused with Studio settings. Saving this field does not change the Studio preferences in `.local/subagent-defaults.json`. Priority stays: explicit `model`/`thinking` arguments > Studio settings (global or project) > native default > parent model. Clearing this field removes the native default; explicit arguments and Studio preferences still take priority.
 
 Writes go through the native `FileSettingsStorage` lock, merge unknown fields without erasing them, validate every value strictly, and keep a `settings.json.prime-studio.bak` backup. A concurrent change from another tab returns a 409 conflict: reload settings before saving. The `GET`/`POST /api/engine-settings` routes are available on the PC and through the authenticated remote gateway in full-control mode. Consultation mode cannot read or change these settings.
+
+### Quota fallback and Studio budgets
+
+In **Preferences → Models & agents**, the ordered fallback list is empty by default. After a usage limit or quota failure, the message shows the reset time when supplied. **Retry with <model>** starts a new run in the same conversation with the original request. Tools already executed are not rolled back; retrying can repeat their effects. No model changes inside an active loop.
+
+Automatic retry is off by default. Even when enabled, it requires local proof of the same provider, account and credential. Only locally stored native Codex and Muse OAuth credentials without custom provider overrides currently provide that proof. API keys, environment credentials, unknown accounts and subscription-to-pay-per-use changes never trigger automatic retry. Authorization is checked again at launch; a retry chain never revisits a model. Public API runs do not retry automatically. An explicit selection remains your decision and can change cost. If the same account and billing mode cannot be proven, a separate confirmation warns about the possible change, including pay-per-use billing.
+
+**Studio budgets** are optional and off by default. Set a per-run cap and/or a per-project cap per **UTC day**, in tokens and/or estimated USD cost. The project cap counts runs launched while budget tracking is enabled; it does not reconstruct spending before activation. Tokens include input, output and cache. Estimated cost is not an invoice. Use tokens for subscriptions with unknown cost; an unmeasurable cost cap stops the run at the next safe point instead of assuming zero cost.
+
+At 80%, run status and **Performance** show a non-blocking warning. At 100%, before the next model call or tool, a native question offers **Continue +50%**, **Unlimited this run**, or **Stop**. The exception affects only that run. If questions are disallowed, or the run comes from the public API, Studio stops safely without continuing silently. A request already in flight can exceed the cap; this is not a provider-side billing limit. A final response that needs no further call can finish normally after reaching the cap.
+
+The shared ledger includes native subagents that inherit the Studio environment. A child that reaches the cap stops its own work; when questions are allowed, the parent asks at its next safe point. Custom executables without these native safe points are refused while a budget is active. Calls outside Studio and Git suggestions are excluded. Caps are read when a run starts; changing preferences does not change an active run. `.local/quota-fallback.json`, `.local/budget-settings.json` and `.local/budget-usage/` remain local. They contain no provider keys. Preferences writes reject stale revisions.
 
 ## Data and configuration
 
@@ -97,6 +109,8 @@ The [MCP manager](mcp.md), separate from the model configurator, is also availab
 | `.local/kernel-venv/`                                      | Python environments per skill configuration, with validation markers; previous generations remain available                             |
 | `.local/kernel-ready.json`                                 | Path of the latest Python fully prepared and verified by Studio                                                                         |
 | `.local/attachments/`                                      | Original attached files and download metadata; keep them to reopen files from sessions                                                  |
+| `.local/metrics/`                                          | Content-free usage metrics: tokens, cache, estimated cost, durations and statuses per request; kept 90 days                             |
+| `.local/code-index/` | Local code index by opaque project id and settings; contains private source excerpts, never written into the indexed repository. Legacy pins and dossier snapshots are ignored |
 | `~/.prime/agent/sessions/.studio-images/`                  | Images passed to the CLI, also recorded in native messages                                                                              |
 | Browser IndexedDB                                          | Draft attachments, separated by session or new project                                                                                  |
 | Browser local storage                                      | Drafts, theme and input preferences                                                                                                     |

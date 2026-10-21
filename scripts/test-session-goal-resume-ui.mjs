@@ -51,7 +51,7 @@ window.goalUI=createSessionGoal({t:key=>translations[key]||key,
 </script></body></html>`);
 });
 await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-const chrome = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
+const chrome = process.env.PRIME_STUDIO_CHROMIUM || 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 const browser = await chromium.launch({
   headless: true,
   ...(existsSync(chrome) ? { executablePath: chrome } : {}),

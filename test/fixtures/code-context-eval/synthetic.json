@@ -1,0 +1,71 @@
+{
+  "files": {
+    "src/task.ts": "export function evaluateFixtureTask() {\n  return 42;\n}\n",
+    "src/conductor.ts": "export class FixtureConductor {\n  async launchFixtureNode() {\n    return \"conversation transfer target machine\";\n  }\n}\n",
+    "README.md": "# Fixture app\nThe project Roadmap tasks and source files are maintained by the team.\n",
+    "src/i18n/fr.ts": "export const labels = { task: \"tâche projet roadmap\", work: \"conversation transfer target machine\" };\n",
+    "package-lock.json": "{\"name\": \"fixture\", \"packages\": {\"node_modules/launch-fixture-node\": {\"description\": \"launch fixture node conversation transfer\"}}}"
+  },
+  "cases": [
+    {
+      "id": "search-identifier",
+      "action": "search",
+      "params": {
+        "q": "evaluateFixtureTask"
+      },
+      "expected": [
+        "src/task.ts"
+      ]
+    },
+    {
+      "id": "search-method",
+      "action": "search",
+      "params": {
+        "q": "launchFixtureNode"
+      },
+      "expected": [
+        "src/conductor.ts"
+      ]
+    },
+    {
+      "id": "search-fragment",
+      "action": "search",
+      "params": {
+        "q": "class FixtureConductor"
+      },
+      "expected": [
+        "src/conductor.ts"
+      ]
+    },
+    {
+      "id": "symbol-method",
+      "action": "symbols",
+      "params": {
+        "symbol": "launchFixtureNode"
+      },
+      "expected": [
+        "src/conductor.ts"
+      ]
+    },
+    {
+      "id": "symbol-function",
+      "action": "symbols",
+      "params": {
+        "symbol": "evaluateFixtureTask"
+      },
+      "expected": [
+        "src/task.ts"
+      ]
+    },
+    {
+      "id": "map-conductor",
+      "action": "map",
+      "params": {
+        "path": "src/conductor.ts"
+      },
+      "expected": [
+        "src/conductor.ts"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Ideas and feedback
+    url: https://github.com/zerr0o/prime-agent-studio/discussions/categories/ideas
+    about: Share a recommendation or an idea. No pull request needed.

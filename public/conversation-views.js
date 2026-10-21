@@ -824,9 +824,11 @@ export function createConversationViews(deps) {
     toolbar.append(modelControls, stop, send);
     form.append(inputLabel, textarea, toolbar);
     const footnote = cvNode('div', 'composer-footnote', 'footnote');
+    const contextGauge = cvNode('span', 'composer-context-gauge', 'context-gauge');
+    contextGauge.hidden = true;
     const hint = cvNode('span', '', 'send-hint');
     bindText(hint, () => tr('ui.entree_pour_envoyer_maj_entree_pour_un_saut_de_ligne'));
-    footnote.append(hint);
+    footnote.append(contextGauge, hint);
     area.append(runStatus, form, footnote);
     Object.assign(refs, {
       area,
@@ -843,6 +845,7 @@ export function createConversationViews(deps) {
       send,
       stop,
       footnote,
+      contextGauge,
     });
     view.composerNodes = refs;
     return refs;

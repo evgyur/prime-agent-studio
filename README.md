@@ -83,7 +83,7 @@ Studio checks for updates at startup and every 30 minutes; **Update available** 
 <details>
 <summary><strong>Run from source</strong></summary>
 
-Requires **Windows, Node.js 22.8+, uv, Git Bash and an installed Prime Agent**. Clone this repository or extract the source archive, then run:
+Requires **Windows, Node.js 22.13+, uv, Git Bash and an installed Prime Agent**. Clone this repository or extract the source archive, then run:
 
 ```powershell
 npm ci
@@ -115,7 +115,7 @@ For an archive installation, replace Studio's files while keeping `.local`, then
 | **Work** | [Projects and conversations](docs/en/navigation.md) · [Voice messages](docs/en/voice.md) · [Roadmap](docs/en/roadmap.md) · [Project knowledge](docs/en/knowledge.md) |
 | **Use tools** | [Agents and files](docs/en/inspector.md) · [Commands and skills](docs/en/commands.md) · [MCP](docs/en/mcp.md) · [Computer Use](docs/en/computer-use.md) |
 | **Connect** | [Mobile access](docs/en/lan.md) · [PWA](docs/en/pwa.md) · [Public API](docs/en/api.md) |
-| **Contribute** | [Development](docs/en/development.md) · [Translations](docs/en/translations.md) · [Changelog](docs/en/changelog.md) |
+| **Contribute** | [Development](docs/en/development.md) · [Translations](docs/en/translations.md) · [Changelog](docs/en/changelog.md) · [Discussions](https://github.com/zerr0o/prime-agent-studio/discussions) |
 
 ## License and attribution
 

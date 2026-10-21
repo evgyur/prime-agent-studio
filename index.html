@@ -30,6 +30,8 @@
     <link rel="stylesheet" href="/public/providers.css" />
     <link rel="stylesheet" href="/public/commands.css" />
     <link rel="stylesheet" href="/public/inspector.css" />
+    <link rel="stylesheet" href="/public/performance.css" />
+    <link rel="stylesheet" href="/public/context.css" />
     <link rel="stylesheet" href="/public/docking.css" />
     <link id="cvw-stylesheet" rel="stylesheet" href="/public/conversation-views.css" />
     <link rel="stylesheet" href="/public/conversation-picker.css" />
@@ -657,6 +659,7 @@
                 </div>
               </form>
               <div class="composer-footnote">
+                <span id="composer-context-gauge" class="composer-context-gauge" hidden></span>
                 <span id="send-hint" data-i18n="ui.entree_pour_envoyer_maj_entree_pour_un_saut_de_ligne"
                   >Entrée pour envoyer · Maj Entrée pour un saut de ligne</span
                 >
@@ -749,6 +752,18 @@
                 >
                   <span data-icon="map"></span><span data-i18n="roadmap.open">Roadmap du projet</span>
                 </button>
+                <button
+                  id="detail-performance"
+                  type="button"
+                  class="text-button"
+                  aria-haspopup="dialog"
+                ><span data-icon="activity"></span><span data-i18n="docking.performance">Performance</span></button>
+                <button
+                  id="detail-context"
+                  type="button"
+                  class="text-button"
+                  aria-haspopup="dialog"
+                ><span data-icon="file"></span><span data-i18n="docking.context">Context (Beta)</span></button>
                 <button
                   id="detail-project-knowledge"
                   type="button"
@@ -974,6 +989,10 @@
       <button role="menuitem" data-action="down">
         <span data-icon="arrow-down"></span
         ><span data-i18n="sessions.move_down">Descendre la conversation</span>
+      </button>
+      <button role="menuitem" data-action="copy-id">
+        <span data-icon="copy"></span
+        ><span data-i18n="sessions.copy_id">Copier l’identifiant de la conversation</span>
       </button>
       <button role="menuitem" data-action="export">
         <span data-icon="download"></span

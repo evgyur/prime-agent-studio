@@ -117,6 +117,7 @@
   opacity: 0.5;
 }
 .project-subagent-settings {
+  container: project-subagents / inline-size;
   padding: 12px;
   margin-bottom: 16px;
   border: 1px solid var(--line);
@@ -153,6 +154,11 @@
 .project-subagent-settings .subagent-controls {
   grid-template-columns: minmax(0, 1fr) 104px;
   gap: 7px;
+}
+@container project-subagents (max-width: 260px) {
+  .project-subagent-settings .subagent-controls {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 .project-subagent-settings .subagent-controls label {
   font-size: 10px;

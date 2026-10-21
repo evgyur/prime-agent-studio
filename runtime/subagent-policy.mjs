@@ -4,16 +4,23 @@ import { resolve } from 'node:path';
 export const THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
 export const projectKey = (cwd) => (process.platform === 'win32' ? resolve(cwd).toLowerCase() : resolve(cwd));
 export const inheritedPolicy = () => ({ model: '', thinking: '' });
+// Per-role routing was removed in 4.4.1. Legacy saved `roles` objects are
+// still accepted for backward compatibility but never applied.
+const object = (value) => value && typeof value === 'object' && !Array.isArray(value);
+const validModel = (value) => typeof value === 'string' &&
+  (value === '' || /^[a-z0-9][a-z0-9._-]{0,99}\/[^\s\x00-\x1f\x7f]{1,300}$/u.test(value));
+const validThinking = (value) => value === '' || THINKING_LEVELS.includes(value);
 export function validPolicy(value) {
-  return (
-    value &&
-    typeof value === 'object' &&
-    !Array.isArray(value) &&
-    Object.keys(value).every((key) => ['model', 'thinking'].includes(key)) &&
-    typeof value.model === 'string' &&
-    (value.model === '' || /^[a-z0-9][a-z0-9._-]{0,99}\/[^\s\x00-\x1f\x7f]{1,300}$/u.test(value.model)) &&
-    (value.thinking === '' || THINKING_LEVELS.includes(value.thinking))
-  );
+  return Boolean(object(value) &&
+    Object.keys(value).every((key) => ['model', 'thinking', 'roles'].includes(key)) &&
+    validModel(value.model) && validThinking(value.thinking) &&
+    (!Object.hasOwn(value, 'roles') || object(value.roles)));
+}
+export function effectivePolicy(global, project) {
+  const base = project ?? global;
+  // Legacy `roles` are accepted by validPolicy/readPolicyFile but never
+  // applied: only the general model/thinking defaults take effect.
+  return { model: base.model, thinking: base.thinking };
 }
 export function readPolicyFile(file) {
   const empty = { version: 1, revision: '', global: inheritedPolicy(), projects: {} };
@@ -42,14 +49,19 @@ export function readPolicyFile(file) {
 }
 export function policyFor(cwd, file = process.env.PRIME_STUDIO_SUBAGENT_POLICY) {
   const data = readPolicyFile(file);
-  return data.projects[projectKey(cwd)] ?? data.global;
+  return effectivePolicy(data.global, data.projects[projectKey(cwd)]);
 }
 export function applySubagentDefaults(cwd, kwargs, file) {
   const policy = policyFor(cwd, file);
+  // Compatibility: old conversations may still pass `role`. It is stripped
+  // silently and never selects a model; only general defaults apply.
+  const { role: _ignoredRole, ...native } = kwargs;
+  const model = policy.model;
+  const thinking = policy.thinking;
   return {
-    ...(policy.model ? { model: policy.model } : {}),
-    ...(policy.thinking ? { thinking: policy.thinking } : {}),
-    ...kwargs,
+    ...(model ? { model } : {}),
+    ...(thinking ? { thinking } : {}),
+    ...native,
   };
 }
 export function subagentInstruction(cwd, file) {

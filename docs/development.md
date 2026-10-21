@@ -4,7 +4,7 @@
 
 ## Installation et développement
 
-Prérequis : **Node.js 22.8 ou ultérieur** et **Prime Agent 0.9.8** installé. Configurez un fournisseur avant le premier message, dans Prime Agent ou dans le panneau local **Fournisseurs**. Cette version du Studio et son adaptateur de sous-agents sont validés avec **0.9.8**. Le GUI réutilise les comptes existants sans redemander leurs clés.
+Prérequis : **Node.js 22.13 ou ultérieur** et **Prime Agent 0.9.8** installé. Configurez un fournisseur avant le premier message, dans Prime Agent ou dans le panneau local **Fournisseurs**. Cette version du Studio et son adaptateur de sous-agents sont validés avec **0.9.8**. Le GUI réutilise les comptes existants sans redemander leurs clés.
 
 ```powershell
 npm ci
@@ -103,6 +103,11 @@ La documentation dispose également de deux versions. `npm run check:docs`, incl
 Les tests automatiques utilisent des données temporaires et un faux moteur, sans consommation de modèle. Les tests Windows vérifient également les paramètres natifs de création des processus, le lancement VBS, la réutilisation du serveur et l’arrêt des descendants. Les tests de navigateur utilisent Microsoft Edge installé localement et produisent des captures dans `test-results/`. Le packaging guidé (`lib/desktop-components.mjs`, `test/desktop-components.test.mjs`) est épinglé sur Prime Agent 0.9.8 avec npm 10.9.4 et uv 0.8.22 ; les tests unitaires tournent sous Node sans téléchargement de production.
 
 `test:subagents:native` utilise le vrai moteur et Python avec un fournisseur HTTP local simulé, sans compte ni appel payant. Il vérifie les arguments par défaut et explicites, le prompt existant, les niveaux en direct et dans l’historique, puis un changement par projet pendant que les premiers sous-agents travaillent encore.
+
+Les mesures d’utilisation passent par `runtime/studio-metrics-extension.mjs`, chargée dans chaque processus d’agent lancé par le Studio, sous-agents compris. Elle n’écrit que des métadonnées, dans un fichier par session, processus et jour UTC : statut HTTP, en-têtes de quota numériques, modèle, jetons, coût, fins de tour et nombre d’outils, jamais de prompt, de réponse, d’argument d’outil ni d’identifiant. Pour chaque appel `studio_code_search`, `studio_code_symbols` ou `studio_code_map`, elle ajoute l’outil, le nombre de résultats, de fichiers et de caractères, puis, sans stocker chemins ni contenus, si un fichier retourné est ouvert dans les cinq appels suivants (`useful`), si un repli shell ou recherche suit dans les trois suivants (`fallback`), et les appels d’outils jusqu’à la prochaine édition (`callsToEdit`). Les totaux agrègent ces signaux par outil dans `codeTools`. `lib/metrics.mjs` les intègre en arrière-plan, au démarrage puis après chaque run, dans un journal quotidien sous `.local/metrics/`, et supprime les données de plus de 90 jours. Il reprend aussi l’historique des sessions natives et de leurs sous-agents (`session-artifacts`), à partir de la consommation propre de chaque requête, et range les résumés de compaction à part. `GET /api/metrics/summary?from=AAAA-MM-JJ&to=AAAA-MM-JJ&groupBy=day|model|project&project=<id>` renvoie les agrégats, consultables à distance en lecture : un projet y est désigné par un identifiant opaque et son nom, jamais par son chemin. La lecture est plafonnée ; un résultat tronqué ou calculé pendant une reprise de l’historique est marqué incomplet. Le panneau Session invalide son cache serveur à chaque message, compaction ou fin de run, et garde en mémoire jusqu’à 200 historiques de sous-agents conservés hors du dossier des sessions, tant qu’ils ne changent pas. Avec `PRIME_STUDIO_TEST_METRICS=1`, `test:subagents:native` vérifie aussi les mesures du parent et de chaque sous-agent, sans doublon.
+
+Les réponses `/api/bootstrap` et `/api/overview` ajoutent `metricsId` à chaque projet : le même identifiant opaque que le filtre `project` des mesures. Les agrégats ajoutent `failedRuns`, qui exclut les arrêts volontaires. Le panneau Performance ne sonde pas le serveur périodiquement ; il lit les regroupements jour et modèle, plus projet pour le périmètre global. `node scripts/test-performance-panel-ui.mjs` utilise un journal local prérempli et un runtime simulé, sans fournisseur.
+
 
 Le chargeur `runtime/subagent-loader.mjs` est ajouté uniquement à l’environnement des processus du Studio. Son hook reconnaît les méthodes du moteur 0.9.8, dans les modules ou le bundle, et refuse une structure inconnue. Les arguments omis sont complétés avant la validation native ; l’instruction est ajoutée à la liste des compléments système et reconstruite avant les nouveaux tours. Les instantanés des enfants incluent leur `thinkingLevel` effectif. Aucun fichier de l’installation Prime Agent n’est modifié. Après une mise à jour de ce chargeur, il faut un redémarrage du Studio ; attendre la fin des sessions actives.
 
@@ -228,3 +233,7 @@ node scripts/capture-readme.mjs --output .local/readme-preview
 ```
 
 `--docs-en` reste un alias de `--lang en`. Les scripts de tests spécialisés et `scripts/capture-roadmap.mjs` restent disponibles pour leurs scénarios propres ; ils ne sont pas nécessaires pour reconstruire les illustrations du README.
+
+## Moteur de contexte V1
+
+Le [moteur de contexte local](context.md) utilise `node:sqlite` (Node.js **22.13 minimum** pour une installation depuis les sources). Son worker séparé maintient un index FTS5 local, sans embeddings. Les extensions natives du Studio ajoutent les outils de code, le dossier du premier message et le compactage guidé ; elles ne modifient pas le moteur installé. Les tests utilisent des dépôts temporaires et un fournisseur déterministe local, sans appel réel.

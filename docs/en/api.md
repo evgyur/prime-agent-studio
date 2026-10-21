@@ -6,6 +6,19 @@ Public API v1 is a generic, documented contract for driving a Studio from an ext
 
 The exact contract reference is [openapi-v1.json](../api/openapi-v1.json), generated from `lib/public-api-contract.mjs`. This guide describes it; when in doubt, the generated JSON file wins.
 
+## Usage metrics
+
+`GET /api/v1/metrics` requires `read`. It uses the same aggregation and accounting rules as the internal metrics summary. Totals and every group include only projects authorized by the token, including when no project filter is supplied.
+
+- `from` and `to`: inclusive UTC dates (`YYYY-MM-DD`); defaults cover the last 90 days through today. Invalid calendar dates or reversed bounds return `400`.
+- `groupBy`: `day` (default), `model` or `project`.
+- `project`: optional opaque `p_…` id from `GET /api/v1/projects`. Project group keys use these same ids. A valid but unknown or unauthorized id returns `404`; paths and internal metrics ids return `400`.
+- Unknown or repeated query parameters return `400`.
+
+Public `rowsRead`, `bytesRead` and `dropped` are `null`: shared-ledger counts could reveal another project’s activity. Scan health and completeness flags remain conservative across the ledger.
+
+The response includes `from`, `to`, `groupBy`, `project`, `totals`, `groups`, retention and scan-completeness metadata. It reports tokens, cache reads/writes, estimated cost, errors, runs, tools, compactions and timing. Costs are engine-reported estimates, not billing totals; `costKnown` and `unknownCostMessages` preserve missing-price information. Compaction summaries remain in a separate bucket. No prompt, response text, credential, session id or filesystem path is returned. Read caps and backfill can produce incomplete results: check `complete` and `truncated` before drawing conclusions.
+
 ## Interactive documentation and tests
 
 Open **Preferences → API → Interactive documentation**, or `/api-docs` on the selected Studio (default [http://127.0.0.1:3088/api-docs](http://127.0.0.1:3088/api-docs)). The contract served at `/openapi-v1.json` is generated from the same source as this reference, even while the API is disabled.

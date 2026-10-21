@@ -4,7 +4,7 @@
 
 ## Installation and development
 
-Requirements: **Node.js 22.8 or later** and **Prime Agent 0.9.8** installed. Configure a provider before the first message, in Prime Agent or the local **Providers** panel. This version of Studio and its subagent adapter are validated with **0.9.8**. The GUI reuses existing accounts without requesting their keys again.
+Requirements: **Node.js 22.13 or later** and **Prime Agent 0.9.8** installed. Configure a provider before the first message, in Prime Agent or the local **Providers** panel. This version of Studio and its subagent adapter are validated with **0.9.8**. The GUI reuses existing accounts without requesting their keys again.
 
 ```powershell
 npm ci
@@ -103,6 +103,11 @@ Documentation also has two language versions. `npm run check:docs`, included in 
 Automated tests use temporary data and a fake engine, without model usage. Windows tests also check native process-creation parameters, VBS startup, server reuse and descendant shutdown. Browser tests use the locally installed Microsoft Edge and produce screenshots under `test-results/`. Guided packaging (`lib/desktop-components.mjs`, `test/desktop-components.test.mjs`) is pinned to Prime Agent 0.9.8 with npm 10.9.4 and uv 0.8.22; unit tests run under Node without production downloads.
 
 `test:subagents:native` uses the real engine and Python with a simulated local HTTP provider, without an account or paid call. It verifies default and explicit arguments, the existing prompt, live and historical reasoning levels, then a project-specific change while the first subagents are still working.
+
+Usage metrics go through `runtime/studio-metrics-extension.mjs`, loaded in every agent process launched by Studio, subagents included. It writes metadata only, in one file per session, process and UTC day: HTTP status, numeric quota headers, model, tokens, cost, turn ends and tool counts, never prompts, responses, tool arguments or identifiers. Each `studio_code_search`, `studio_code_symbols` or `studio_code_map` call also records the tool, result, file and character counts, then — without storing paths or contents — whether a returned file is opened within the next five tool calls (`useful`), whether a shell or search fallback follows within the next three (`fallback`), and the tool calls until the next edit (`callsToEdit`). Totals aggregate these signals per tool in `codeTools`. `lib/metrics.mjs` ingests them in the background, at startup and after each run, into a daily ledger under `.local/metrics/`, and deletes data older than 90 days. It also backfills native session history, subagents (`session-artifacts`) included, from each request’s own usage, and keeps compaction summaries in a separate bucket. `GET /api/metrics/summary?from=YYYY-MM-DD&to=YYYY-MM-DD&groupBy=day|model|project&project=<id>` returns the aggregates, readable remotely: a project is identified by an opaque id and its name, never by its path. Reads are capped; a truncated result, or one computed while history is still being backfilled, is marked incomplete. The Session panel invalidates its server cache on each message, compaction or run end, and keeps up to 200 subagent histories stored outside the sessions folder in memory while they are unchanged. With `PRIME_STUDIO_TEST_METRICS=1`, `test:subagents:native` also checks the metrics of the parent and each subagent, without duplicates.
+
+The `/api/bootstrap` and `/api/overview` responses add `metricsId` to each project: the same opaque identifier used by the metrics `project` filter. Aggregates add `failedRuns`, excluding stopped runs. The Performance panel does not poll the server; it reads day and model groups, plus project groups for global scope. `node scripts/test-performance-panel-ui.mjs` uses a seeded local ledger and fixture runtime, without a provider.
+
 
 `runtime/subagent-loader.mjs` is added only to Studio processes’ environment. Its hook recognizes engine 0.9.8 methods, in modules or the bundle, and rejects unknown structures. Omitted arguments are filled before native validation; the instruction is added to system-prompt supplements and rebuilt before new turns. Child snapshots include their effective `thinkingLevel`. No installed Prime Agent file is modified. After updating this loader, restart Studio once active sessions finish.
 
@@ -228,3 +233,7 @@ node scripts/capture-readme.mjs --output .local/readme-preview
 ```
 
 `--docs-en` remains an alias for `--lang en`. Specialized test scripts and `scripts/capture-roadmap.mjs` remain available for their own scenarios; they are not needed to rebuild the README illustrations.
+
+## Context engine V1
+
+The [local context engine](context.md) uses `node:sqlite` (Node.js **22.13 minimum** for source installs). A separate worker maintains a local FTS5 index without embeddings. Studio native extensions add code tools, the first-message dossier, and guided compaction; they do not change the installed engine. Tests use temporary repositories and a deterministic localhost provider, with no real provider calls.

@@ -418,3 +418,14 @@ test('applyPresetLayout binds tool slots with kind match, rejects deficits and m
     'fixed primary never binds a dynamic slot',
   );
 });
+
+
+test('Performance primary and extra instances round-trip without changing older presets', () => {
+  const old = createDefaultLayout();
+  assert.deepEqual(applyPresetLayout(createPresetLayout(old), ['conversation']), old);
+  const layout = validateLayout({ version: 4, root: { kind: 'group', id: 'performance-group', panels: ['performance', 'tool:performance:one'], active: 'tool:performance:one' } });
+  const preset = createPresetLayout(layout);
+  assert.deepEqual(openPanels(preset), ['performance', 'tool:performance:slot-1']);
+  const restored = applyPresetLayout(preset, [], ['tool:performance:new']);
+  assert.deepEqual(openPanels(restored), ['performance', 'tool:performance:new']);
+});

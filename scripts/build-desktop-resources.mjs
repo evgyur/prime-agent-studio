@@ -68,6 +68,19 @@ execFileSync(process.execPath, [npmCli, 'ci', '--omit=dev', '--ignore-scripts', 
   stdio: 'inherit',
 });
 await cp(process.execPath, join(output, 'node.exe'));
+// Windows starts the bundled Node with verbatim (\\?\C:\...) script paths.
+// Node v24.20.0 crashes on them (EISDIR lstat 'C:'), so refuse such a build.
+if (process.platform === 'win32') {
+  const probe = join(output, 'verbatim-probe.mjs');
+  await writeFile(probe, '');
+  try {
+    execFileSync(join(output, 'node.exe'), [`\\\\?\\${resolve(probe)}`], { windowsHide: true, stdio: 'pipe' });
+  } catch {
+    throw new Error(`Node ${process.version} cannot start scripts from verbatim Windows paths. Build with the pinned Node version.`);
+  } finally {
+    await rm(probe, { force: true });
+  }
+}
 const nodeLicense = await fetch(`https://raw.githubusercontent.com/nodejs/node/${process.version}/LICENSE`);
 if (!nodeLicense.ok) throw new Error('Cannot fetch the license for the bundled Node version');
 await writeFile(join(output, 'NODE-LICENSE'), await nodeLicense.text());

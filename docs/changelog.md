@@ -4,6 +4,13 @@
 
 Les changements par version. Retrouvez les installateurs et les archives du code source dans les [releases GitHub](https://github.com/zerr0o/prime-agent-studio/releases).
 
+## 4.4.3-beta.1
+
+- **Menu « Préférences du Studio » corrigé** : depuis l’icône de la zone de notification, les Préférences s’ouvrent de nouveau au premier plan, sur l’onglet Mise à jour. Avant, une fenêtre invisible pouvait bloquer tous les clics.
+- **Installation des composants plus claire** : l’accueil indique s’il s’agit d’une première configuration ou d’une réparation, et décrit le rôle de chaque composant. Pendant l’installation, une liste d’étapes affiche l’étape en cours, son temps écoulé, la taille téléchargée et une explication pour les étapes longues (dépendances npm, Python). En cas d’échec, l’étape concernée est signalée avec Réessayer et Ouvrir les journaux. Lors d’une première installation, le Studio s’ouvre tout seul à la fin.
+- **Démarrage plus robuste** : l’application ne dépend plus de la façon dont Node lit les chemins Windows longs (`\\?\C:\…`), et le build refuse un Node incompatible. Une erreur de démarrage affiche une explication simple, avec les détails techniques repliés.
+- **Historique des sous-agents plus lisible** : dans le panneau Agents, les appels d’outils entre deux messages sont regroupés dans un bloc « Activité de l’agent » repliable, comme dans la conversation principale, et la fenêtre s’ouvre sur le dernier message.
+
 ## 4.4.2
 
 - **Questions dans le bon ordre** : les questions répondues ou ignorées restent désormais auprès du message assistant qui les précédait, au lieu de rester en bas après l’arrivée de nouveaux messages. Cela couvre aussi les groupes de questions et l’historique fenêtré, y compris lorsque la vue de conversation est recréée. Les questions en attente restent près du compositeur ; celles déjà liées à un outil conservent leur position. Contribution de [@evgyur](https://github.com/evgyur) dans la [#12](https://github.com/zerr0o/prime-agent-studio/pull/12).

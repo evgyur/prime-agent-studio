@@ -1056,18 +1056,26 @@ export function createSettings({
     }
     opened();
   }
+  // Main entry is ALWAYS a modal popup, even when docked. One live node:
+  // release dock display silently first (tab registration kept), reveal a
+  // dock-hidden slot, then show. Never adds a tab or moves the node.
+  function openPopup(tab) {
+    if (tab) selected = tab;
+    if (!dialog.matches?.(':modal')) {
+      dialog.removeAttribute('role');
+      revealPopup();
+      safeShowModal();
+    } else if (tab) select(tab);
+    popupOpen = dialog.open;
+  }
+  // Native tray entry. A raw showModal() from the shell would skip
+  // revealPopup(): a dock-hidden dialog then stays display:none while the
+  // whole page is inert, so the window looks frozen. Always use this path.
+  try {
+    if (primary) window.__PRIME_STUDIO_OPEN_PREFERENCES__ = (tab) => openPopup(tab || 'updates');
+  } catch {}
   return {
-    open: () => {
-      // Main entry is ALWAYS a modal popup, even when docked. One live node:
-      // release dock display silently first (tab registration kept), reveal a
-      // dock-hidden slot, then show. Never adds a tab or moves the node.
-      if (!dialog.matches?.(':modal')) {
-        dialog.removeAttribute('role');
-        revealPopup();
-        safeShowModal();
-      }
-      popupOpen = dialog.open;
-    },
+    open: () => openPopup(),
     dismiss: () => {
       returnFrom = undefined;
       returnButton = undefined;

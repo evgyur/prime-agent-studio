@@ -335,6 +335,11 @@ fn settings_eval_falls_back_inside_js_when_panel_missing() {
     assert!(script.contains("settings-tab-updates"));
     assert!(script.contains("window.location.replace"));
     assert!(script.contains(shell));
+    // Tray "Studio preferences" must never leave an invisible modal behind:
+    // the served hook comes first, and the raw fallback checks its own box.
+    assert!(script.contains("__PRIME_STUDIO_OPEN_PREFERENCES__"));
+    assert!(script.contains("dialog.hidden = false"));
+    assert!(script.contains("getClientRects().length"));
 }
 
 #[test]
@@ -446,4 +451,17 @@ fn component_preparation_app_updates_and_restarts_share_one_operation() {
     assert!(super::updates::begin(&state).is_err());
     drop(restart);
     assert!(!state.is_busy());
+}
+
+#[test]
+fn node_paths_drop_the_verbatim_prefix() {
+    // Node v24.20.0 crashes on verbatim script paths: the Studio never
+    // depends on the bundled Node handling them.
+    use std::path::PathBuf;
+    let plain = super::plain_path(PathBuf::from(r"\\?\C:\Users\A B\AppData\Local\Prime Agent Studio\backend"));
+    assert_eq!(plain, PathBuf::from(r"C:\Users\A B\AppData\Local\Prime Agent Studio\backend"));
+    let normal = PathBuf::from(r"D:\Studio\backend");
+    assert_eq!(super::plain_path(normal.clone()), normal);
+    let unc = PathBuf::from(r"\\?\UNC\server\share\backend");
+    assert_eq!(super::plain_path(unc.clone()), unc);
 }

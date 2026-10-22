@@ -181,6 +181,7 @@ export function createInspector({
   unit,
   instanceId,
   root,
+  renderTool,
 }) {
   // Multi-instance scope (parent clonePanelScope). Primary legacy omits all
   // three and keeps original IDs/behavior. Clones pass unit + scoped
@@ -219,6 +220,7 @@ export function createInspector({
         openModelPicker,
         icon,
         toast,
+        renderTool,
         getElement: childGet,
         domId: childDomId,
         unit: key,
@@ -2292,6 +2294,109 @@ export function createInspector({
       if (error.name !== 'AbortError') empty(body, translateKnown(error.message));
     }
   }
+  // Same reading model as the main conversation: messages stay visible, and
+  // the tool calls and reasoning between two messages fold into one
+  // "Agent activity" block. Block bodies build only when opened.
+  function agentToolBlock(tool, messageId) {
+    if (typeof renderTool === 'function') return renderTool(tool, messageId);
+    const details = node('details', 'inspector-tool');
+    details.append(
+      node(
+        'summary',
+        '',
+        () =>
+          `${tool.name || tr('common.tool')} · ${tool.status === 'done' ? tr('ui.termine') : tool.status === 'error' ? tr('common.error') : tr('ui.appel_enregistre')}`,
+      ),
+    );
+    details.append(
+      node('pre', 'inspector-code', () =>
+        typeof tool.result === 'string' ? tool.result : JSON.stringify(tool.args || {}, null, 2),
+      ),
+    );
+    return details;
+  }
+  function agentActivity(messages) {
+    const tools = messages.flatMap((m) => m.tools || []);
+    const reasoning = messages.filter((m) => m.thinking?.trim()).length;
+    const errors = tools.filter((t) => t.isError || t.status === 'error').length;
+    const block = node('details', 'activity-stack inspector-activity');
+    block.classList.toggle('has-errors', errors > 0);
+    const summary = node('summary');
+    const symbol = node('span', 'activity-symbol');
+    symbol.dataset.state = errors ? 'error' : 'done';
+    if (typeof icon === 'function') symbol.append(icon(errors ? 'alert' : 'terminal'));
+    const titles = node('span', 'activity-titles');
+    titles.append(
+      node('span', 'activity-label', () => tr('ui.activite_de_l_agent')),
+      node('span', 'activity-count', () =>
+        [
+          tools.length ? tr('count.tools', { count: tools.length }) : '',
+          reasoning ? tr('count.reflections', { count: reasoning }) : '',
+        ]
+          .filter(Boolean)
+          .join(' · '),
+      ),
+    );
+    summary.append(
+      symbol,
+      titles,
+      node('span', 'activity-state', () => (errors ? tr('count.errors', { count: errors }) : tr('ui.termine'))),
+    );
+    if (typeof icon === 'function') summary.append(icon('chevron', 'activity-chevron'));
+    const content = node('div', 'activity-content');
+    block.append(summary, content);
+    block.addEventListener('toggle', () => {
+      if (!block.open || content.childElementCount) return;
+      for (const m of messages) {
+        const step = node('div', 'activity-step');
+        if (m.thinking?.trim()) {
+          const thinking = node('details', 'thinking-block');
+          const label = node('summary');
+          if (typeof icon === 'function') label.append(icon('brain'));
+          label.append(node('span', '', () => tr('ui.raisonnement')));
+          if (typeof icon === 'function') label.append(icon('chevron', 'chevron'));
+          const text = node('div', 'thinking-content reasoning-markdown');
+          text.append(markdown(m.thinking));
+          thinking.append(label, text);
+          step.append(thinking);
+        }
+        for (const tool of m.tools || []) step.append(agentToolBlock(tool, m.id));
+        if (step.childElementCount) content.append(step);
+      }
+    });
+    return block;
+  }
+  function renderAgentHistory(messages) {
+    let activity = [];
+    const flush = () => {
+      if (activity.length) body.append(agentActivity(activity));
+      activity = [];
+    };
+    for (const message of messages) {
+      const work = message.role === 'assistant' && (message.tools?.length || message.thinking?.trim());
+      const error = translateKnown(message.error);
+      if (!message.text && !error) {
+        if (work) activity.push(message);
+        continue;
+      }
+      flush();
+      const article = node('article', `inspector-message is-${message.role}`);
+      article.append(
+        node('strong', '', () =>
+          message.role === 'user'
+            ? tr('agents.instruction')
+            : message.role === 'assistant'
+              ? tr('ui.agent')
+              : tr('ui.contexte'),
+        ),
+      );
+      if (message.text) article.append(markdown(message.text));
+      if (error) article.append(node('div', 'message-error', () => error));
+      body.append(article);
+      if (work) activity.push(message);
+    }
+    flush();
+  }
   async function openAgent(agent) {
     beginView(agent.name);
     controls.append(statusNode(agent.status));
@@ -2318,39 +2423,18 @@ export function createInspector({
       body.replaceChildren();
       if (data.truncated)
         body.append(node('p', 'inspector-note', () => tr('ui.les_150_derniers_messages_sont_affiches')));
-      for (const message of data.messages) {
-        if (!message.text && !message.tools?.length) continue;
-        const article = node('article', 'inspector-message');
-        article.append(
-          node('strong', '', () =>
-            message.role === 'user'
-              ? tr('agents.instruction')
-              : message.role === 'assistant'
-                ? tr('ui.agent')
-                : tr('ui.contexte'),
-          ),
-        );
-        if (message.text) article.append(markdown(message.text));
-        for (const tool of message.tools || []) {
-          const details = node('details', 'inspector-tool');
-          details.append(
-            node(
-              'summary',
-              '',
-              () =>
-                `${tool.name || tr('common.tool')} · ${tool.status === 'done' ? tr('ui.termine') : tool.status === 'error' ? tr('common.error') : tr('ui.appel_enregistre')}`,
-            ),
-          );
-          details.append(
-            node('pre', 'inspector-code', () =>
-              typeof tool.result === 'string' ? tool.result : JSON.stringify(tool.args || {}, null, 2),
-            ),
-          );
-          article.append(details);
-        }
-        body.append(article);
+      renderAgentHistory(data.messages);
+      if (!body.querySelector('.inspector-message, .inspector-activity')) {
+        empty(body, () => tr('ui.aucun_message_enregistre_pour_le_moment'));
+        return;
       }
-      if (!body.childElementCount) empty(body, () => tr('ui.aucun_message_enregistre_pour_le_moment'));
+      // Like a chat: open on the latest messages. Once more after layout
+      // (markdown images, fonts) so the view really lands at the end.
+      const toEnd = () => {
+        body.scrollTop = body.scrollHeight;
+      };
+      toEnd();
+      requestAnimationFrame(toEnd);
     } catch (error) {
       if (error.name !== 'AbortError') empty(body, translateKnown(error.message));
     }

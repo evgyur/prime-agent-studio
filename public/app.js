@@ -5425,6 +5425,7 @@ function createToolInstance(entry) {
     openModelPicker,
     icon,
     toast,
+    renderTool,
     ...scope,
     unit: entry.kind,
     instanceId: entry.id,
@@ -5617,6 +5618,7 @@ inspectorUI = createInspector({
   openModelPicker,
   icon,
   toast,
+  renderTool,
   getContext: {
     session: () => toolContext('session'),
     agents: () => toolContext('agents'),

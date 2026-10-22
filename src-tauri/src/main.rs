@@ -122,7 +122,12 @@ pub(crate) fn show_main(app: &tauri::AppHandle) {
 // for quit. eval().is_ok() alone never proves anything opened.
 fn settings_panel_script(shell: &str) -> String {
     format!(
-        "(() => {{ const dialog = document.getElementById('settings-dialog'); const tab = document.getElementById('settings-tab-updates'); if (dialog && tab) {{ tab.click(); if (!dialog.open) {{ try {{ dialog.showModal(); }} catch (e) {{ dialog.setAttribute('open', ''); }} }} }} else {{ window.location.replace({shell:?}); }} }})()",
+        // 1. Served Studio hook: opens the real Preferences popup (also when
+        //    the dock layout hides the dialog).
+        // 2. Older pages: unhide, show, then verify the modal really paints.
+        //    A modal with no box makes the whole page inert (frozen window),
+        //    so close it and fall back to the local shell instead.
+        "(() => {{ const shell = {shell:?}; const hook = window.__PRIME_STUDIO_OPEN_PREFERENCES__; if (typeof hook === 'function') {{ try {{ hook('updates'); return; }} catch (e) {{}} }} const dialog = document.getElementById('settings-dialog'); const tab = document.getElementById('settings-tab-updates'); if (!dialog || !tab) {{ window.location.replace(shell); return; }} dialog.hidden = false; tab.click(); if (!dialog.open) {{ try {{ dialog.showModal(); }} catch (e) {{ dialog.setAttribute('open', ''); }} }} if (!dialog.getClientRects().length) {{ try {{ dialog.close(); }} catch (e) {{}} window.location.replace(shell); }} }})()",
     )
 }
 fn quit_handshake_script(shell: &str) -> String {

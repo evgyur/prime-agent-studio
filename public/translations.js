@@ -6412,7 +6412,14 @@ export const messages = {
   'components.stage_download': { fr: 'Téléchargement', en: 'Downloading' },
   'components.stage_verify': { fr: 'Vérification de l’empreinte', en: 'Verifying checksum' },
   'components.stage_install': { fr: 'Installation', en: 'Installing' },
-  'components.stage_python': { fr: 'Préparation de Python et des skills', en: 'Preparing Python and skills' },
+  'components.stage_dependencies': {
+    fr: 'Installation des dépendances (souvent plusieurs minutes)',
+    en: 'Installing dependencies (often several minutes)',
+  },
+  'components.stage_python': {
+    fr: 'Préparation de Python et des skills (peut prendre plusieurs minutes)',
+    en: 'Preparing Python and skills (may take several minutes)',
+  },
   'components.stage_validation': { fr: 'Validation des intégrations', en: 'Validating integrations' },
   'components.stage_opening': { fr: 'Ouverture du Studio', en: 'Opening Studio' },
   'components.stage_server_update_pending': {

@@ -335,6 +335,11 @@ fn settings_eval_falls_back_inside_js_when_panel_missing() {
     assert!(script.contains("settings-tab-updates"));
     assert!(script.contains("window.location.replace"));
     assert!(script.contains(shell));
+    // Tray "Studio preferences" must never leave an invisible modal behind:
+    // the served hook comes first, and the raw fallback checks its own box.
+    assert!(script.contains("__PRIME_STUDIO_OPEN_PREFERENCES__"));
+    assert!(script.contains("dialog.hidden = false"));
+    assert!(script.contains("getClientRects().length"));
 }
 
 #[test]

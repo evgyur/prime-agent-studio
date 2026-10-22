@@ -144,6 +144,7 @@ export function describeProgress(payload, language) {
     download: 'components.stage_download',
     verify: 'components.stage_verify',
     install: 'components.stage_install',
+    dependencies: 'components.stage_dependencies',
     python: 'components.stage_python',
     validation: 'components.stage_validation',
     opening: 'components.stage_opening',

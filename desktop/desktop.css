@@ -197,6 +197,24 @@ footer svg {
   margin-top: 20px;
   overflow-wrap: anywhere;
 }
+#error p {
+  margin: 0;
+  white-space: normal;
+}
+#error details {
+  margin-top: 8px;
+}
+#error summary {
+  cursor: pointer;
+  color: #e3c4c8;
+}
+#error pre {
+  margin: 8px 0 0;
+  max-height: 220px;
+  overflow: auto;
+  font: 11px/1.5 ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  white-space: pre-wrap;
+}
 #progress {
   display: flex;
   align-items: center;

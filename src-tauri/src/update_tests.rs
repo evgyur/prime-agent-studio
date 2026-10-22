@@ -452,3 +452,16 @@ fn component_preparation_app_updates_and_restarts_share_one_operation() {
     drop(restart);
     assert!(!state.is_busy());
 }
+
+#[test]
+fn node_paths_drop_the_verbatim_prefix() {
+    // Node v24.20.0 crashes on verbatim script paths: the Studio never
+    // depends on the bundled Node handling them.
+    use std::path::PathBuf;
+    let plain = super::plain_path(PathBuf::from(r"\\?\C:\Users\A B\AppData\Local\Prime Agent Studio\backend"));
+    assert_eq!(plain, PathBuf::from(r"C:\Users\A B\AppData\Local\Prime Agent Studio\backend"));
+    let normal = PathBuf::from(r"D:\Studio\backend");
+    assert_eq!(super::plain_path(normal.clone()), normal);
+    let unc = PathBuf::from(r"\\?\UNC\server\share\backend");
+    assert_eq!(super::plain_path(unc.clone()), unc);
+}

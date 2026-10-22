@@ -168,6 +168,9 @@ const messages = {
     startingServer: 'Démarrage du serveur…',
     checkingComponents: 'Vérification des composants…',
     failure: 'Le Studio n’a pas pu démarrer.',
+    failureTechnical:
+      'Le serveur local du Studio ne s’est pas lancé. Vos projets et conversations ne sont pas touchés. Réessayez ; si l’erreur revient, ouvrez les journaux ou réinstallez la dernière version publiée.',
+    failureDetails: 'Détails techniques',
     noBridge: 'Ouvrez cette page dans l’application Prime Agent Studio.',
     selected: 'Installation sélectionnée : ',
     autostartError: 'Le démarrage avec Windows n’a pas pu être modifié.',
@@ -353,6 +356,9 @@ const messages = {
     startingServer: 'Starting server…',
     checkingComponents: 'Checking components…',
     failure: 'Studio could not start.',
+    failureTechnical:
+      'The local Studio server did not start. Your projects and conversations are not affected. Try again; if the error comes back, open the logs or reinstall the latest published version.',
+    failureDetails: 'Technical details',
     noBridge: 'Open this page in the Prime Agent Studio application.',
     selected: 'Selected installation: ',
     autostartError: 'Could not change the start with Windows setting.',
@@ -1281,10 +1287,24 @@ $('server-restart').onclick = async () => {
   }
 };
 let busy = false;
+// Raw process output (stack traces) is folded under a plain explanation.
 function showError(value) {
-  $('error').textContent = value;
-  $('error').hidden = !value;
-  $('logs').hidden = !value;
+  const text = String(value || '');
+  const technical = text.includes('\n') || text.length > 240;
+  $('error').replaceChildren();
+  if (technical) {
+    const summary = document.createElement('p');
+    summary.textContent = t.failureTechnical;
+    const details = document.createElement('details');
+    const label = document.createElement('summary');
+    label.textContent = t.failureDetails;
+    const pre = document.createElement('pre');
+    pre.textContent = text.trim();
+    details.append(label, pre);
+    $('error').append(summary, details);
+  } else $('error').textContent = text;
+  $('error').hidden = !text;
+  $('logs').hidden = !text;
 }
 async function start(options = {}) {
   if (busy) return;
@@ -1331,6 +1351,8 @@ async function start(options = {}) {
     $('progress').hidden = true;
     showLauncher();
     $('title').textContent = t.failure;
+    // The connecting note ("we find or start the server") no longer applies.
+    $('description').textContent = '';
     showError(String(error));
     $('start').textContent = t.retry;
     $('start').disabled = false;

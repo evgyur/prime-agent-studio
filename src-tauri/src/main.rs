@@ -107,6 +107,20 @@ fn open_external_link(app: &tauri::AppHandle, url: &tauri::Url) {
         }
     }
 }
+/// Windows may return verbatim paths (`\\?\C:\...`). Some Node versions
+/// cannot start a script from such a path (v24.20.0: EISDIR lstat 'C:'), so
+/// every path handed to node.exe uses the plain drive form. UNC and other
+/// verbatim forms stay unchanged.
+pub(crate) fn plain_path(path: PathBuf) -> PathBuf {
+    let text = path.to_string_lossy();
+    if let Some(rest) = text.strip_prefix(r"\\?\") {
+        let bytes = rest.as_bytes();
+        if bytes.len() >= 3 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' && bytes[2] == b'\\' {
+            return PathBuf::from(rest);
+        }
+    }
+    path
+}
 pub(crate) fn show_main(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.unminimize();
@@ -847,10 +861,12 @@ fn main() {
             notifications::desktop_notification_preferences
         ])
         .setup(|app| {
-            let root = std::env::var_os("PRIME_STUDIO_DESKTOP_DATA_ROOT")
-                .map(PathBuf::from)
-                .unwrap_or(app.path().app_local_data_dir()?);
-            let mut resources = app.path().resource_dir()?.join("backend");
+            let root = plain_path(
+                std::env::var_os("PRIME_STUDIO_DESKTOP_DATA_ROOT")
+                    .map(PathBuf::from)
+                    .unwrap_or(app.path().app_local_data_dir()?),
+            );
+            let mut resources = plain_path(app.path().resource_dir()?.join("backend"));
             if cfg!(debug_assertions) && !resources.join("node.exe").is_file() {
                 resources = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.desktop-build");
             }

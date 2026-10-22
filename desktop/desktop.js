@@ -664,7 +664,9 @@ function setupPhase(payload) {
   if (component === 'npm' && stage === 'install') return 'download';
   if (component === 'engine' && ['install', 'dependencies'].includes(stage)) return 'engine';
   if (stage === 'python') return 'python';
-  if (stage === 'validation') return 'check';
+  // Only the final engine check of an install; diagnose-only checks
+  // (node, uv, bash) never move the setup forward.
+  if (stage === 'validation' && component === 'engine') return 'check';
   return null;
 }
 function formatStepTime(ms) {
@@ -834,7 +836,10 @@ function renderComponentRows(result) {
   for (const [key, info] of Object.entries(result.components || {})) {
     const row = document.createElement('li');
     row.className = 'setup-row';
-    row.dataset.state = info.status === 'ready' ? 'done' : info.status === 'error' ? 'failed' : 'todo';
+    // A missing engine is reported as status "error" with error "missing":
+    // that is something to install, not something broken.
+    const status = info.status === 'error' && info.error === 'missing' ? 'missing' : info.status;
+    row.dataset.state = status === 'ready' ? 'done' : status === 'error' ? 'failed' : 'todo';
     const icon = document.createElement('span');
     icon.className = 'setup-icon';
     icon.setAttribute('aria-hidden', 'true');
@@ -850,7 +855,7 @@ function renderComponentRows(result) {
     }
     const meta = document.createElement('span');
     meta.className = 'setup-meta';
-    meta.textContent = t.componentTodo[info.status] || t.componentStates[info.status] || info.status;
+    meta.textContent = t.componentTodo[status] || t.componentStates[status] || status;
     row.append(icon, body, meta);
     list.append(row);
   }

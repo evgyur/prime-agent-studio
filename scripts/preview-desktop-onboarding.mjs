@@ -57,8 +57,8 @@ try {
             return {
               ready: false, requiredEngine: '0.9.8', installedEngine: null, server: { running: false },
               components: {
-                engine: { status: 'missing' }, uv: { status: 'missing' }, python: { status: 'pending' },
-                bash: { status: 'ready' },
+                node: { status: 'ready', version: '24.21.0' }, engine: { status: 'error', error: 'missing', explicit: false },
+                python: { status: 'pending' }, uv: { status: 'missing' },
               },
             };
           }

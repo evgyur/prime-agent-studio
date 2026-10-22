@@ -4,6 +4,10 @@
 
 Les changements par version. Retrouvez les installateurs et les archives du code source dans les [releases GitHub](https://github.com/zerr0o/prime-agent-studio/releases).
 
+## 4.4.2
+
+- **Questions dans le bon ordre** : les questions répondues ou ignorées restent désormais auprès du message assistant qui les précédait, au lieu de rester en bas après l’arrivée de nouveaux messages. Cela couvre aussi les groupes de questions et l’historique fenêtré, y compris lorsque la vue de conversation est recréée. Les questions en attente restent près du compositeur ; celles déjà liées à un outil conservent leur position. Contribution de [@evgyur](https://github.com/evgyur) dans la [#12](https://github.com/zerr0o/prime-agent-studio/pull/12).
+
 ## 4.4.1
 
 - **Réglages des sous-agents simplifiés** : les sélecteurs de rôles Explorer / Implémenter / Réviser sont supprimés. Choisissez le modèle et le niveau de réflexion par défaut globalement ou par projet ; les choix explicites au lancement d’un sous-agent restent prioritaires.

@@ -4,6 +4,10 @@
 
 Changes by version. See [GitHub releases](https://github.com/zerr0o/prime-agent-studio/releases) for installers and source archives.
 
+## 4.4.2
+
+- **Questions stay in order**: answered or skipped questions now remain beside the assistant message that preceded them, instead of staying at the bottom after newer messages arrive. This also covers question batches and windowed history, including when the conversation view is recreated. Pending questions remain near the composer; questions already linked to a tool keep their existing position. Contributed by [@evgyur](https://github.com/evgyur) in [#12](https://github.com/zerr0o/prime-agent-studio/pull/12).
+
 ## 4.4.1
 
 - **Simpler subagent settings**: the Explore / Implement / Review role selectors have been removed. Choose the default model and thinking level globally or per project; explicit choices when launching a subagent still take priority.

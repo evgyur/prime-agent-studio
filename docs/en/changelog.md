@@ -4,6 +4,13 @@
 
 Changes by version. See [GitHub releases](https://github.com/zerr0o/prime-agent-studio/releases) for installers and source archives.
 
+## 4.4.3-beta.1
+
+- **“Studio preferences” menu fixed**: from the notification area icon, Preferences open in front again, on the Updates tab. Before, an invisible window could block every click.
+- **Clearer component setup**: the welcome screen says whether this is a first-time setup or a repair, and explains what each component is for. During setup, a step list shows the current step, its elapsed time, the downloaded size and an explanation for long steps (npm dependencies, Python). On failure, the failed step is marked with Try again and Open logs. On a first install, Studio opens by itself at the end.
+- **More robust start**: the app no longer depends on how Node reads long Windows paths (`\\?\C:\…`), and the build refuses an incompatible Node. A start error shows a plain explanation, with the technical details folded.
+- **Easier-to-read subagent history**: in the Agents panel, tool calls between two messages are grouped in a collapsible “Agent activity” block, like in the main conversation, and the window opens at the latest message.
+
 ## 4.4.2
 
 - **Questions stay in order**: answered or skipped questions now remain beside the assistant message that preceded them, instead of staying at the bottom after newer messages arrive. This also covers question batches and windowed history, including when the conversation view is recreated. Pending questions remain near the composer; questions already linked to a tool keep their existing position. Contributed by [@evgyur](https://github.com/evgyur) in [#12](https://github.com/zerr0o/prime-agent-studio/pull/12).

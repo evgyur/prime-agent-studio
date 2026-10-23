@@ -1339,6 +1339,14 @@ export const messages = {
   'settings.title': { fr: 'Préférences', en: 'Preferences' },
   'settings.categories': { fr: 'Catégories', en: 'Categories' },
   'settings.appearance': { fr: 'Apparence', en: 'Appearance' },
+  'settings.code_highlight': {
+    fr: 'Coloration du code dans les conversations',
+    en: 'Syntax highlighting in conversations',
+  },
+  'settings.code_highlight_note': {
+    fr: 'Les blocs de code sont colorés après l’affichage, sans ralentir la frappe ni le streaming.',
+    en: 'Code blocks are highlighted after display, without slowing typing or streaming.',
+  },
   'settings.models': { fr: 'Modèles et agents', en: 'Models & agents' },
   'settings.tools': { fr: 'Outils', en: 'Tools' },
   'settings.remote': { fr: 'Accès distant', en: 'Remote access' },

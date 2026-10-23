@@ -2,6 +2,7 @@ import { t as tr, bindText, bindAttribute, translateKnown, getLanguage, onLangua
 import { filePresentation, defaultFileView, parentFolder } from './file-presentation.js';
 import { placeViewportMenu } from './file-links.js';
 import { thinkingLabel } from './reasoning.js';
+import { languageForPath, enhanceFileBlock } from './code-highlight.js';
 import { createSubagentSettings } from './subagent-settings.js';
 
 const $ = (id) => document.getElementById(id);
@@ -2127,14 +2128,19 @@ export function createInspector({
         document.classList.add('inspector-document');
         body.append(document);
       } else {
-        const pre = node('pre', 'inspector-code inspector-file-source', () =>
-          source ? text : presentation.text,
-        );
+        const shown = source ? text : presentation.text;
+        const pre = node('pre', 'inspector-code inspector-file-source', () => shown);
         pre.tabIndex = 0;
         bindAttribute(pre, 'aria-label', () =>
           source ? tr('ui.source_du_fichier') : tr('ui.contenu_du_fichier'),
         );
         body.append(pre);
+        // Plain text first (tests compare textContent), then paint numbered
+        // highlighted lines in place when the file maps to a known language.
+        enhanceFileBlock(pre, {
+          language: languageForPath(file.path),
+          text: shown,
+        });
       }
       body.scrollTop = 0;
     }

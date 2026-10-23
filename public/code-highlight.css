@@ -1,0 +1,139 @@
+/* Syntax highlighting (highlight.js): VS Code Dark+ / Light+ palette.
+   Token colors follow the Studio theme; backgrounds stay untouched. */
+.markdown pre code.hljs,
+.inspector-code code.hljs {
+  --c-fg: #d4d4d4;
+  --c-gutter: #858585;
+  --c-comment: #6a9955;
+  --c-keyword: #569cd6;
+  --c-control: #c586c0;
+  --c-string: #ce9178;
+  --c-number: #b5cea8;
+  --c-function: #dcdcaa;
+  --c-variable: #9cdcfe;
+  --c-type: #4ec9b0;
+  --c-regexp: #d16969;
+  --c-tag: #569cd6;
+  --c-attr: #9cdcfe;
+  --c-meta: #c586c0;
+  color: var(--c-fg);
+  counter-reset: hl-line;
+  display: block;
+}
+:root[data-theme='light'] .markdown pre code.hljs,
+:root[data-theme='light'] .inspector-code code.hljs {
+  --c-fg: #1f1f1f;
+  --c-gutter: #6e7681;
+  --c-comment: #008000;
+  --c-keyword: #0000ff;
+  --c-control: #af00db;
+  --c-string: #a31515;
+  --c-number: #098658;
+  --c-function: #795e26;
+  --c-variable: #001080;
+  --c-type: #267f99;
+  --c-regexp: #811f3f;
+  --c-tag: #800000;
+  --c-attr: #e50000;
+  --c-meta: #af00db;
+}
+/* Numbered lines. The gutter is generated content with user-select: none,
+   so line numbers are never selected or copied. Empty lines keep an empty
+   span (textContent stays identical to the source); the ::before space only
+   preserves their height on screen. */
+code.hljs > .code-line {
+  display: block;
+  position: relative;
+  min-height: 1.7em;
+  padding-left: 3.4em;
+  white-space: pre;
+}
+.markdown pre code.hljs > .code-line {
+  white-space: pre;
+}
+.inspector-code code.hljs > .code-line {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+code.hljs > .code-line::before {
+  counter-increment: hl-line;
+  content: counter(hl-line);
+  position: absolute;
+  left: 0;
+  width: 2.6em;
+  text-align: right;
+  color: var(--c-gutter);
+  user-select: none;
+  pointer-events: none;
+}
+code.hljs > .code-line:empty::before {
+  content: counter(hl-line) ' ';
+}
+.hljs-comment,
+.hljs-quote {
+  color: var(--c-comment);
+}
+.hljs-keyword,
+.hljs-literal,
+.hljs-selector-tag,
+.hljs-variable.language_ {
+  color: var(--c-keyword);
+}
+.hljs-meta,
+.hljs-meta .hljs-keyword {
+  color: var(--c-meta);
+}
+.hljs-string,
+.hljs-meta .hljs-string,
+.hljs-regexp.hljs-string {
+  color: var(--c-string);
+}
+.hljs-number {
+  color: var(--c-number);
+}
+.hljs-title.function_,
+.hljs-title.function_.invoke__ {
+  color: var(--c-function);
+}
+.hljs-title.class_,
+.hljs-type,
+.hljs-built_in {
+  color: var(--c-type);
+}
+.hljs-variable,
+.hljs-params,
+.hljs-property,
+.hljs-attr,
+.hljs-template-variable {
+  color: var(--c-variable);
+}
+.hljs-regexp {
+  color: var(--c-regexp);
+}
+.hljs-tag,
+.hljs-name {
+  color: var(--c-tag);
+}
+.hljs-attribute,
+.hljs-selector-class,
+.hljs-selector-id {
+  color: var(--c-attr);
+}
+.hljs-tag .hljs-attr {
+  color: var(--c-attr);
+}
+.hljs-tag .hljs-string {
+  color: var(--c-string);
+}
+.hljs-addition {
+  color: var(--c-number);
+}
+.hljs-deletion {
+  color: var(--c-string);
+}
+.hljs-emphasis {
+  font-style: italic;
+}
+.hljs-strong {
+  font-weight: 700;
+}

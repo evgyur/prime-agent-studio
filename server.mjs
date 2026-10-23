@@ -73,6 +73,22 @@ import { forgetGitHead } from './lib/git-head.mjs';
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const OPENAPI_DOCUMENT = JSON.stringify(generateOpenApi(), null, 2) + '\n';
 const VERSION = JSON.parse(await readFile(new URL('./package.json', import.meta.url), 'utf8')).version;
+// highlight.js extra languages: explicit allowlist only, never an arbitrary
+// path. Mirrors HIGHLIGHT_EXTRA_LANGUAGES in public/code-highlight.js.
+const HLJS_EXTRA_FILES = {
+  powershell: 'powershell.min.js',
+  dos: 'dos.min.js',
+  dockerfile: 'dockerfile.min.js',
+  cmake: 'cmake.min.js',
+  nginx: 'nginx.min.js',
+  properties: 'properties.min.js',
+};
+function hljsExtraFile(path) {
+  const name = path.slice('/vendor/hljs-'.length, -'.js'.length);
+  if (!Object.hasOwn(HLJS_EXTRA_FILES, name))
+    throw new HttpError(404, tr('server.fichier_introuvable'));
+  return join(ROOT, 'node_modules', '@highlightjs', 'cdn-assets', 'es', 'languages', HLJS_EXTRA_FILES[name]);
+}
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -2162,6 +2178,10 @@ export function createApp(options = {}) {
             'index.umd.min.js',
           );
         else if (path === '/vendor/jsqr.js') file = join(ROOT, 'node_modules', 'jsqr', 'dist', 'jsQR.js');
+        else if (path === '/vendor/hljs.js')
+          file = join(ROOT, 'node_modules', '@highlightjs', 'cdn-assets', 'es', 'highlight.min.js');
+        else if (path.startsWith('/vendor/hljs-') && path.endsWith('.js'))
+          file = hljsExtraFile(path);
         else if (path === '/favicon.ico') file = join(ROOT, 'assets', 'prime-agent.ico');
         else if (path === '/manifest.webmanifest') {
           const locale = requestLanguage(req.headers, url.searchParams.get('lang'));

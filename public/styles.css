@@ -526,12 +526,6 @@ kbd {
     flex-basis: 28px;
     min-height: 44px;
   }
-  .session-row .session-more {
-    display: flex;
-    width: 32px;
-    flex-basis: 32px;
-    min-height: 44px;
-  }
 }
 .danger-text,
 .popover-menu .danger-text {
@@ -647,6 +641,16 @@ kbd {
 .session-row:hover .session-more,
 .session-row:focus-within .session-more {
   display: flex;
+}
+/* Touch screens have no hover: the conversation menu button stays visible.
+   Declared after the base rule so it wins at equal specificity. */
+@media (pointer: coarse) {
+  .session-row .session-more {
+    display: flex;
+    width: 32px;
+    flex-basis: 32px;
+    min-height: 44px;
+  }
 }
 .session-row:hover .session-select {
   padding-right: 0;
@@ -1251,6 +1255,112 @@ a.sidebar-settings {
   width: 12px;
   height: 12px;
 }
+/* First-message setup (setup-gate.js): replaces the starter cards until a
+   provider and the main and subagent models are ready. */
+[data-setup-required] .welcome > .welcome-eyebrow,
+[data-setup-required] .welcome-description,
+[data-setup-required] .starter-grid {
+  display: none;
+}
+.setup-gate {
+  max-width: 680px;
+}
+.setup-gate .welcome-eyebrow {
+  margin-bottom: 14px;
+}
+.setup-gate-title {
+  font-size: 17px;
+  font-weight: 550;
+  letter-spacing: -0.2px;
+  margin: 0 0 6px;
+}
+.setup-gate-note {
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--muted);
+  margin: 0 0 16px;
+}
+.setup-gate-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.setup-gate-step {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+}
+.setup-gate-step[data-state='current'] {
+  border-color: #87809e;
+}
+.setup-gate-step[data-state='pending'] {
+  opacity: 0.55;
+}
+.setup-gate-marker {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  font-size: 11px;
+  color: var(--muted);
+}
+.setup-gate-step[data-state='current'] .setup-gate-marker {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.setup-gate-step[data-state='done'] .setup-gate-marker {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #252132;
+}
+.setup-gate-check,
+.setup-gate-step[data-state='done'] .setup-gate-number {
+  display: none;
+}
+.setup-gate-step[data-state='done'] .setup-gate-check {
+  display: grid;
+}
+.setup-gate-check svg {
+  width: 13px;
+  height: 13px;
+}
+.setup-gate-body strong {
+  display: block;
+  font-size: 12px;
+  font-weight: 550;
+}
+.setup-gate-detail {
+  display: block;
+  margin-top: 3px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.setup-gate-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+@media (max-width: 600px) {
+  .setup-gate-step {
+    grid-template-columns: 26px minmax(0, 1fr);
+  }
+  .setup-gate-actions {
+    grid-column: 2;
+    justify-content: flex-start;
+  }
+}
 .composer-area {
   width: 100%;
   max-width: 940px;
@@ -1285,6 +1395,13 @@ a.sidebar-settings {
 }
 .composer-form textarea:focus-visible {
   outline: none;
+}
+.composer-form.is-sending textarea {
+  color: var(--muted);
+  cursor: progress;
+}
+.composer-form.is-sending {
+  border-color: var(--line);
 }
 .composer-toolbar {
   display: flex;
@@ -1662,7 +1779,6 @@ a.sidebar-settings {
 [data-read-only='true'] .starter-grid,
 [data-read-only='true'] #new-session,
 [data-read-only='true'] #add-project,
-[data-read-only='true'] #session-menu-button,
 [data-read-only='true'] .session-more,
 [data-read-only='true'] #session-menu {
   display: none !important;
@@ -4017,8 +4133,7 @@ a.sidebar-settings {
   color: var(--muted);
   font-size: 11px;
 }
-.subagent-controls .model-picker-button,
-.engine-field .model-picker-button {
+.subagent-controls .model-picker-button {
   display: flex;
   width: 100%;
   max-width: none;
@@ -4079,89 +4194,6 @@ a.sidebar-settings {
 }
 .engine-settings {
   margin-top: 18px;
-}
-.engine-model-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 14px;
-  margin-top: 18px;
-}
-.engine-field label {
-  display: block;
-  margin: 0 0 8px;
-  color: var(--muted);
-  font-size: 11px;
-}
-.engine-field select {
-  display: block;
-  width: 100%;
-  min-height: 43px;
-  padding: 9px 11px;
-  color: var(--text);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--surface);
-  font-size: 12px;
-}
-.engine-field .model-picker-button {
-  display: flex;
-  width: 100%;
-  max-width: none;
-  min-height: 43px;
-  gap: 8px;
-  margin-top: 8px;
-  padding: 8px 10px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  color: var(--text);
-  align-items: center;
-  text-align: left;
-}
-.engine-budget-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
-  margin-top: 18px;
-}
-.engine-budget label {
-  display: block;
-  margin: 0 0 8px;
-  color: var(--muted);
-  font-size: 11px;
-}
-.engine-budget-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.engine-budget-row input[type='number'] {
-  width: 100%;
-  height: 42px;
-  padding: 9px 11px;
-  color: var(--text);
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  background: var(--bg);
-  font-size: 12px;
-}
-.engine-unlimited {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-  color: var(--muted);
-  font-size: 11px;
-  cursor: pointer;
-}
-.engine-unlimited input {
-  width: 16px;
-  height: 16px;
-  accent-color: var(--accent);
-}
-.engine-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 12px;
 }
 .engine-status {
   margin: 10px 0 0;
@@ -4396,8 +4428,7 @@ a.sidebar-settings {
     min-height: 44px;
   }
   .model-defaults-grid,
-  .model-config-grid,
-  .engine-budget-grid {
+  .model-config-grid {
     grid-template-columns: 1fr;
   }
   .custom-model-card {

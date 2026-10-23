@@ -492,14 +492,16 @@ try {
   await expect(page.getByText('Fournisseur indisponible', { exact: true }).first()).toBeVisible();
   await expect(page.locator('#stop-button')).toBeHidden();
   report.push('Affichage des erreurs du fournisseur');
-  await page.locator('#session-menu-button').click();
+  // The conversation menu opens from its sidebar row (right-click or ⋯).
+  const currentRow = () => page.locator('#session-list .session-row:has(.session-select[aria-current="page"])');
+  await currentRow().click({ button: 'right' });
   await page.locator('[data-action="rename"]').click();
   await page.locator('#session-title').fill('Session renommée');
   await page.locator('#rename-form').getByRole('button', { name: 'Enregistrer' }).click();
   await expect(page.locator('#header-session')).toHaveText('Session renommée');
-  await page.locator('#session-menu-button').click();
+  await currentRow().click({ button: 'right' });
   await page.locator('[data-action="pin"]').click();
-  await page.locator('#session-menu-button').click();
+  await currentRow().click({ button: 'right' });
   await page.locator('[data-action="archive"]').click();
   await page.locator('#show-archived').click();
   await expect(page.locator('#session-list')).toContainText('Session renommée');

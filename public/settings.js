@@ -41,15 +41,7 @@ export function createSettings({
   const scope = { getElement: scoped ? getElement : null, domId, instanceId, isPrimary };
   const updates = createDesktopUpdates({ api, getContext, ...scope });
   const interactions = createInteractionSettings({ api, getContext, onStudioPreferences, ...scope });
-  const engineSettings = createEngineSettings({
-    api,
-    getContext,
-    getModels,
-    openModelPicker,
-    icon,
-    onChanged: onEngineSettings,
-    ...scope,
-  });
+  const engineSettings = createEngineSettings({ api, getContext, onChanged: onEngineSettings, ...scope });
   const computerPreferences = createComputerPreferences({
     api,
     getContext,

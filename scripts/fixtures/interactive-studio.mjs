@@ -121,6 +121,17 @@ export async function interactiveStudio({ beforeQuestion, questions } = {}) {
     sessionDir,
     env: { ...process.env, PRIME_AGENT_TELEMETRY: '0' },
   });
+  // Complete first-message setup: provider, main and subagent default models.
+  await mkdir(join(root, 'studio'), { recursive: true });
+  await writeFile(
+    join(root, 'studio', 'subagent-defaults.json'),
+    JSON.stringify({
+      version: 1,
+      revision: 'fixture',
+      global: { model: 'fixture/demo', thinking: '' },
+      projects: {},
+    }),
+  );
   const app = createApp({ initialCwd: cwd, agentHome, sessionDir, dataDir: join(root, 'studio'), runtime });
   await app.store.project({ cwd });
   await new Promise((resolve) => app.server.listen(0, '127.0.0.1', resolve));

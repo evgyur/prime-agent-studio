@@ -19,6 +19,7 @@ import { createLiveMessages } from './live-messages.js';
 import { createImageComposer, renderImages } from './images.js';
 import { createMcpSettings } from './mcp.js';
 import { createProviderSettings } from './providers.js';
+import { setupState, createSetupGate } from './setup-gate.js';
 import { createCommands } from './commands.js';
 import {
   composerText,
@@ -26,6 +27,7 @@ import {
   composerCommand,
   selectComposerCommand,
   createComposer,
+  setComposerSending,
 } from './composer.js';
 import { createInspector, renderComposerGauge } from './inspector.js';
 import { fileLinkRenderer, bindFileLinks } from './file-links.js';
@@ -46,7 +48,6 @@ import {
 } from './project-navigation.js';
 import { createKnowledgeBrowser } from './knowledge.js';
 import { createPerformance } from './performance.js';
-import { renderRunGuard, confirmQuotaBilling } from './run-guards.js';
 import { createContext } from './context.js';
 import { createProjectArchives } from './project-archives.js';
 import { createWorktreesUI } from './worktrees.js';
@@ -319,8 +320,10 @@ const icons = {
   settings:
     'm10 3-.5 2-2 .9-1.8-.6-2 3.4L5.2 10v2l-1.5 1.3 2 3.4 1.8-.6 2 .9.5 2h4l.5-2 2-.9 1.8.6 2-3.4-1.5-1.3v-2l1.5-1.3-2-3.4-1.8.6-2-.9L14 3h-4ZM15 11a3 3 0 1 1-6 0 3 3 0 0 1 6 0',
   menu: 'M4 6h16M4 12h16M4 18h16',
-  more: 'M5 12h.01M12 12h.01M19 12h.01',
-  grip: 'M9 5h.01M15 5h.01M9 12h.01M15 12h.01M9 19h.01M15 19h.01',
+  // Dots are drawn as small circles, not near-zero-length strokes: those
+  // can vanish on very high-density screens.
+  more: 'M4 12a1 1 0 1 0 2 0a1 1 0 1 0-2 0M11 12a1 1 0 1 0 2 0a1 1 0 1 0-2 0M18 12a1 1 0 1 0 2 0a1 1 0 1 0-2 0',
+  grip: 'M8 5a1 1 0 1 0 2 0a1 1 0 1 0-2 0M14 5a1 1 0 1 0 2 0a1 1 0 1 0-2 0M8 12a1 1 0 1 0 2 0a1 1 0 1 0-2 0M14 12a1 1 0 1 0 2 0a1 1 0 1 0-2 0M8 19a1 1 0 1 0 2 0a1 1 0 1 0-2 0M14 19a1 1 0 1 0 2 0a1 1 0 1 0-2 0',
   panel: 'M3 4h18v16H3V4Zm12 0v16',
   layout: 'M3 4h18v16H3V4Zm11 0v16m0-8h7',
   map: 'M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3V6Zm6-3v15m6-12v15',
@@ -417,6 +420,10 @@ const state = {
   online: false,
   loading: false,
   sending: false,
+  sendingViewId: null,
+  // Global subagent default model; undefined until loaded (gate stays off).
+  subagentModel: undefined,
+  setup: { complete: true, unknown: true },
   archived: false,
   requestId: 0,
   initialized: false,
@@ -431,10 +438,6 @@ const state = {
   modelCatalogDefault: '',
   modelCatalogRefreshing: false,
   modelCatalogNotice: '',
-  // Native imageModel route id (server-validated) or null. Single gate:
-  // truthy means image turns ride the engine imageModel; the conversation
-  // model selector is never touched by it.
-  imageModel: null,
 };
 const selection = readStorage('selection', {});
 const sessionActivity = createSessionActivity({
@@ -675,13 +678,114 @@ function setSelectedModel(value, persist = false, render = true, view = null) {
   if (render && $('model-dialog').open) renderModelList();
   renderConfigurationWarning();
 }
+// First-message gate: a new conversation needs a connected provider plus main
+// and subagent default models from a connected provider (see setup-gate.js).
+function computeSetup() {
+  state.setup =
+    state.readOnly || state.subagentModel === undefined
+      ? { complete: true, unknown: true }
+      : setupState({
+          configuredProviders: state.configuredProviders,
+          models: state.models,
+          mainModel: state.modelCatalogDefault,
+          subagentModel: state.subagentModel,
+        });
+  return state.setup;
+}
+// The welcome of a view is shown only while its conversation has no message:
+// that is exactly where the setup steps appear and the first send waits.
+const welcomeOf = (view) => view?.shell?.welcome || $('welcome');
+// After a change made elsewhere (Models dialog): the bootstrap value is stale.
+async function refreshSubagentDefault() {
+  try {
+    const data = await api('/api/subagent-defaults');
+    state.subagentModel = typeof data?.global?.model === 'string' ? data.global.model : '';
+  } catch {
+    // Read-only or older servers: an unknown setting never blocks sending.
+  }
+  updateComposer();
+}
+async function saveSubagentDefault(model) {
+  if (!model) return;
+  try {
+    const current = await api('/api/subagent-defaults');
+    // Keep the saved reasoning level only when the new model supports it.
+    const thinking = current.global?.thinking || '';
+    const supported = state.models.find((item) => item.id === model)?.thinkingLevels?.includes(thinking);
+    const saved = await api('/api/subagent-defaults', {
+      method: 'POST',
+      body: { revision: current.revision, policy: { model, thinking: supported ? thinking : '' } },
+    });
+    state.subagentModel = saved.global?.model || '';
+    document.dispatchEvent(
+      new CustomEvent('subagent-defaults-changed', { detail: { source: 'setup', cwd: null } }),
+    );
+    toast(() => tr('ui.reglages_des_sous_agents_enregistres'));
+  } catch (error) {
+    toast(() => translateKnown(error.message), true);
+  }
+  updateComposer();
+}
+document.addEventListener('subagent-defaults-changed', (event) => {
+  if (event.detail?.source !== 'setup' && !event.detail?.cwd) void refreshSubagentDefault();
+});
+// "Setup complete" follows a step done in the gate, never a catalog refresh.
+let setupActed = false;
+const setupStep = (action) => (button) => {
+  setupActed = true;
+  return action(button);
+};
+const setupGate = createSetupGate({
+  getState: () => ({
+    setup: state.setup,
+    models: state.models,
+    mainModel: state.modelCatalogDefault,
+    subagentModel: state.subagentModel,
+    readOnly: state.readOnly,
+    providersAvailable: state.providersAvailable,
+  }),
+  connectProvider: setupStep((button) => providerSettingsUI.open(button)),
+  chooseMainModel: setupStep((button) =>
+    openModelPicker({
+      button,
+      value: state.modelCatalogDefault,
+      noDefault: true,
+      get title() {
+        return tr('ui.modele_principal_par_defaut_2');
+      },
+      onSelect: (id) => void saveDefaultModel(id),
+    }),
+  ),
+  chooseSubagentModel: setupStep((button) =>
+    openModelPicker({
+      button,
+      value: state.subagentModel || '',
+      noDefault: true,
+      get title() {
+        return tr('ui.modele_des_sous_agents_2');
+      },
+      onSelect: (id) => void saveSubagentDefault(id),
+    }),
+  ),
+  useMainForSubagents: setupStep(() => saveSubagentDefault(state.modelCatalogDefault)),
+});
 function renderConfigurationWarning() {
+  const wasIncomplete = state.setup.complete === false;
+  const setup = computeSetup();
+  setupGate.render();
+  if (wasIncomplete && setup.complete && !setup.unknown && setupActed) {
+    setupActed = false;
+    toast(() => tr('setup.done'));
+  }
   const providerMissing = Array.isArray(state.configuredProviders) && state.configuredProviders.length === 0;
   const modelMissing = !($('model-select').value || state.modelCatalogDefault);
+  // An empty conversation shows the setup steps instead of this banner.
+  const gateShown = setup.complete === false && !welcomeOf(convViews?.focused()).hidden;
   const visible =
     state.initialized &&
     state.online &&
     state.version?.available !== false &&
+    !gateShown &&
     (providerMissing || modelMissing);
   $('configuration-warning').hidden = !visible;
   if (!visible) return;
@@ -778,7 +882,7 @@ function renderModelList({ focusFavorite, preserveFocus = false } = {}) {
     defaultMatches = normalizeModelSearch(
       modelPickerTarget?.defaultLabel || tr('ui.modele_par_defaut_configuration_prime_agent'),
     ).includes(query),
-    showDefault = !state.modelFavoritesOnly && defaultMatches,
+    showDefault = !state.modelFavoritesOnly && defaultMatches && !modelPickerTarget?.noDefault,
     visibleCount = favoriteModels.length + otherModels.length + Number(showDefault),
     availableFavoriteCount = state.models.filter((model) => favorites.has(model.id)).length;
   root.replaceChildren();
@@ -1284,12 +1388,6 @@ function updateComposer(view = null) {
   const viewSessionId = target?.sessionId ?? state.sessionId;
   const run = target ? runForView(target) : activeRun();
   const running = isRunning(run);
-  const guardRun = run || (target?.guardRunToken === target?.token ? state.runs.get(target?.guardRunId) : null) || [...state.runs.values()].filter((entry) => viewSessionId && entry.sessionId === viewSessionId).sort((a, b) => String(b.startedAt).localeCompare(String(a.startedAt)))[0];
-  renderRunGuard(node('composer-form', 'form'), guardRun, {
-    models: state.models,
-    disabled: state.readOnly || !state.online || state.sending || running,
-    onRetry: (failed, model) => void retryQuotaRun(failed, model, target),
-  });
   const isPrimaryTarget = !target || target.id === PRIMARY_VIEW_ID;
   const viewLoading = target ? !!target.loading : state.loading;
   const viewOverview = isPrimaryTarget ? state.projectOverview : false;
@@ -1308,6 +1406,8 @@ function updateComposer(view = null) {
   if (!view || convViews?.isFocused(target?.id)) renderConfigurationWarning();
   IMG?.update();
   CMD?.update();
+  // The first message of a conversation waits for the setup steps.
+  const setupBlocked = state.setup.complete === false && !running && !welcomeOf(target).hidden;
   sendButton.hidden = running;
   stopButton.hidden = !running;
   stopButton.disabled = state.readOnly || run?.status === 'stopping';
@@ -1316,6 +1416,7 @@ function updateComposer(view = null) {
     viewOverview ||
     (!textNow.trim() && !IMG?.hasImages()) ||
     IMG?.blocked() ||
+    setupBlocked ||
     !state.projectCwd ||
     state.sending ||
     generationPending.has(viewSessionId) ||
@@ -1336,11 +1437,18 @@ function updateComposer(view = null) {
       running ? tr('conversation.thinkingNextCall') : tr('conversation.scope'),
     );
   }
+  // The send in flight belongs to its origin view only (docked panes).
+  const sendingHere = state.sending && (!state.sendingViewId || !target || target.id === state.sendingViewId);
   if (runStatus) {
-    runStatus.hidden = !running;
+    runStatus.hidden = !running && !sendingHere;
+    // No stale duration from a previous run while the next message is sent.
+    const elapsed = node('run-elapsed', 'runElapsed');
+    if (!running && elapsed) bindText(elapsed, () => '');
     if (runStatusLabel) {
       bindText(runStatusLabel, () =>
-        run?.status === 'stopping'
+        !running && sendingHere
+          ? tr('ui.envoi_du_message')
+          : run?.status === 'stopping'
           ? tr('ui.arret_de_l_agent')
           : run?.interactions?.some((item) => item.status === 'pending')
             ? tr('questions.waiting')
@@ -1355,7 +1463,9 @@ function updateComposer(view = null) {
         : state.projectCwd
           ? running
             ? tr('ui.preparez_votre_prochain_message')
-            : tr('ui.que_souhaitez_vous_construire')
+            : setupBlocked
+              ? tr('setup.placeholder')
+              : tr('ui.que_souhaitez_vous_construire')
           : tr('ui.ajoutez_un_projet_pour_commencer'),
     );
   }
@@ -1879,7 +1989,6 @@ function renderDetails() {
   bindText($('welcome-project').lastElementChild, () =>
     welcomeProjectText(dockingUI?.active ? convViews?.byId(PRIMARY_VIEW_ID)?.projectCwd : state.projectCwd),
   );
-  $('session-menu-button').disabled = !state.sessionId;
   $('session-state').hidden = !isRunning(run);
   bindText($('session-state'), () => tr('ui.agent_en_cours'));
   if (toolViews) renderToolSession(toolViews.entries.get('session'));
@@ -2708,7 +2817,6 @@ function imageContextFor(view) {
       !view.projectCwd,
     input: state.models.find((model) => model.id === (modelForView(view) || state.modelCatalogDefault))
       ?.input,
-    imageModel: state.imageModel,
   };
 }
 function liveContextFor(view) {
@@ -3732,13 +3840,7 @@ function applyRunEvent(run, e) {
       if (state.viewRunId === run.id)
         toast(() => tr('ui.le_debut_de_cette_execution_sera_recharge_depuis_l_historique_a_l'));
       break;
-    case 'budget':
-      run.budget = e.budget;
-      document.dispatchEvent(new CustomEvent('studio-budget-update', { detail: { run } }));
-      updateComposer(convViews?.byRun(run.id) || undefined);
-      break;
     case 'done':
-      run.quota = e.quota || run.quota;
       for (const entry of toolViews?.entries.values() || [])
         if (entry.kind === 'performance') entry.ui?.runDone();
       performancePopup?.ui.runDone();
@@ -3800,45 +3902,6 @@ function subscribe(run) {
     void refreshOverview();
   };
 }
-async function retryQuotaRun(failed, model, origin = null) {
-  if (state.readOnly || !state.online || state.sending || isRunning(origin ? runForView(origin) : activeRun())) return;
-  const token = origin?.token;
-  const candidate = failed.quota?.candidates?.find((entry) => entry.model === model);
-  if (!candidate || candidate.reason === 'unavailable') return;
-  const confirmBillingChange = candidate.automaticEligible !== true && !['eligible', 'automatic_disabled'].includes(candidate.reason);
-  state.sending = true;
-  try {
-    if (confirmBillingChange && !await confirmQuotaBilling(failed.model || failed.quota.provider, model, state.models)) return;
-    // Closing a modal after navigation never sends into a different conversation.
-    if (state.readOnly || !state.online || (origin && (convViews?.byId(origin.id) !== origin || origin.token !== token))) return;
-    if (isRunning(origin ? runForView(origin) : activeRun())) return;
-    updateComposer(origin || undefined);
-    const retryPath = `/api/runs/${encodeURIComponent(failed.id)}/quota-retry`;
-    let run;
-    try {
-      run = await api(retryPath, { method: 'POST', body: { model, ...(confirmBillingChange ? { confirmBillingChange: true } : {}) } });
-    } catch (error) {
-      // Identity may have changed since the candidate list was generated.
-      // The server asks for fresh consent; retry once, never auto-confirm or loop.
-      if (confirmBillingChange || error.code !== 'quota_confirmation_required') throw error;
-      if (!await confirmQuotaBilling(failed.model || failed.quota.provider, model, state.models)) return;
-      if (state.readOnly || !state.online || (origin && (convViews?.byId(origin.id) !== origin || origin.token !== token))) return;
-      if (isRunning(origin ? runForView(origin) : activeRun())) return;
-      run = await api(retryPath, { method: 'POST', body: { model, confirmBillingChange: true } });
-    }
-    Object.assign(run, { initialized: true, base: [...(failed.base || []), ...(failed.messages || [])], messages: [], lastSeq: 0, currentMessage: null });
-    state.runs.set(run.id, run);
-    failed.quota = { ...failed.quota, retryRunId: run.id };
-    if (origin && convViews?.byId(origin.id) === origin && origin.token === token) {
-      origin.viewRunId = run.id;
-      if (convViews.isFocused(origin.id)) state.viewRunId = run.id;
-      else convViews.refreshView(origin.id);
-    } else if (!origin && state.sessionId === failed.sessionId) state.viewRunId = run.id;
-    subscribe(run);
-    renderNavigation();
-  } catch (error) { toast(translateKnown(error.message), true); }
-  finally { state.sending = false; updateComposer(origin || undefined); }
-}
 async function finishRun(run, e) {
   run.replayedDone = true;
   run.status = e.status || 'completed';
@@ -3863,10 +3926,6 @@ async function finishRun(run, e) {
   } else if (e.status === 'stopped' || e.status === 'cancelled') toast(() => tr('ui.l_agent_a_ete_arrete'));
   const finishOrigin = convViews?.byRun(run.id) || null;
   const finishViewToken = finishOrigin?.token;
-  if (finishOrigin && (run.quota || run.budget)) {
-    finishOrigin.guardRunId = run.id;
-    finishOrigin.guardRunToken = finishOrigin.token;
-  }
   if (convViews && finishOrigin) {
     if (finishOrigin.kind === 'new' && run.sessionId) {
       finishOrigin.sessionId = run.sessionId;
@@ -3886,19 +3945,6 @@ async function finishRun(run, e) {
     state.history = [...run.base, ...run.messages];
     saveSelection();
     scheduleMessages();
-  }
-  if (e.quota?.retryRunId) {
-    const retryId = e.quota.retryRunId;
-    const retry = state.runs.get(retryId) || {
-      id: retryId, sessionId: run.sessionId, cwd: run.cwd, status: 'running',
-      model: e.quota.automaticModel || run.model, thinking: run.thinking,
-      startedAt: new Date().toISOString(), initialized: true,
-      base: [...(run.base || []), ...(run.messages || [])], messages: [], lastSeq: 0, currentMessage: null,
-    };
-    state.runs.set(retryId, retry);
-    if (finishOrigin && finishOrigin.viewRunId === run.id) finishOrigin.viewRunId = retryId;
-    if (state.viewRunId === run.id) state.viewRunId = retryId;
-    subscribe(retry);
   }
   if (run.sessionId && (finishOrigin || state.viewRunId === run.id)) {
     try {
@@ -3990,7 +4036,13 @@ async function sendMessage(event) {
     computerUse && typeof settingsUI?.getComputerModel === 'function' ? settingsUI.getComputerModel() : '';
   const effectiveModel =
     globalComputerModel || originTriple?.model || $('model-select').value || state.modelCatalogDefault || '';
+  // Immediate feedback: the sent text stays visible but locked until the
+  // server accepts it, so an edit can never be lost or sent twice.
+  const originForm = originUnits?.nodes?.form || $('composer-form');
+  const originInput = originUnits?.nodes?.textarea || $('composer');
   state.sending = true;
+  state.sendingViewId = entryOriginId;
+  setComposerSending(originForm, originInput, true);
   updateComposer();
   try {
     const run = await api('/api/runs', {
@@ -4066,6 +4118,8 @@ async function sendMessage(event) {
     toast(translateKnown(e.message), true);
   } finally {
     state.sending = false;
+    state.sendingViewId = null;
+    setComposerSending(originForm, originInput, false);
     updateComposer();
   }
 }
@@ -4334,9 +4388,8 @@ async function openModelConfig(preferencesOwner = settingsDockApi) {
     toast(message, true);
   }
 }
-async function saveDefaultModel() {
-  const button = $('save-default-model'),
-    model = $('default-main-model').value;
+async function saveDefaultModel(model = $('default-main-model').value) {
+  const button = $('save-default-model');
   button.disabled = true;
   $('default-main-model').disabled = true;
   try {
@@ -4421,8 +4474,6 @@ function populateModels(catalog, { preserveSelection = false } = {}) {
     ? catalog.configuredProviders
     : null;
   state.modelCatalogDefault = typeof catalog?.default?.model === 'string' ? catalog.default.model : '';
-  state.imageModel =
-    typeof catalog?.imageModel === 'string' && catalog.imageModel ? catalog.imageModel : null;
   state.modelCatalogThinking = catalog?.default?.thinking || '';
   state.modelCatalogRefreshing = catalog?.refreshing === true;
   state.modelCatalogNotice = '';
@@ -4471,6 +4522,8 @@ async function bootstrap() {
     sessionActivity.initialize(allSessions());
     state.version = data.version || {};
     for (const run of data.runs || []) state.runs.set(run.id, run);
+    // Known before the first render: the setup steps never flash or lag.
+    state.subagentModel = typeof data.subagentModel === 'string' ? data.subagentModel : undefined;
     populateModels(data.models);
     state.projectCwd =
       state.projects.find((p) => samePath(p.cwd, selection.cwd))?.cwd || state.projects[0]?.cwd || null;
@@ -4943,7 +4996,6 @@ async function logout(button = $('logout-button')) {
 function closeSessionMenu() {
   $('session-menu').hidden = true;
   sessionMenuAnchor?.setAttribute('aria-expanded', 'false');
-  $('session-menu-button').setAttribute('aria-expanded', 'false');
 }
 function openSessionMenu(id, anchor) {
   if (state.readOnly || !id) return;
@@ -4969,7 +5021,6 @@ function openSessionMenu(id, anchor) {
   menu.hidden = false;
   positionMenus();
   anchor.setAttribute('aria-expanded', 'true');
-  $('session-menu-button').setAttribute('aria-expanded', 'true');
   menu.querySelector('button:not(:disabled):not([hidden])')?.focus({ preventScroll: true });
 }
 async function patchSession(id, patch) {
@@ -6018,10 +6069,6 @@ $('show-archived').onclick = () => {
   renderSessions();
   renderProjectOverview();
 };
-$('session-menu-button').onclick = (e) => {
-  if ($('session-menu').hidden) openSessionMenu(state.sessionId, e.currentTarget);
-  else closeSessionMenu();
-};
 $('session-menu').onclick = (e) => {
   const b = e.target.closest('[data-action]');
   if (b) void menuAction(b.dataset.action);
@@ -6286,12 +6333,7 @@ document.addEventListener('click', (event) => {
 });
 document.addEventListener('click', (e) => {
   if (!e.target.closest('#project-menu') && !e.target.closest('.project-more')) closeProjectMenu();
-  if (
-    !e.target.closest('#session-menu') &&
-    !e.target.closest('#session-menu-button, [data-panel-id="session-menu-button"]') &&
-    !e.target.closest('.session-more')
-  )
-    closeSessionMenu();
+  if (!e.target.closest('#session-menu') && !e.target.closest('.session-more')) closeSessionMenu();
 });
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {

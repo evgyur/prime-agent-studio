@@ -1749,19 +1749,15 @@ test('read-only tokens still read roadmaps but never check steps', async (t) => 
   assert.equal(current.plans[0].steps[0].done, false);
 });
 
-test('public API budgets disable budget questions even when ordinary questions are allowed', async (t) => {
+test('public API runs start without budget caps; allowQuestions stays as requested', async (t) => {
   const f = await fixture(t);
-  const settings = (await f.api('/api/budgets')).json;
-  assert.equal((await f.api('/api/budgets', { method: 'PUT', body: {
-    ...settings, run: { tokens: 100, estimatedCost: null },
-  } })).status, 200);
   const token = await enableApi(f);
   const projectId = projectIdFor(token.projects, f.cwd);
   const started = await f.api(`/api/v1/projects/${projectId}/runs`, { method: 'POST',
-    headers: bearer(token.credential), body: { requestId: 'budget-request-0001', message: 'Budget-bound fixture', allowQuestions: true },
+    headers: bearer(token.credential), body: { requestId: 'budget-request-0001', message: 'Fixture', allowQuestions: true },
   });
   assert.equal(started.status, 201, started.text);
   assert.equal(f.runtime.controls[0].input.allowQuestions, true);
-  assert.equal(f.runtime.controls[0].input.budget.allowQuestions, false);
-  assert.equal(f.runtime.controls[0].input.budget.tokens, 100);
+  assert.equal(f.runtime.controls[0].input.budget, undefined);
 });
+

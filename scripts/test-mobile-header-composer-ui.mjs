@@ -234,7 +234,6 @@ async function snapshot(page, label) {
         controls: {
           roadmap: styleOf('#open-roadmap'),
           computer: styleOf('#computer-use-toggle'),
-          menu: styleOf('#session-menu-button'),
           details: styleOf('#toggle-details'),
         },
         textarea: rect('#composer'),
@@ -259,7 +258,6 @@ async function snapshot(page, label) {
           '#computer-use-toggle',
           '#computer-use-stop',
           '#open-roadmap',
-          '#session-menu-button',
           '#toggle-details',
         ]
           .map((selector) => document.querySelector(selector))
@@ -293,7 +291,6 @@ async function assertHeaderReachable(page, label) {
   for (const selector of [
     '#computer-use-toggle',
     '#open-roadmap',
-    '#session-menu-button',
     '#toggle-details',
   ]) {
     const box = await page.locator(selector).evaluate((node) => {
@@ -306,10 +303,11 @@ async function assertHeaderReachable(page, label) {
   }
   const disabled = await page.evaluate(() => ({
     roadmap: document.getElementById('open-roadmap')?.disabled,
-    menu: document.getElementById('session-menu-button')?.disabled,
+    // The conversation menu lives on its sidebar row, not in the header.
+    headerMenu: Boolean(document.getElementById('session-menu-button')),
   }));
   assert.equal(disabled.roadmap, false, `${label}: roadmap must stay enabled`);
-  assert.equal(disabled.menu, false, `${label}: session menu must stay enabled`);
+  assert.equal(disabled.headerMenu, false, `${label}: no header conversation menu button`);
 }
 
 function assertControlSizing(snap) {
@@ -328,7 +326,8 @@ function assertNoInnerScroll(snap) {
 }
 
 function assertActionsSingleRow(snap) {
-  assert.ok(snap.actionTops.length >= 4, `${snap.label}: expected visible header actions`);
+  // Computer Use, Roadmap and details (plus Stop while Computer Use is on).
+  assert.ok(snap.actionTops.length >= 3, `${snap.label}: expected visible header actions`);
   const spread = Math.max(...snap.actionTops) - Math.min(...snap.actionTops);
   assert.ok(
     spread <= 6,
@@ -457,7 +456,6 @@ try {
     .click();
   await expect(page.locator('#messages')).toContainText('Reponse synthetique.');
   await expect(page.locator('#open-roadmap')).toBeEnabled();
-  await expect(page.locator('#session-menu-button')).toBeEnabled();
 
   await installComputerStub(page);
   let snap = await snapshot(page, 'idle-off-390-fr');

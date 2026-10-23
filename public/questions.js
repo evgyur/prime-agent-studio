@@ -42,9 +42,6 @@ export function createQuestions({ root, api, getContext, icon }) {
       currentRun = run?.id;
     }
     for (const request of run?.interactions || []) {
-      const budgetChoices = { 'Continue +50%': 'routing.extend', 'Unlimited this run': 'routing.unlimited', Stop: 'routing.stop' };
-      const isBudget = request.title === 'Budget reached' && request.options?.length === 3 && request.options.every((value) => budgetChoices[value]);
-      const budgetText = (value) => isBudget && budgetChoices[value] ? tr(budgetChoices[value]) : value;
       let entry = nodes.get(request.id);
       if (!entry) {
         const form = node('form', 'agent-question');
@@ -57,7 +54,6 @@ export function createQuestions({ root, api, getContext, icon }) {
             .map((value, index) => ({ value, ...request.optionDetails?.[index] })),
         }];
         const title = node('h3', '', request.title);
-        if (isBudget) bindText(title, () => tr('routing.question'));
         title.id = `${prefix}-${request.id}`;
         form.setAttribute('aria-labelledby', title.id);
         const fields = node('fieldset', 'question-fields');
@@ -148,7 +144,6 @@ export function createQuestions({ root, api, getContext, icon }) {
               refresh();
             };
             const choiceLabel = node('span', '', option.label || option.value);
-            if (isBudget) bindText(choiceLabel, () => budgetText(option.value));
             row.append(radio, choiceLabel);
             choice.append(row);
             if (option.description) {
@@ -295,7 +290,7 @@ export function createQuestions({ root, api, getContext, icon }) {
             ? request.answers.map((answer) =>
                 `${answer.question} — ${answer.skipped ? tr('questions.skipped') : answer.answer}`).join('\n')
             : request.status === 'answered'
-              ? `${tr('questions.answered')} ${typeof request.answer === 'boolean' ? tr(request.answer ? 'questions.yes' : 'questions.no') : budgetText(request.answer) || ''}`
+              ? `${tr('questions.answered')} ${typeof request.answer === 'boolean' ? tr(request.answer ? 'questions.yes' : 'questions.no') : request.answer || ''}`
               : tr('questions.closed'),
         );
       // The transcript may be windowed, with this message offscreen.

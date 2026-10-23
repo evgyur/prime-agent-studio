@@ -148,7 +148,6 @@ function fixture(options = {}) {
       socketPath,
       supervisorPid: 11,
       resolveOwner: async () => ({ ...owner, ...options.owner }),
-      imageRoute: options.imageRoute,
     },
     { loadClient: async () => Client },
   );
@@ -277,41 +276,14 @@ test('steering and follow-up report native admission and queue snapshots', async
   );
 });
 
-test('live image turns ride the native imageModel route, otherwise the refusal stays', async () => {
-  const png = PNG_BASE64;
+test('live image turns on a text-only model are refused before the engine', async () => {
   const textModel = { provider: 'fixture', id: 'text', input: ['text'] };
-  const images = [{ type: 'image', mimeType: 'image/png', data: png }];
+  const images = [{ type: 'image', mimeType: 'image/png', data: PNG_BASE64 }];
   const refused = fixture({ model: textModel });
   await assert.rejects(refused.client.send(sessionId, cwd, { message: 'Look', mode: 'steer', images }), {
     code: 'unsupported_images',
   });
   assert.ok(!refused.calls.some((call) => call.type === 'steer'), 'Refused images never reach the engine');
-  let routeCalls = 0;
-  const routed = fixture({
-    model: textModel,
-    imageRoute: async () => {
-      routeCalls++;
-      return 'test/vision';
-    },
-  });
-  const sent = await routed.client.send(sessionId, cwd, {
-    message: 'Look',
-    mode: 'steer',
-    requestId: 'img-route',
-    images,
-  });
-  assert.equal(sent.accepted, true);
-  assert.equal(routeCalls, 1);
-  assert.deepEqual(
-    routed.calls.find((call) => call.type === 'steer').images,
-    images,
-    'Image payload is preserved for the native route',
-  );
-  const stale = fixture({ model: textModel, imageRoute: async () => null });
-  await assert.rejects(stale.client.send(sessionId, cwd, { message: 'Look', mode: 'steer', images }), {
-    code: 'unsupported_images',
-  });
-  assert.ok(!stale.calls.some((call) => call.type === 'steer'));
 });
 
 test('repeat request IDs reuse native mutation IDs and fresh observations use independent counters', async () => {

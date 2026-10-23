@@ -1286,6 +1286,13 @@ a.sidebar-settings {
 .composer-form textarea:focus-visible {
   outline: none;
 }
+.composer-form.is-sending textarea {
+  color: var(--muted);
+  cursor: progress;
+}
+.composer-form.is-sending {
+  border-color: var(--line);
+}
 .composer-toolbar {
   display: flex;
   align-items: center;

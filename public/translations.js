@@ -3040,6 +3040,7 @@ export const messages = {
     fr: 'Envoyer le message',
     en: 'Send message',
   },
+  'ui.envoi_du_message': { fr: 'Envoi du message…', en: 'Sending message…' },
   'ui.connexion_a_la_session': {
     fr: 'Connexion à la session…',
     en: 'Connecting to the session…',

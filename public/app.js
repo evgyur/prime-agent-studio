@@ -26,6 +26,7 @@ import {
   composerCommand,
   selectComposerCommand,
   createComposer,
+  setComposerSending,
 } from './composer.js';
 import { createInspector, renderComposerGauge } from './inspector.js';
 import { fileLinkRenderer, bindFileLinks } from './file-links.js';
@@ -417,6 +418,7 @@ const state = {
   online: false,
   loading: false,
   sending: false,
+  sendingViewId: null,
   archived: false,
   requestId: 0,
   initialized: false,
@@ -1336,11 +1338,18 @@ function updateComposer(view = null) {
       running ? tr('conversation.thinkingNextCall') : tr('conversation.scope'),
     );
   }
+  // The send in flight belongs to its origin view only (docked panes).
+  const sendingHere = state.sending && (!state.sendingViewId || !target || target.id === state.sendingViewId);
   if (runStatus) {
-    runStatus.hidden = !running;
+    runStatus.hidden = !running && !sendingHere;
+    // No stale duration from a previous run while the next message is sent.
+    const elapsed = node('run-elapsed', 'runElapsed');
+    if (!running && elapsed) bindText(elapsed, () => '');
     if (runStatusLabel) {
       bindText(runStatusLabel, () =>
-        run?.status === 'stopping'
+        !running && sendingHere
+          ? tr('ui.envoi_du_message')
+          : run?.status === 'stopping'
           ? tr('ui.arret_de_l_agent')
           : run?.interactions?.some((item) => item.status === 'pending')
             ? tr('questions.waiting')
@@ -3990,7 +3999,13 @@ async function sendMessage(event) {
     computerUse && typeof settingsUI?.getComputerModel === 'function' ? settingsUI.getComputerModel() : '';
   const effectiveModel =
     globalComputerModel || originTriple?.model || $('model-select').value || state.modelCatalogDefault || '';
+  // Immediate feedback: the sent text stays visible but locked until the
+  // server accepts it, so an edit can never be lost or sent twice.
+  const originForm = originUnits?.nodes?.form || $('composer-form');
+  const originInput = originUnits?.nodes?.textarea || $('composer');
   state.sending = true;
+  state.sendingViewId = entryOriginId;
+  setComposerSending(originForm, originInput, true);
   updateComposer();
   try {
     const run = await api('/api/runs', {
@@ -4066,6 +4081,8 @@ async function sendMessage(event) {
     toast(translateKnown(e.message), true);
   } finally {
     state.sending = false;
+    state.sendingViewId = null;
+    setComposerSending(originForm, originInput, false);
     updateComposer();
   }
 }

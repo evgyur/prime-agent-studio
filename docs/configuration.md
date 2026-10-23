@@ -32,7 +32,7 @@ Tant que la configuration est incomplète, une nouvelle conversation affiche tro
 
 - Un fournisseur compte comme connecté dès qu’il propose au moins un modèle utilisable.
 - Les deux modèles doivent venir d’un fournisseur connecté. **Utiliser le même** reprend le modèle principal pour les sous-agents.
-- Les choix sont enregistrés comme modèles par défaut : **Préférences → Modèles et agents → Configurer les modèles** permet de les modifier ensuite.
+- Les choix sont enregistrés comme modèles par défaut : **Préférences → Modèles et agents → Configurer les modèles** permet de les modifier ensuite. L’étape 3 porte sur le réglage global des sous-agents ; une exception par projet reste possible dans l’onglet **Agents**.
 - Si un fournisseur est déconnecté plus tard, les étapes réapparaissent dans les nouvelles conversations. Les conversations existantes gardent leur historique et affichent un bandeau d’avertissement.
 - Les accès distants en lecture seule ne voient pas ces étapes.
 
@@ -76,7 +76,7 @@ Avant une écriture, le Studio conserve une copie `models.json.prime-studio.bak`
 
 ### Anciens réglages détectés
 
-Les réglages **modèles avancés**, **budgets autonomes**, **relais après quota** et **plafonds** ne sont plus gérés par le Studio : leur carte a été retirée de l’écran **Configurer**. Les valeurs déjà enregistrées restent actives dans le moteur natif, qui lit lui-même `settings.json`.
+Les réglages **modèles avancés**, **budgets autonomes**, **relais après quota** et **plafonds** ne sont plus gérés par le Studio : leur carte a été retirée de l’écran **Configurer**, et le Studio ne les utilise plus pour ses propres fonctions. Les valeurs déjà enregistrées restent dans `settings.json`, où le moteur peut encore en appliquer certaines, par exemple le modèle auxiliaire pour les résumés ou le niveau de service. Une image envoyée à un modèle qui ne lit que le texte est toujours refusée, même si un modèle pour les images est enregistré.
 
 Quand de telles valeurs existent, une carte **Anciens réglages détectés** apparaît à leur place, liste ce qui a été trouvé en toutes lettres et propose un seul bouton **Réinitialiser**. Ce bouton supprime d’un coup les clés concernées de `settings.json` (`auxiliaryModel`, `imageModel`, `providerBackupModel`, `subagentDefaultModel`, `defaultServiceTier`, `autonomous`) ainsi que les fichiers de données du relais après quota et des budgets, sans toucher aux autres clés. Rien n’est modifié sans ce clic explicite. Après la réinitialisation, la carte disparaît.
 

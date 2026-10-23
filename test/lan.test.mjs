@@ -468,6 +468,15 @@ test('LAN access requires login and never exposes health metadata or access cred
   assert.equal('instanceId' in health.json, false);
 });
 
+test('full-control LAN bootstrap carries the global subagent default for the setup steps', async (t) => {
+  const f = await fixture(t, { readOnly: false });
+  const bootstrap = await f.api('/api/bootstrap', { headers: { Cookie: await f.authenticate() } });
+  assert.equal(bootstrap.status, 200);
+  assert.equal(bootstrap.json.preferences.readOnly, false);
+  // Empty default (no Studio subagent model yet): known, not missing.
+  assert.equal(bootstrap.json.subagentModel, '');
+});
+
 test('successful LAN login issues an opaque HttpOnly cookie and enables read-only history', async (t) => {
   const { api, login } = await fixture(t);
   assert.equal((await login('00000000')).status, 401);
@@ -484,6 +493,8 @@ test('successful LAN login issues an opaque HttpOnly cookie and enables read-onl
   assert.equal(bootstrap.status, 200);
   assert.equal(bootstrap.json.preferences.readOnly, true);
   assert.equal(bootstrap.json.preferences.remote, true);
+  // Consultation never sees settings readable only in full control.
+  assert.equal('subagentModel' in bootstrap.json, false);
   const history = await api('/api/history?id=native-session', { headers });
   assert.equal(history.status, 200);
   assert.match(history.text, /Existing conversation/);

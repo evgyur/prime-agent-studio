@@ -695,6 +695,7 @@ function computeSetup() {
 // The welcome of a view is shown only while its conversation has no message:
 // that is exactly where the setup steps appear and the first send waits.
 const welcomeOf = (view) => view?.shell?.welcome || $('welcome');
+// After a change made elsewhere (Models dialog): the bootstrap value is stale.
 async function refreshSubagentDefault() {
   try {
     const data = await api('/api/subagent-defaults');
@@ -728,6 +729,12 @@ async function saveSubagentDefault(model) {
 document.addEventListener('subagent-defaults-changed', (event) => {
   if (event.detail?.source !== 'setup' && !event.detail?.cwd) void refreshSubagentDefault();
 });
+// "Setup complete" follows a step done in the gate, never a catalog refresh.
+let setupActed = false;
+const setupStep = (action) => (button) => {
+  setupActed = true;
+  return action(button);
+};
 const setupGate = createSetupGate({
   getState: () => ({
     setup: state.setup,
@@ -737,8 +744,8 @@ const setupGate = createSetupGate({
     readOnly: state.readOnly,
     providersAvailable: state.providersAvailable,
   }),
-  connectProvider: (button) => providerSettingsUI.open(button),
-  chooseMainModel: (button) =>
+  connectProvider: setupStep((button) => providerSettingsUI.open(button)),
+  chooseMainModel: setupStep((button) =>
     openModelPicker({
       button,
       value: state.modelCatalogDefault,
@@ -748,7 +755,8 @@ const setupGate = createSetupGate({
       },
       onSelect: (id) => void saveDefaultModel(id),
     }),
-  chooseSubagentModel: (button) =>
+  ),
+  chooseSubagentModel: setupStep((button) =>
     openModelPicker({
       button,
       value: state.subagentModel || '',
@@ -758,13 +766,17 @@ const setupGate = createSetupGate({
       },
       onSelect: (id) => void saveSubagentDefault(id),
     }),
-  useMainForSubagents: () => saveSubagentDefault(state.modelCatalogDefault),
+  ),
+  useMainForSubagents: setupStep(() => saveSubagentDefault(state.modelCatalogDefault)),
 });
 function renderConfigurationWarning() {
   const wasIncomplete = state.setup.complete === false;
   const setup = computeSetup();
   setupGate.render();
-  if (wasIncomplete && setup.complete && !setup.unknown) toast(() => tr('setup.done'));
+  if (wasIncomplete && setup.complete && !setup.unknown && setupActed) {
+    setupActed = false;
+    toast(() => tr('setup.done'));
+  }
   const providerMissing = Array.isArray(state.configuredProviders) && state.configuredProviders.length === 0;
   const modelMissing = !($('model-select').value || state.modelCatalogDefault);
   // An empty conversation shows the setup steps instead of this banner.
@@ -4510,8 +4522,9 @@ async function bootstrap() {
     sessionActivity.initialize(allSessions());
     state.version = data.version || {};
     for (const run of data.runs || []) state.runs.set(run.id, run);
+    // Known before the first render: the setup steps never flash or lag.
+    state.subagentModel = typeof data.subagentModel === 'string' ? data.subagentModel : undefined;
     populateModels(data.models);
-    void refreshSubagentDefault();
     state.projectCwd =
       state.projects.find((p) => samePath(p.cwd, selection.cwd))?.cwd || state.projects[0]?.cwd || null;
     const initialView = convViews?.focused();

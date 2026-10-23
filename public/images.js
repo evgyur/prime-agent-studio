@@ -214,8 +214,8 @@ export function createImageComposer({ getContext, onChange, onError, roots }) {
       } catch {}
     }
   }
-  // Removed imageModel setting is never consulted: image attachments stay
-  // allowed only on image-capable conversation models, as when unset.
+  // Studio never consults the removed imageModel setting: images are allowed
+  // only on image-capable conversation models.
   const incompatible = () => {
     const context = getContext();
     if (!entry().items.some((item) => item.type === 'image')) return false;

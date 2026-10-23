@@ -32,7 +32,7 @@ While the setup is incomplete, a new conversation shows three steps instead of t
 
 - A provider counts as connected once it offers at least one usable model.
 - Both models must come from a connected provider. **Use the same** reuses the main model for subagents.
-- The choices are saved as default models: change them later in **Preferences → Models & agents → Configure models**.
+- The choices are saved as default models: change them later in **Preferences → Models & agents → Configure models**. Step 3 sets the global subagent setting; a per-project exception stays available in the **Agents** tab.
 - If a provider is disconnected later, the steps come back in new conversations. Existing conversations keep their history and show a warning banner.
 - Read-only remote access does not show these steps.
 
@@ -76,7 +76,7 @@ Before writing, Studio saves a `models.json.prime-studio.bak` or `settings.json.
 
 ### Legacy settings detected
 
-The **advanced models**, **autonomous budgets**, **quota fallback** and **caps** settings are no longer managed by Studio: their card was removed from the **Configure** screen. Already saved values stay active in the native engine, which reads `settings.json` itself.
+The **advanced models**, **autonomous budgets**, **quota fallback** and **caps** settings are no longer managed by Studio: their card was removed from the **Configure** screen, and Studio no longer uses them for its own features. Already saved values stay in `settings.json`, where the engine may still apply some of them, for example the auxiliary model for summaries or the service tier. An image sent to a text-only model is always refused, even if an image model is saved.
 
 When such values exist, a **Legacy settings detected** card appears in their place, lists what was found in plain words, and offers a single **Reset** button. This button deletes at once the affected `settings.json` keys (`auxiliaryModel`, `imageModel`, `providerBackupModel`, `subagentDefaultModel`, `defaultServiceTier`, `autonomous`) plus the quota fallback and budget data files, without touching other keys. Nothing changes without this explicit click. After the reset, the card disappears.
 

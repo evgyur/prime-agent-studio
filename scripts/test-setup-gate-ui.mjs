@@ -142,9 +142,16 @@ try {
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
+  // Delay the defaults route: the steps must not depend on it at startup.
+  await page.route('**/api/subagent-defaults', async (route) => {
+    await new Promise((done) => setTimeout(done, 1500));
+    await route.continue();
+  });
   await page.goto(url);
   await expect(page.locator('#connection-label')).toContainText('connecté');
   const gate = page.locator('#welcome .setup-gate');
+  // Known from the first render: no window where the first send slips through.
+  await expect(gate).toBeVisible({ timeout: 1000 });
   const step = (id) => gate.locator(`[data-setup-step="${id}"]`);
   await expect(gate).toBeVisible();
   await expect(page.locator('#welcome .starter-grid')).toBeHidden();

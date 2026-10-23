@@ -6268,8 +6268,8 @@ export const messages = {
   },
   'engine.legacy_title': { fr: 'Anciens réglages détectés', en: 'Legacy settings detected' },
   'engine.legacy_note': {
-    fr: 'Ces réglages ne sont plus gérés par Studio, mais restent actifs dans le moteur natif. Réinitialiser supprime toutes ces valeurs d’un coup ; rien n’est modifié sans ce clic.',
-    en: 'These settings are no longer managed by Studio but stay active in the native engine. Reset deletes all of them at once; nothing changes without that click.',
+    fr: 'Ces réglages ne sont plus gérés par Studio. Le moteur peut encore en appliquer certains, et un modèle de secours bloque les exécutions. Réinitialiser supprime toutes ces valeurs d’un coup ; rien n’est modifié sans ce clic.',
+    en: 'Studio no longer manages these settings. The engine may still apply some of them, and a fallback model blocks runs. Reset deletes all of them at once; nothing changes without that click.',
   },
   'engine.legacy_loading': { fr: 'Recherche d’anciens réglages…', en: 'Looking for legacy settings…' },
   'engine.legacy_reset': { fr: 'Réinitialiser', en: 'Reset' },
@@ -6277,7 +6277,10 @@ export const messages = {
   'engine.legacy_auxiliaryModel': { fr: 'Modèle auxiliaire (résumés et affinage)', en: 'Auxiliary model (summaries and refinement)' },
   'engine.legacy_imageModel': { fr: 'Modèle pour les images', en: 'Image model' },
   'engine.legacy_providerBackupModel': { fr: 'Modèle de secours', en: 'Fallback model' },
-  'engine.legacy_subagentDefaultModel': { fr: 'Sous-agent natif par défaut', en: 'Native subagent default' },
+  'engine.legacy_subagentDefaultModel': {
+    fr: 'Modèle natif des sous-agents (moteur)',
+    en: 'Native subagent model (engine)',
+  },
   'engine.legacy_defaultServiceTier': { fr: 'Niveau de service par défaut', en: 'Default service tier' },
   'engine.legacy_autonomous': { fr: 'Budgets autonomes', en: 'Autonomous budgets' },
   'engine.legacy_quotaFallback': { fr: 'Relais après quota (liste et relance automatique)', en: 'Quota fallback (list and automatic retry)' },

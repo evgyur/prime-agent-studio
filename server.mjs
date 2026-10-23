@@ -1076,9 +1076,8 @@ export function createApp(options = {}) {
     if (images.length) {
       const catalog = await models();
       const selected = catalog.models?.find((model) => model.id === (body.model || catalog.default?.model));
-      // Removed imageModel setting is never consulted here: the engine still
-      // applies a saved value itself for runs that start, but Studio refuses
-      // image turns on text-only models as when the setting was unset.
+      // Studio never consults the removed imageModel setting: image turns on a
+      // text-only model are always refused, whatever settings.json holds.
       if (selected?.input && !selected.input.includes('image'))
         throw new HttpError(400, tr('ui.ce_modele_ne_prend_pas_en_charge_les_images_choisissez_un_modele'));
     }
@@ -1447,12 +1446,20 @@ export function createApp(options = {}) {
           instanceId: process.env.PRIME_AGENT_GUI_INSTANCE || null,
         });
       if (method === 'GET' && path === '/api/bootstrap') {
-        const [overview, version, catalog] = await Promise.all([store.overview(), status(), models()]);
+        const [overview, version, catalog, subagentPolicy] = await Promise.all([
+          store.overview(),
+          status(),
+          models(),
+          subagentDefaults.get().catch(() => null),
+        ]);
         return json(res, 200, {
           ...overview,
           projects: overview.projects.map((project) => ({ ...project, metricsId: metricsProjectId(project.cwd) })),
           version,
           models: catalog,
+          // Global subagent default for the first-message setup steps, known
+          // before the first render (null when the settings are unreadable).
+          subagentModel: subagentPolicy?.global?.model ?? null,
           studioPreferences: await studioPreferences(),
           runs: activeRuns(),
           preferences: {

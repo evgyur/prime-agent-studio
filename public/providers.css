@@ -49,6 +49,7 @@
 }
 .providers-toolbar button {
   flex-shrink: 0;
+  white-space: nowrap;
 }
 .providers-count {
   font-size: 12px;

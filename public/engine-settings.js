@@ -46,21 +46,38 @@ export function createEngineSettings({
   let generation = 0;
   let needsLoad = true;
 
-  root.innerHTML = `
-    <div class="model-defaults-heading">
-      <div>
-        <h3 id="engine-settings-heading" data-i18n="engine.legacy_title">Anciens réglages détectés</h3>
-      </div>
-      <button id="${scopedId('reset-legacy-settings')}" class="primary-button" type="button" data-i18n="engine.legacy_reset">Réinitialiser</button>
-    </div>
-    <p class="model-defaults-note" data-i18n="engine.legacy_note"></p>
-    <ul class="engine-legacy-list"></ul>
-    <p class="engine-status subagent-status" role="status"></p>
-    <p class="engine-error form-error" role="alert" hidden></p>`;
-
-  const $ = (selector) => root.querySelector(selector);
-  const resetButton = $(`#${CSS.escape(scopedId('reset-legacy-settings'))}`);
-  const list = $('.engine-legacy-list');
+  // Built with createElement (no innerHTML): owned ids stay unique per
+  // Preferences instance and the dual-instance stub can observe them.
+  const el = (tag, className, i18n) => {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (i18n) node.dataset.i18n = i18n;
+    return node;
+  };
+  root.replaceChildren();
+  const headingWrap = el('div', 'model-defaults-heading');
+  const headingText = el('div');
+  const heading = el('h3', null, 'engine.legacy_title');
+  // The dialog labels this card by heading id; clones skip the id so the
+  // document never carries duplicates.
+  if (isPrimary) heading.id = 'engine-settings-heading';
+  heading.textContent = tr('engine.legacy_title');
+  headingText.append(heading);
+  const resetButton = document.createElement('button');
+  resetButton.type = 'button';
+  resetButton.className = 'primary-button';
+  resetButton.id = scopedId('reset-legacy-settings');
+  resetButton.dataset.i18n = 'engine.legacy_reset';
+  resetButton.textContent = tr('engine.legacy_reset');
+  headingWrap.append(headingText, resetButton);
+  const note = el('p', 'model-defaults-note', 'engine.legacy_note');
+  const list = el('ul', 'engine-legacy-list');
+  const statusLine = el('p', 'engine-status subagent-status');
+  statusLine.setAttribute('role', 'status');
+  const errorBox = el('p', 'engine-error form-error');
+  errorBox.setAttribute('role', 'alert');
+  errorBox.hidden = true;
+  root.append(headingWrap, note, list, statusLine, errorBox);
 
   function translateStatic() {
     for (const element of root.querySelectorAll('[data-i18n]')) {
@@ -72,13 +89,12 @@ export function createEngineSettings({
   translateStatic();
 
   function error(message = '') {
-    const box = $('.engine-error');
-    bindText(box, () => (message ? translateKnown(message) : ''));
-    box.hidden = !message;
+    bindText(errorBox, () => (message ? translateKnown(message) : ''));
+    errorBox.hidden = !message;
   }
 
   function status(messageKey) {
-    bindText($('.engine-status'), () => (messageKey ? tr(messageKey) : ''));
+    bindText(statusLine, () => (messageKey ? tr(messageKey) : ''));
   }
 
   function readOnly() {

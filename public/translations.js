@@ -6,24 +6,8 @@ export const languages = [
 ];
 export const messages = {
 
-  "routing.question": {"en": "Budget reached", "fr": "Budget atteint"},
-  "routing.extend": {"en": "Continue +50%", "fr": "Continuer avec +50 %"},
-  "routing.unlimited": {"en": "Unlimited this run", "fr": "Sans limite pour cette exécution"},
-  "routing.stop": {"en": "Stop", "fr": "Arrêter"},
 
-  "routing.stopped": {"en": "Budget · run stopped", "fr": "Budget · exécution arrêtée"},
-  "routing.projectUsage": {"en": "Project today (UTC) · {tokens} tokens · {cost} USD estimated", "fr": "Projet aujourd’hui (UTC) · {tokens} tokens · {cost} USD estimés"},
-  "routing.costStop": {"en": "The USD cap stops the run when cost cannot be measured.", "fr": "Le plafond USD arrête l’exécution si le coût ne peut pas être mesuré."},
-  "routing.caps": {"en": "Caps · {tokens} tokens · {cost} USD", "fr": "Plafonds · {tokens} tokens · {cost} USD"},
 
-  "routing.off": {"en": "Off", "fr": "Désactivé"},
-  "routing.quota": {"en": "Provider limit reached", "fr": "Limite du fournisseur atteinte"},
-  "routing.reset": {"en": "Expected reset: {time}", "fr": "Réinitialisation prévue : {time}"},
-  "routing.resetUnknown": {"en": "Reset time not supplied by the provider.", "fr": "Heure de réinitialisation non fournie par le fournisseur."},
-  "routing.warning": {"en": "Budget · 80% reached", "fr": "Budget · seuil de 80 % atteint"},
-  "routing.paused": {"en": "Budget reached · waiting for your choice", "fr": "Budget atteint · en attente de votre choix"},
-  "routing.costUnknown": {"en": "Cost unavailable; the USD cap cannot be evaluated.", "fr": "Coût indisponible ; le plafond USD ne peut pas être évalué."},
-  "routing.usage": {"en": "{tokens} tokens · {cost} USD estimated", "fr": "{tokens} tokens · {cost} USD estimés"},
 
   "context.empty": { en: "No indexed sources", fr: "Aucune source indexée" },
   "docking.context": {"en": "Context (Beta)", "fr": "Contexte (Bêta)"},

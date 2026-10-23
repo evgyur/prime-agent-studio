@@ -199,19 +199,6 @@ test('thinkingLevelMap preserves null disabling mappings and drops garbage', asy
   assert.deepEqual(config.models[0].thinkingLevelMap, { off: null, minimal: 'minimal' });
 });
 
-test('muse runs block on any configured fallback, other primaries proceed', async () => {
-  const { isBlockedMuseCodeBackup } = await import('../lib/muse-code-gate.mjs');
-  assert.equal(isBlockedMuseCodeBackup({ primaryProvider: 'muse-code', backupRef: 'meta/muse-spark-1.3' }), true);
-  assert.equal(isBlockedMuseCodeBackup({ primaryProvider: 'muse-code', backupRef: 'openrouter/x/y' }), true);
-  assert.equal(isBlockedMuseCodeBackup({ primaryProvider: 'muse-code', backupRef: 'prime-inference/m' }), true);
-  assert.equal(isBlockedMuseCodeBackup({ primaryProvider: 'muse-code', backupRef: 'bare-id' }), true);
-  assert.equal(isBlockedMuseCodeBackup({ primaryProvider: 'muse-code', backupRef: 'muse-code/other' }), true);
-  assert.equal(isBlockedMuseCodeBackup({ primaryProvider: 'muse-code', backupRef: '' }), false);
-  assert.equal(isBlockedMuseCodeBackup({ primaryProvider: 'muse-code', backupRef: null }), false);
-  assert.equal(isBlockedMuseCodeBackup({ primaryProvider: 'meta', backupRef: 'openrouter/x' }), false);
-  assert.equal(isBlockedMuseCodeBackup({ primaryProvider: '', backupRef: 'meta/m' }), false);
-});
-
 test('missing or invalid adapter stays invisible without throwing', async () => {
   assert.equal(await loadMuseCodeConfig(() => Promise.reject(new Error('no module'))), null);
   assert.equal(await loadMuseCodeConfig(null), null);

@@ -989,11 +989,6 @@
 .engine-legacy-list { list-style: none; padding: 0; margin: 12px 0 4px; }
 .engine-legacy-list li { font-size: 12px; color: var(--text); border-bottom: 1px solid var(--line-soft); padding: 7px 0; }
 .engine-legacy-list li:last-child { border-bottom: none; }
-.run-guard { border: 1px solid var(--line); border-radius: 7px; padding: 11px 13px; margin: 8px 0; background: var(--surface); font-size: 12px; }
-.run-guard h4 { margin: 0 0 5px; color: var(--amber); font-size: 12px; font-weight: 600; }
-.run-guard p { margin: 5px 0; color: var(--muted); font-size: 11px; }
-@media (pointer: coarse), (max-width: 600px) {
-}
 @media (max-width: 600px) {
   .model-config-modal .subagent-controls { grid-template-columns: minmax(0, 1fr); }
 }

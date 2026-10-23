@@ -48,7 +48,6 @@ import {
 } from './project-navigation.js';
 import { createKnowledgeBrowser } from './knowledge.js';
 import { createPerformance } from './performance.js';
-import { renderRunGuard } from './run-guards.js';
 import { createContext } from './context.js';
 import { createProjectArchives } from './project-archives.js';
 import { createWorktreesUI } from './worktrees.js';
@@ -1377,8 +1376,6 @@ function updateComposer(view = null) {
   const viewSessionId = target?.sessionId ?? state.sessionId;
   const run = target ? runForView(target) : activeRun();
   const running = isRunning(run);
-  const guardRun = run || [...state.runs.values()].filter((entry) => viewSessionId && entry.sessionId === viewSessionId).sort((a, b) => String(b.startedAt).localeCompare(String(a.startedAt)))[0];
-  renderRunGuard(node('composer-form', 'form'), guardRun);
   const isPrimaryTarget = !target || target.id === PRIMARY_VIEW_ID;
   const viewLoading = target ? !!target.loading : state.loading;
   const viewOverview = isPrimaryTarget ? state.projectOverview : false;

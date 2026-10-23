@@ -5559,6 +5559,10 @@ export const messages = {
     fr: 'Interpréteur introuvable pour exécuter ce script ({value1}).',
     en: 'Interpreter not found to run this script ({value1}).',
   },
+  'server.renommez_ce_script_pour_l_executer_depuis_le_studio': {
+    fr: 'Ce chemin contient « % », que la console Windows interpréterait. Renommez le fichier ou son dossier pour l’exécuter depuis le Studio.',
+    en: 'This path contains “%”, which the Windows console would interpret. Rename the file or its folder to run it from Studio.',
+  },
   'server.le_pc_n_a_pas_pu_executer_ce_script': {
     fr: 'Le PC n’a pas pu exécuter ce script. Réessayez.',
     en: 'The PC could not run this script. Please try again.',

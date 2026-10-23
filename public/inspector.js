@@ -2166,10 +2166,12 @@ export function createInspector({
     title.id = 'script-run-title';
     heading.append(title);
     const fileName = node('p', 'script-run-file', name);
+    // The folder matters only when the script is not at the project root.
     const filePath = node('p', 'script-run-path');
     const code = document.createElement('code');
     code.textContent = file.path;
     filePath.append(code);
+    filePath.hidden = file.path === name;
     const warning = node('p', 'script-run-warning', () =>
       tr('ui.le_script_va_s_executer_sur_votre_pc_dans_une_fenetre_visible'),
     );

@@ -4,6 +4,8 @@ import { mkdtemp, writeFile, mkdir, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { request } from 'node:http';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import {
   createScriptRunner,
   runnerKindFor,
@@ -94,35 +96,87 @@ test('run plans use one visible console that stays open in the script folder', (
   const cmd = 'C:\\Windows\\System32\\cmd.exe';
   const ps = 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe';
   const cases = {
-    bat: { interpreter: cmd, match: /^\/k call "/ },
-    ps1: { interpreter: ps, match: /-NoExit -ExecutionPolicy Bypass -File "/ },
-    py: { interpreter: 'C:\\Python\\py.exe', match: /^\/k "C:\\Python\\py.exe" "/ },
-    node: { interpreter: 'C:\\node\\node.exe', match: /^\/k "C:\\node\\node.exe" "/ },
-    bash: { interpreter: 'C:\\Git\\bin\\bash.exe', match: /^\/k "C:\\Git\\bin\\bash.exe" "/ },
-    cscript: { interpreter: 'C:\\Windows\\System32\\cscript.exe', match: /\/\/NoLogo "/ },
-    ruby: { interpreter: 'C:\\Ruby\\ruby.exe', match: /^\/k "C:\\Ruby\\ruby.exe" "/ },
+    bat: { interpreter: cmd, inner: (file) => quoteCmdArg(file) },
+    ps1: {
+      interpreter: ps,
+      inner: (file) => `${quoteCmdArg(ps)} -NoExit -ExecutionPolicy Bypass -File ${quoteCmdArg(file)}`,
+    },
+    py: { interpreter: 'C:\\Python\\py.exe', inner: (file) => `"C:\\Python\\py.exe" ${quoteCmdArg(file)}` },
+    node: { interpreter: 'C:\\node\\node.exe', inner: (file) => `"C:\\node\\node.exe" ${quoteCmdArg(file)}` },
+    bash: {
+      interpreter: 'C:\\Program Files\\Git\\bin\\bash.exe',
+      inner: (file) => `"C:\\Program Files\\Git\\bin\\bash.exe" ${quoteCmdArg(file)}`,
+    },
+    cscript: {
+      interpreter: 'C:\\Windows\\System32\\cscript.exe',
+      inner: (file) => `"C:\\Windows\\System32\\cscript.exe" //NoLogo ${quoteCmdArg(file)}`,
+    },
+    ruby: { interpreter: 'C:\\Ruby\\ruby.exe', inner: (file) => `"C:\\Ruby\\ruby.exe" ${quoteCmdArg(file)}` },
+    perl: { interpreter: 'p', inner: (file) => `"p" ${quoteCmdArg(file)}` },
+    php: { interpreter: 'p', inner: (file) => `"p" ${quoteCmdArg(file)}` },
+    lua: { interpreter: 'l', inner: (file) => `"l" ${quoteCmdArg(file)}` },
   };
-  for (const [kind, { interpreter, match }] of Object.entries(cases)) {
+  for (const [kind, { interpreter, inner }] of Object.entries(cases)) {
     const file = nasty(`run ${kind}.ext`);
     const launch = buildRunLaunch(kind, file, { interpreter, cmdPath: cmd });
     assert.equal(launch.exe, cmd, kind);
-    assert.match(launch.params, match, kind);
-    assert.ok(launch.params.includes(quoteCmdArg(file)), `${kind} keeps the full quoted path`);
+    // One outer pair of quotes under /s: cmd strips exactly that pair.
+    assert.equal(launch.params, `/d /s /v:off /k "${inner(file)}"`, kind);
     assert.equal(launch.folder, dirname(file), kind);
   }
-  assert.match(
-    buildRunLaunch('perl', nasty('s.pl'), { interpreter: 'p', cmdPath: cmd }).params,
-    /^\/k "p" "/,
-  );
-  assert.match(
-    buildRunLaunch('php', nasty('s.php'), { interpreter: 'p', cmdPath: cmd }).params,
-    /^\/k "p" "/,
-  );
-  assert.match(
-    buildRunLaunch('lua', nasty('s.lua'), { interpreter: 'l', cmdPath: cmd }).params,
-    /^\/k "l" "/,
-  );
+  // No CALL: it would double carets and expand % a second time.
+  assert.doesNotMatch(buildRunLaunch('bat', nasty('a.bat'), { cmdPath: cmd }).params, /\bcall\b/i);
+  // cmd expands %VAR% even inside quotes: such paths are refused, never run.
+  for (const file of ['C:\\100%\\run.bat', 'C:\\proj\\x%TEMP%.py', 'C:\\proj\\%PATH%&calc&.ps1'])
+    assert.throws(
+      () => buildRunLaunch(runnerKindFor(file), file, { interpreter: 'C:\\i.exe', cmdPath: cmd }),
+      { status: 400, message: messages['server.renommez_ce_script_pour_l_executer_depuis_le_studio'].fr },
+      file,
+    );
+  assert.throws(() => buildRunLaunch('py', 'C:\\proj\\ok.py', { interpreter: 'C:\\50%\\py.exe', cmdPath: cmd }), {
+    status: 400,
+  });
 });
+
+// The real cmd.exe parses the command line, not CommandLineToArgvW: this test
+// runs the exact launch, with /c instead of /k so the hidden console exits.
+// The scripts only print a marker; nothing else runs and no window opens.
+test(
+  'the real cmd.exe keeps paths with spaces, &, ^, parentheses and unicode literal',
+  { skip: process.platform !== 'win32' },
+  async (t) => {
+    const root = await mkdtemp(join(tmpdir(), 'prime-run-cmd-'));
+    t.after(async () => {
+      assert.equal(dirname(resolve(root)), resolve(tmpdir()));
+      await rm(root, { recursive: true, force: true });
+    });
+    const folder = join(root, 'dossier é & (1); x^y !z');
+    await mkdir(folder, { recursive: true });
+    const env = process.env;
+    const cmd = join(env.SystemRoot || 'C:\\Windows', 'System32', 'cmd.exe');
+    const scripts = [
+      ['node', 'pro^be & (1)!.js', 'console.log("NODE-OK " + process.argv[1]);'],
+      ['bat', 'ru^n & (1)!.bat', '@echo BAT-OK'],
+      ['ps1', 'tâche & (1)!.ps1', 'Write-Output PS-OK'],
+    ];
+    for (const [kind, name, body] of scripts) {
+      const file = join(folder, name);
+      await writeFile(file, body);
+      const interpreter = resolveRunnerInterpreter(kind, { env, nodePath: process.execPath });
+      if (!interpreter) continue;
+      const launch = buildRunLaunch(kind, file, { interpreter, cmdPath: cmd });
+      const params = launch.params.replace(' /k ', ' /c ').replace(' -NoExit', '');
+      const { stdout } = await promisify(execFile)(cmd, [params], {
+        cwd: launch.folder,
+        windowsVerbatimArguments: true,
+        windowsHide: true,
+        timeout: 30000,
+      });
+      const expected = { node: `NODE-OK ${file}`, bat: 'BAT-OK', ps1: 'PS-OK' }[kind];
+      assert.equal(stdout.trim(), expected, kind);
+    }
+  },
+);
 
 test('interpreter resolution never executes anything and reports plain paths', () => {
   const env = { SystemRoot: 'C:\\Windows', PATH: 'C:\\Python;D:\\tools' };

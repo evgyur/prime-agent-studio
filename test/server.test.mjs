@@ -115,56 +115,35 @@ test('retired model choices are rejected for messages and defaults without switc
   assert.equal(runtime.controls[0].input.model, 'openrouter/minimax/minimax-m3');
 });
 
-test('native image settings reject text-only and unavailable models without changing Computer Use', async (t) => {
+test('removed engine values are write-rejected and read as legacy only', async (t) => {
   const runtime = fakeRuntime();
   runtime.getModels = async () => ({
     models: [
       { id: 'test/vision', input: ['text', 'image'], availability: 'available' },
       { id: 'test/text', input: ['text'], availability: 'available' },
-      { id: 'test/unavailable', input: ['image'], availability: 'unavailable' },
     ],
   });
   const f = await fixture(t, { runtime });
-  for (const [imageModel, status] of [
-    ['test/text', 400],
-    ['text', 400],
-    ['test/missing', 400],
-    ['test/unavailable', 409],
-  ]) {
-    const result = await f.api('/api/engine-settings', { method: 'POST', body: { imageModel } });
-    assert.equal(result.status, status, result.text);
-  }
   const empty = (await f.api('/api/engine-settings')).json;
   assert.equal(empty.revision, null);
-  const saved = await f.api('/api/engine-settings', {
-    method: 'POST',
-    body: {
-      revision: empty.revision,
-      imageModel: 'test/vision',
-      defaultServiceTier: 'flex',
-    },
-  });
-  assert.equal(saved.status, 200, saved.text);
-  assert.equal(saved.json.imageModel, 'test/vision');
-  assert.equal(saved.json.defaultServiceTier, 'flex');
-  assert.equal(runtime.controls.length, 0, 'Saving defaults does not start a run');
-  const raw = JSON.parse(await readFile(join(f.agentHome, 'settings.json'), 'utf8'));
-  assert.equal('computerModel' in raw, false);
-  assert.equal('computerImageModel' in raw, false);
-  const cleared = await f.api('/api/engine-settings', {
-    method: 'POST',
-    body: {
-      revision: saved.json.revision,
-      imageModel: null,
-      defaultServiceTier: null,
-    },
-  });
-  assert.equal(cleared.status, 200, cleared.text);
-  assert.equal(cleared.json.imageModel, '');
-  assert.equal(cleared.json.defaultServiceTier, 'default');
+  assert.equal(empty.hasLegacy, false);
+  assert.deepEqual(empty.items, []);
+  for (const body of [
+    { imageModel: 'test/vision' },
+    { auxiliaryModel: 'test/vision' },
+    { providerBackupModel: 'test/vision' },
+    { nativeSubagentDefaultModel: 'test/vision' },
+    { defaultServiceTier: 'flex' },
+    { autonomous: { maxTurns: 4 } },
+  ]) {
+    const result = await f.api('/api/engine-settings', { method: 'POST', body });
+    assert.equal(result.status, 400, `${JSON.stringify(body)}: ${result.text}`);
+  }
+  assert.equal((await f.api('/api/engine-settings')).json.hasLegacy, false);
+  assert.equal(runtime.controls.length, 0, 'Rejected writes start no run');
 });
 
-test('image turns ride a usable native imageModel without replacing the conversation model', async (t) => {
+test('image turns stay refused on text-only models when only a legacy imageModel is saved', async (t) => {
   const png = PNG_BASE64;
   const textId = 'test/text',
     visionId = 'test/vision';
@@ -178,39 +157,14 @@ test('image turns ride a usable native imageModel without replacing the conversa
   });
   const f = await fixture(t, { runtime });
   const images = [{ type: 'image', mimeType: 'image/png', data: png }];
+  // A pre-removal settings.json still carries the saved value: Studio reports
+  // it as legacy but never consults it, behaving as when it was unset.
+  await writeFile(join(f.agentHome, 'settings.json'), JSON.stringify({ imageModel: visionId }), 'utf8');
+  assert.deepEqual((await f.api('/api/engine-settings')).json.items, ['imageModel']);
   const refused = await f.run({ model: textId, message: 'Look', images });
   assert.equal(refused.status, 400);
   assert.equal(runtime.controls.length, 0, 'Refused images start no run');
-  assert.equal((await f.api('/api/models')).json.imageModel, null);
-  const saved = await f.api('/api/engine-settings', { method: 'POST', body: { imageModel: visionId } });
-  assert.equal(saved.status, 200, saved.text);
-  assert.equal((await f.api('/api/models')).json.imageModel, visionId);
-  const admitted = await f.run({ model: textId, message: 'Look', images });
-  assert.equal(admitted.status, 201, admitted.text);
-  assert.equal(runtime.controls.length, 1);
-  assert.equal(runtime.controls[0].input.model, textId, 'Conversation model is preserved');
-  assert.deepEqual(runtime.controls[0].input.images, images, 'Image payload is preserved');
-  // Stale config: the vision model leaves the catalog, so the route closes again.
-  runtime.getModels = async () => ({
-    models: [{ id: textId, input: ['text'], availability: 'available' }],
-    default: { model: textId },
-  });
-  assert.equal((await f.api('/api/models/refresh', { method: 'POST', body: {} })).status, 200);
-  assert.equal((await f.api('/api/models')).json.imageModel, null);
-  const stale = await f.run({ model: textId, message: 'Look', images });
-  assert.equal(stale.status, 400);
-  assert.equal(runtime.controls.length, 1, 'Stale config starts no run and the native error stays visible');
-});
-
-test('service-tier-only settings do not depend on the model catalog', async (t) => {
-  const runtime = fakeRuntime();
-  runtime.getModels = async () => {
-    throw new Error('catalog offline');
-  };
-  const f = await fixture(t, { runtime });
-  const saved = await f.api('/api/engine-settings', { method: 'POST', body: { defaultServiceTier: 'auto' } });
-  assert.equal(saved.status, 200, saved.text);
-  assert.equal(saved.json.defaultServiceTier, 'auto');
+  assert.equal('imageModel' in (await f.api('/api/models')).json, false);
 });
 
 test('manual catalogue refresh and provider model failures invalidate the cached list', async (t) => {
@@ -1008,208 +962,87 @@ test('subagent general defaults validate model availability and thinking; legacy
   assert.deepEqual(legacy.json.effective, { model: '', thinking: '' });
 });
 
-test('quota fallback preferences are validated and revision protected without starting a run', async (t) => {
-  const f = await fixture(t);
-  const initial = await f.api('/api/quota-fallback');
-  assert.equal(initial.status, 200, initial.text);
-  assert.equal(initial.json.automatic, false);
-  const saved = await f.api('/api/quota-fallback', { method: 'PUT', body: {
-    ...initial.json, models: ['openai/gpt-5.6-luna'], automatic: true,
-  } });
-  assert.equal(saved.status, 200, saved.text);
-  assert.equal((await f.api('/api/quota-fallback', { method: 'PUT', body: initial.json })).status, 409);
-  assert.equal((await f.api('/api/quota-fallback', { method: 'PUT', body: {
-    ...saved.json, models: ['missing/model'],
-  } })).status, 400);
-  assert.equal(f.runtime.controls.length, 0);
+test('legacy engine settings report leftovers and reset them without touching the rest', async (t) => {
+  const f = await fixture(t, {});
+  await writeFile(join(f.agentHome, 'settings.json'), JSON.stringify({
+    theme: 'storm',
+    auxiliaryModel: 'openai/summary',
+    imageModel: 'openai/vision',
+    providerBackupModel: 'openai/fallback',
+    subagentDefaultModel: 'openai/sub',
+    defaultServiceTier: 'priority',
+    autonomous: { maxTurns: 6, maxTokens: 'unlimited' },
+  }), 'utf8');
+  const dataDir = join(f.root, 'local');
+  await mkdir(dataDir, { recursive: true });
+  await writeFile(join(dataDir, 'quota-fallback.json'), JSON.stringify({ revision: 2, automatic: true, models: ['openai/a'] }), 'utf8');
+  await writeFile(join(dataDir, 'budget-settings.json'), JSON.stringify({ revision: 3, period: 'day', run: { tokens: 500, estimatedCost: null }, projects: {} }), 'utf8');
+  const detected = (await f.api('/api/engine-settings')).json;
+  assert.equal(detected.hasLegacy, true);
+  assert.deepEqual(detected.items, [
+    'auxiliaryModel',
+    'imageModel',
+    'providerBackupModel',
+    'subagentDefaultModel',
+    'defaultServiceTier',
+    'autonomous',
+    'quotaFallback',
+    'budgets',
+  ]);
+  const reset = await f.api('/api/engine-settings', { method: 'POST', body: { revision: detected.revision } });
+  assert.equal(reset.status, 200, reset.text);
+  assert.equal(reset.json.hasLegacy, false);
+  assert.deepEqual(reset.json.items, []);
+  assert.deepEqual(JSON.parse(await readFile(join(f.agentHome, 'settings.json'), 'utf8')), { theme: 'storm' });
+  for (const name of ['quota-fallback.json', 'budget-settings.json'])
+    await assert.rejects(readFile(join(dataDir, name), 'utf8'), { code: 'ENOENT' });
+  assert.equal((await f.api('/api/engine-settings')).json.hasLegacy, false);
 });
 
-test('quota retry is an explicit new run in the same conversation, with no loop model mutation', async (t) => {
-  const runtime = fakeRuntime();
-  runtime.getModels = async () => ({ models: [
-    { id: 'openai/source', thinkingLevels: ['off'] },
-    { id: 'openai/gpt-5.6-luna', thinkingLevels: ['off'] },
-  ], default: { model: 'openai/source' } });
-  const f = await fixture(t, { runtime });
-  const settings = (await f.api('/api/quota-fallback')).json;
-  assert.equal((await f.api('/api/quota-fallback', { method: 'PUT', body: {
-    ...settings, models: ['openai/gpt-5.6-luna'],
-  } })).status, 200);
-  const started = await f.run({ sessionId: 'native-session' });
+test('legacy reset is revision protected and rejects removed setting writes', async (t) => {
+  const f = await fixture(t, {});
+  await writeFile(join(f.agentHome, 'settings.json'), JSON.stringify({ auxiliaryModel: 'openai/a' }), 'utf8');
+  const detected = (await f.api('/api/engine-settings')).json;
+  assert.equal((await f.api('/api/engine-settings', { method: 'POST', body: { auxiliaryModel: 'openai/b' } })).status, 400);
+  assert.equal((await f.api('/api/engine-settings', { method: 'POST', body: { revision: 'x' } })).status, 400);
+  assert.equal((await f.api('/api/engine-settings', { method: 'POST', body: { revision: detected.revision.slice(0, -1) + '0' } })).status, 409);
+  assert.equal((await f.api('/api/engine-settings')).json.hasLegacy, true);
+});
+
+test('retired quota and budget routes stay gone', async (t) => {
+  const f = await fixture(t, {});
+  for (const [path, method] of [
+    ['/api/quota-fallback', 'GET'],
+    ['/api/quota-fallback', 'PUT'],
+    ['/api/budgets', 'GET'],
+    ['/api/budgets', 'PUT'],
+  ]) {
+    const result = await f.api(path, { method, body: method === 'PUT' ? {} : undefined });
+    assert.equal(result.status, 404, `${method} ${path}: ${result.text}`);
+  }
+  const started = await f.run({});
   assert.equal(started.status, 201, started.text);
-  runtime.controls[0].finish({ status: 'failed', code: 1, error: 'Quota exceeded', quota: {
-    kind: 'usage_limit', resetAt: '2099-01-01T00:00:00.000Z',
-    candidates: [{ model: 'openai/gpt-5.6-luna', automaticEligible: false }], automaticModel: null,
-  } });
-  const unconfirmed = await f.api(`/api/runs/${started.json.id}/quota-retry`, {
-    method: 'POST', body: { model: 'openai/gpt-5.6-luna' },
-  });
-  assert.equal(unconfirmed.status, 409, unconfirmed.text);
-  assert.equal(runtime.controls.length, 1, 'unknown billing requires explicit consent');
-  const retry = await f.api(`/api/runs/${started.json.id}/quota-retry`, {
-    method: 'POST', body: { model: 'openai/gpt-5.6-luna', confirmBillingChange: true },
-  });
-  assert.equal(retry.status, 201, retry.text);
-  assert.notEqual(retry.json.id, started.json.id);
-  assert.equal(retry.json.sessionId, 'native-session');
-  assert.equal(runtime.controls.length, 2);
-  assert.equal(runtime.controls[1].input.model, 'openai/gpt-5.6-luna');
-  assert.equal((await f.api(`/api/runs/${started.json.id}/quota-retry`, {
-    method: 'POST', body: { model: 'openai/gpt-5.6-luna' },
-  })).status, 409);
+  assert.equal((await f.api(`/api/runs/${started.json.id}/quota-retry`, { method: 'POST', body: { model: 'openai/a' } })).status, 404);
 });
 
-test('automatic quota retry rechecks stored account and opt-in, and hands off the session lock', async (t) => {
-  const runtime = fakeRuntime();
-  runtime.getModels = async () => ({ models: [
-    { id: 'openai-codex/source', thinkingLevels: ['off'] },
-    { id: 'openai-codex/fallback', thinkingLevels: ['off'] },
-  ], default: { model: 'openai-codex/source' } });
-  const f = await fixture(t, { runtime });
-  await writeFile(join(f.agentHome, 'auth.json'), JSON.stringify({
-    'openai-codex': { type: 'oauth', access: 'fixture-access', refresh: 'fixture-refresh' },
-  }));
-  const initial = (await f.api('/api/quota-fallback')).json;
-  assert.equal((await f.api('/api/quota-fallback', { method: 'PUT', body: {
-    ...initial, automatic: true, models: ['openai-codex/fallback'],
-  } })).status, 200);
-  const started = await f.run({ sessionId: 'native-session', model: 'openai-codex/source' });
-  assert.equal(started.status, 201, started.text);
-  const stream = await f.sse(started.json.id);
-  runtime.controls[0].finish({ status: 'failed', code: 1, error: 'Quota exceeded', quota: {
-    kind: 'usage_limit', candidates: [{ model: 'openai-codex/fallback', automaticEligible: true }],
-    automaticModel: 'openai-codex/fallback',
-  } });
-  await new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('quota stream did not finish')), 5000);
-    stream.response.once('end', () => { clearTimeout(timer); resolve(); });
-  });
-  const done = stream.events.find((event) => event.kind === 'done');
-  assert.ok(done.quota.retryRunId);
-  assert.equal(runtime.controls.length, 2);
-  assert.equal(runtime.controls[1].input.sessionId, 'native-session');
-  assert.equal(runtime.controls[1].input.quotaAuthorization.targetModel, 'openai-codex/fallback');
-  assert.equal((await f.run({ sessionId: 'native-session' })).status, 409, 'new run retains session lock');
-});
+test('sessions saved with quota and budget data still open', async (t) => {
+  const f = await fixture(t, {});
+  const file = join(f.sessionDir, '2026-native-session.jsonl');
+  const extra = [
+    {
+      type: 'custom_message', id: 'budget-note', parentId: 'initial-message',
+      customType: 'budget_limit', display: true, content: 'Run budget reached at 1,000 tokens.',
+    },
+    {
+      type: 'message', id: 'quota-note', parentId: 'budget-note',
+      message: { role: 'assistant', stopReason: 'error', errorMessage: 'Quota exceeded (usage_limit)', usage: { input: 10, output: 5 } },
+    },
+  ].map((entry) => JSON.stringify(entry)).join('\n') + '\n';
+  await writeFile(file, (await readFile(file, 'utf8')) + extra, 'utf8');
+  const history = await f.api('/api/history?id=native-session');
+  assert.equal(history.status, 200, history.text);
+  const texts = (history.json.messages || []).map((entry) => entry.text ?? entry.message?.content ?? '');
+  assert.ok(texts.some((text) => String(text).includes('Run budget reached')));
 
-test('automatic quota retry never trusts event eligibility without a proven account', async (t) => {
-  const runtime = fakeRuntime();
-  runtime.getModels = async () => ({ models: [
-    { id: 'openai/source', thinkingLevels: ['off'] },
-    { id: 'openai/paid', thinkingLevels: ['off'] },
-  ], default: { model: 'openai/source' } });
-  const f = await fixture(t, { runtime });
-  const settings = (await f.api('/api/quota-fallback')).json;
-  await f.api('/api/quota-fallback', { method: 'PUT', body: {
-    ...settings, automatic: true, models: ['openai/paid'],
-  } });
-  const started = await f.run({ sessionId: 'native-session', model: 'openai/source' });
-  const stream = await f.sse(started.json.id);
-  runtime.controls[0].finish({ status: 'failed', code: 1, quota: {
-    kind: 'usage_limit', automaticModel: 'openai/paid',
-  } });
-  await new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('quota stream did not finish')), 5000);
-    stream.response.once('end', () => { clearTimeout(timer); resolve(); });
-  });
-  assert.equal(runtime.controls.length, 1);
-  const done = stream.events.find((event) => event.kind === 'done');
-  assert.match(done.quota.retryError, /not authorized/);
-  assert.equal(done.quota.retryRunId, undefined);
-});
-
-test('budgets settings require revision, registered projects and explicit daily scope', async (t) => {
-  const f = await fixture(t);
-  const state = await f.api('/api/budgets');
-  assert.equal(state.status, 200, state.text);
-  assert.equal(state.json.period, 'day');
-  const saved = await f.api('/api/budgets', { method: 'PUT', body: {
-    ...state.json, run: { tokens: 1000, estimatedCost: null },
-    projects: { [f.cwd]: { tokens: 5000, estimatedCost: null } },
-  } });
-  assert.equal(saved.status, 200, saved.text);
-  assert.equal((await f.api('/api/budgets', { method: 'PUT', body: state.json })).status, 409);
-  const invalid = await f.api('/api/budgets', { method: 'PUT', body: {
-    ...saved.json, projects: { [join(f.root, 'unregistered')]: { tokens: 5000 } },
-  } });
-  assert.equal(invalid.status, 404, invalid.text);
-  assert.equal(f.runtime.controls.length, 0);
-  const run = await f.run({ allowQuestions: false });
-  assert.equal(run.status, 201, run.text);
-  assert.equal(f.runtime.controls[0].input.budget.tokens, 1000);
-  assert.equal(f.runtime.controls[0].input.budget.project.tokens, 5000);
-  assert.equal(f.runtime.controls[0].input.budget.allowQuestions, false);
-});
-
-test('quota retry cannot replace the failing run account snapshot during admission', async (t) => {
-  const runtime = fakeRuntime();
-  runtime.getModels = async () => ({ models: [
-    { id: 'openai-codex/source', thinkingLevels: ['off'] },
-    { id: 'openai-codex/fallback', thinkingLevels: ['off'] },
-  ], default: { model: 'openai-codex/source' } });
-  const f = await fixture(t, { runtime });
-  await writeFile(join(f.agentHome, 'auth.json'), JSON.stringify({
-    'openai-codex': { type: 'oauth', access: 'fixture-access', refresh: 'fixture-refresh' },
-  }));
-  const initial = (await f.api('/api/quota-fallback')).json;
-  assert.equal((await f.api('/api/quota-fallback', { method: 'PUT', body: {
-    ...initial, automatic: true, models: ['openai-codex/fallback'],
-  } })).status, 200);
-  const started = await f.run({ sessionId: 'native-session', model: 'openai-codex/source' });
-  assert.equal(started.status, 201, started.text);
-  const stream = await f.sse(started.json.id);
-  // The terminal event was prepared for account A. Deliver it after account B
-  // is stored, as can happen between native completion and server admission.
-  await writeFile(join(f.agentHome, 'auth.json'), JSON.stringify({
-    'openai-codex': { type: 'oauth', access: 'OTHER-ACCOUNT', refresh: 'OTHER-REFRESH' },
-  }));
-  runtime.controls[0].finish({ status: 'failed', code: 1, error: 'Quota exceeded', quota: {
-    kind: 'usage_limit', candidates: [{ model: 'openai-codex/fallback', automaticEligible: true }],
-    automaticModel: 'openai-codex/fallback',
-  } });
-  await new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('quota stream did not finish')), 5000);
-    stream.response.once('end', () => { clearTimeout(timer); resolve(); });
-  });
-  const done = stream.events.find((event) => event.kind === 'done');
-  assert.equal(runtime.controls.length, 1, 'must refuse account rotation after failure');
-  assert.equal(started.json.quotaIdentity, undefined, 'identity proof remains private');
-  const refused = await f.api(`/api/runs/${started.json.id}/quota-retry`, {
-    method: 'POST', body: { model: 'openai-codex/fallback' },
-  });
-  assert.equal(refused.status, 409);
-  assert.equal(refused.json.code, 'quota_confirmation_required');
-  assert.equal(runtime.controls.length, 1);
-  const confirmed = await f.api(`/api/runs/${started.json.id}/quota-retry`, {
-    method: 'POST', body: { model: 'openai-codex/fallback', confirmBillingChange: true },
-  });
-  assert.equal(confirmed.status, 201, confirmed.text);
-  assert.equal(runtime.controls.length, 2);
-  assert.equal(runtime.controls[1].input.quotaAuthorization, undefined, 'explicit cross-account consent is not an automatic identity grant');
-});
-
-test('quota retry refuses a model override instead of silently replacing the selected fallback', async (t) => {
-  const runtime = fakeRuntime();
-  runtime.getModels = async () => ({ models: [
-    { id: 'openai/source', thinkingLevels: ['off'] },
-    { id: 'openai/target', thinkingLevels: ['off'] },
-    { id: 'openai/other', thinkingLevels: ['off'] },
-  ], default: { model: 'openai/source' } });
-  let replacement = null;
-  const projectArchives = {
-    recoverPending: async () => {},
-    checkPastudioModelGate: async () => ({ gated: false, model: replacement }),
-  };
-  const f = await fixture(t, { runtime, projectArchives });
-  const state = (await f.api('/api/quota-fallback')).json;
-  await f.api('/api/quota-fallback', { method: 'PUT', body: { ...state, models: ['openai/target'] } });
-  const started = await f.run({ sessionId: 'native-session', model: 'openai/source' });
-  assert.equal(started.status, 201, started.text);
-  runtime.controls[0].finish({ status: 'failed', code: 1, quota: { kind: 'usage_limit' } });
-  replacement = 'openai/other';
-  const retry = await f.api(`/api/runs/${started.json.id}/quota-retry`, { method: 'POST',
-    body: { model: 'openai/target', confirmBillingChange: true },
-  });
-  assert.equal(retry.status, 409, retry.text);
-  assert.equal(runtime.controls.length, 1, 'never start an unselected fallback');
+  assert.ok(history.json.messages.length >= 3);
 });

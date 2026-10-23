@@ -8,7 +8,7 @@ The panel button at the top right of the chat opens the workspace. It stays besi
 
 Find the project, session status, active runs and conversation export. Tracking distinguishes response generation, tool execution, context compaction and waiting for subagents.
 
-Chat status also distinguishes a usage-limit wait, an unavailable provider and use of the backup model selected in preferences. These indicators follow engine events; they change neither the selected model nor recovery limits.
+Chat status also distinguishes quota and provider errors. These indicators follow engine events; they change neither the selected model nor recovery limits.
 
 Usage adds up Prime Agent’s recorded data on the conversation’s current branch: uncached input, output, cache read and cache write tokens. The **cache rate** is the share of input tokens served from the cache: read ÷ (input + read + write), excluding output tokens. Estimated cost appears only when the engine provides it; otherwise it stays **unknown**, not zero. It does not represent your subscription bill.
 

@@ -364,7 +364,7 @@ test('runtime extension registers gated provider but skips user overrides', asyn
 test('muse-code warning, consent and billing texts exist in both languages', async () => {
   const { formatMessage } = await import('../public/i18n-core.js');
   for (const language of ['en', 'fr']) {
-    for (const key of ['providers.muse_code_guidance', 'providers.muse_code_ack', 'engine.backup_billing_warning', 'server.muse_backup_run_refused']) {
+    for (const key of ['providers.muse_code_guidance', 'providers.muse_code_ack', 'server.backup_model_reset_required']) {
       const text = formatMessage(key, {}, language);
       assert.equal(typeof text, 'string');
       assert.ok(text.length > 20);
@@ -506,7 +506,7 @@ test('composed muse medium payload sends effort plus encrypted include', async (
   assert.deepEqual(params.include, ['reasoning.encrypted_content']);
 });
 
-test('runtime start refuses muse runs while a fallback is configured', async (t) => {
+test('runtime start refuses any run while a fallback model is configured', async (t) => {
   const { createAgentRuntime } = await import('../lib/agent.mjs');
   const dir = await mkdtemp(join(tmpdir(), 'prime-studio-muse-run-'));
   t.after(() => rm(dir, { recursive: true, force: true }));
@@ -520,13 +520,16 @@ test('runtime start refuses muse runs while a fallback is configured', async (t)
   await mkdir(join(dir, 'agent'), { recursive: true });
   const settingsFile = join(dir, 'agent', 'settings.json');
   await writeFile(settingsFile, JSON.stringify({ providerBackupModel: 'meta/muse-spark-1.3' }));
-  await assert.rejects(runtime.start({ cwd: dir, message: 'hi', provider: 'muse-code' }), /Muse/);
-  await assert.rejects(runtime.start({ cwd: dir, message: 'hi', model: 'muse-code/muse-spark-1.3' }), /Muse/);
-  await writeFile(
-    settingsFile,
-    JSON.stringify({ defaultProvider: 'muse-code', defaultModel: 'muse-spark-1.3', providerBackupModel: 'openrouter/x' }),
-  );
-  await assert.rejects(runtime.start({ cwd: dir, message: 'hi' }), /Muse/);
+  for (const input of [
+    { cwd: dir, message: 'hi', provider: 'muse-code' },
+    { cwd: dir, message: 'hi', model: 'muse-code/muse-spark-1.3' },
+    { cwd: dir, message: 'hi' },
+  ])
+    await assert.rejects(
+      runtime.start(input),
+      /Anciens réglages détectés.*Réinitialiser/,
+      'refusal points at the legacy reset, whatever the requested provider',
+    );
   // Cleared fallback proceeds past the guard and the fixture CLI completes.
   await writeFile(settingsFile, JSON.stringify({}));
   const handle = await runtime.start({ cwd: dir, message: 'Bonjour', provider: 'muse-code' });

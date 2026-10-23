@@ -1169,8 +1169,6 @@ export function createApp(options = {}) {
         );
       selectedModel = globalComputerModel;
     }
-    if (requiredModel && selectedModel !== requiredModel)
-      throw new HttpError(409, 'The requested fallback conflicts with the active model override. Disable that override before retrying.');
     let selectedThinking =
       (body.thinking ?? settings?.thinking ?? existing?.thinking) || catalog.default?.thinking;
     // Decision thinking applies to Computer Use runs the same way the

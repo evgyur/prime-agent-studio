@@ -47,7 +47,7 @@
     "test:context-gauge": "node scripts/test-context-gauge-ui.mjs",
     "test:context": "node scripts/test-context-tab-ui.mjs",
     "test:context:native": "node scripts/test-code-native.mjs",
-    "test:inspector": "node scripts/test-inspector-ui.mjs && node scripts/test-agent-history-ui.mjs && node scripts/test-file-context-ui.mjs && node scripts/test-inspector-folder-ui.mjs",
+    "test:inspector": "node scripts/test-inspector-ui.mjs && node scripts/test-agent-history-ui.mjs && node scripts/test-file-context-ui.mjs && node scripts/test-inspector-folder-ui.mjs && node scripts/test-code-highlight-ui.mjs",
     "test:git-panel": "node scripts/test-git-panel-ui.mjs",
     "test:file-links": "node scripts/test-file-links-ui.mjs",
     "test:providers": "node scripts/test-providers-ui.mjs",

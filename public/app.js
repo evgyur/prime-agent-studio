@@ -35,6 +35,7 @@ import { createSessionActivity } from './session-activity.js';
 import { parseAgentEnvelope } from './agent-messages.js';
 import { parseSkillBlocks, readableCopyText } from './skill-blocks.js';
 import { applyRuntimeStatus, noteActivity } from './runtime-status.js';
+import { enhanceCodeBlocks } from './code-highlight.js';
 import { createProjectSorting } from './project-sorting.js';
 import { createSessionSorting } from './session-sorting.js';
 import { createSessionWheel } from './session-wheel.js';
@@ -402,6 +403,7 @@ function savePreferences(patch) {
 const prefs = {
   theme: 'dark',
   enterToSend: true,
+  codeHighlight: true,
   reasoningMode: reasoningMode(storedPreferences()),
   details: true,
   modelFavorites: [],
@@ -1226,6 +1228,8 @@ function applyPreferences() {
       : prefs.theme;
   for (const input of document.querySelectorAll('#enter-to-send, [data-panel-id="enter-to-send"]'))
     input.checked = prefs.enterToSend;
+  for (const input of document.querySelectorAll('#code-highlight, [data-panel-id="code-highlight"]'))
+    input.checked = prefs.codeHighlight !== false;
   document
     .querySelectorAll('[name="reasoning-mode"], [data-panel-name="reasoning-mode"]')
     .forEach((input) => {
@@ -2021,7 +2025,7 @@ function renderNavigation() {
   updateToolPanels();
 }
 marked.setOptions({ gfm: true, breaks: false });
-function markdown(text, { cwd = execCwdOf(), basePath = '', imageRoot } = {}) {
+function markdown(text, { cwd = execCwdOf(), basePath = '', imageRoot, streaming = false } = {}) {
   const n = el('div', 'markdown');
   const references = [],
     images = [];
@@ -2101,6 +2105,13 @@ function markdown(text, { cwd = execCwdOf(), basePath = '', imageRoot } = {}) {
     b.onclick = () => copyText(code.textContent, () => tr('ui.code_copie'));
     bar.append(b);
     pre.prepend(bar);
+    // Highlighting reads this attribute; unknown fences get '' and stay plain.
+    pre.dataset.hlLanguage = lang === 'code' ? '' : lang;
+  });
+  // Off the critical path: only visible blocks are painted, cached by
+  // language + text, and never while a message is still streaming.
+  enhanceCodeBlocks(n, {
+    enabled: !streaming && prefs.codeHighlight !== false,
   });
   return n;
 }
@@ -2300,12 +2311,15 @@ function renderMessage(m, index, nodes = messageNodes, cwd) {
         icon('chevron', 'chevron'),
       );
       const content = el('div', 'thinking-content reasoning-markdown');
-      content.append(markdown(m.thinking, renderCwd ? { cwd: renderCwd } : undefined));
+      content.append(
+        markdown(m.thinking, { cwd: renderCwd, streaming: m.streaming }),
+      );
       d.hidden = reasoningMode(prefs) === 'hidden';
       d.append(s, content);
       body.append(d);
     }
-    if (m.text) body.append(markdown(m.text, renderCwd ? { cwd: renderCwd } : undefined));
+    if (m.text)
+      body.append(markdown(m.text, { cwd: renderCwd, streaming: m.streaming }));
     for (const tool of m.tools || []) body.append(renderTool(tool, id));
     if (translateKnown(m.error)) body.append(el('div', 'message-error', () => translateKnown(m.error)));
     if (m.streaming) body.append(el('span', 'stream-caret'));
@@ -2366,6 +2380,7 @@ const conversationRenderer = createConversationRenderer({
   dateLabel,
   copyText,
   reasoningMode: () => reasoningMode(prefs),
+  codeHighlight: () => prefs.codeHighlight !== false,
   renderMessage,
 });
 
@@ -2388,6 +2403,7 @@ convViews = createConversationViews({
     copyText,
     renderMessage,
     reasoningMode: () => reasoningMode(prefs),
+    codeHighlight: () => prefs.codeHighlight !== false,
   },
   getRun: (id) => state.runs.get(id),
   isRunActive: (run) => isRunning(run),
@@ -5529,6 +5545,13 @@ function bindToolPreferences(entry) {
     savePreferences({ enterToSend: event.target.checked });
     applyPreferences();
   };
+  own('code-highlight').onchange = (event) => {
+    savePreferences({ codeHighlight: event.target.checked });
+    applyPreferences();
+    messageNodes.clear();
+    if (convViews) for (const view of convViews.views.values()) convViews.markDirty(view.id);
+    renderMessages(true);
+  };
   for (const input of root.querySelectorAll('[name="reasoning-mode"], [data-panel-name="reasoning-mode"]'))
     input.onchange = () => {
       savePreferences({ reasoningMode: input.value });
@@ -5572,6 +5595,7 @@ function refreshToolPreferences(entry) {
   if (!own) return;
   const context = toolContext(entry.id);
   own('enter-to-send').checked = prefs.enterToSend;
+  own('code-highlight').checked = prefs.codeHighlight !== false;
   own('enter-to-send').closest('.settings-row').hidden = context.readOnly;
   own('model-config-settings').hidden = context.readOnly;
   own('remote-access-settings').hidden = context.readOnly;
@@ -6292,6 +6316,13 @@ questionsUI = makeQuestions(convViews.byId(PRIMARY_VIEW_ID), $('interactive-ques
 $('enter-to-send').onchange = (e) => {
   savePreferences({ enterToSend: e.target.checked });
   applyPreferences();
+};
+$('code-highlight').onchange = (e) => {
+  savePreferences({ codeHighlight: e.target.checked });
+  applyPreferences();
+  messageNodes.clear();
+  if (convViews) for (const view of convViews.views.values()) convViews.markDirty(view.id);
+  renderMessages(true);
 };
 document.querySelectorAll('[name="reasoning-mode"]').forEach((input) => {
   input.onchange = () => {

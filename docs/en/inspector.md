@@ -50,6 +50,8 @@ Tracking uses Prime Agent **0.9.7**’s protocol. Viewing a card does not resume
 
 **Markdown** files (`.md`, `.markdown`, `.mdown`, `.mkd`) display headings, lists, tables, quotations and code blocks. JSON previews are indented while preserving original values. **Preview / Source** switches to the file’s exact text without reloading it. Other text files preserve indentation, and HTML files remain text without execution.
 
+Code previews are highlighted locally with highlight.js (BSD-3-Clause license), with no CDN: JavaScript, Python, HTML, PowerShell, Dockerfile and other languages follow the Studio theme (VS Code Dark+ / Light+), with line numbers that are never selected or copied. The **Source** tab always keeps the raw text. Above about 512 KiB, 5,000 lines, or a line longer than 4,000 characters, the preview stays plain text. The displayed text stays identical to the file: highlighting changes nothing.
+
 The diff compares current contents with the latest commit, including staged and working-tree changes. It covers **the entire project**: several sessions or manual edits may contribute to the same files. Changes are not automatically attributed to an agent. File browsing remains available without Git.
 
 Markdown links to project documents and file references written as code in messages are clickable. They open a preview with the same **Open** button, without switching sessions or losing the draft. Relative, absolute and `file://` paths are recognized, including line references. A bare filename is searched for within the project; if several files share that name, Studio lets you choose.

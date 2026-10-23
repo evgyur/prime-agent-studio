@@ -4,6 +4,15 @@
 
 Les changements par version. Retrouvez les installateurs et les archives du code source dans les [releases GitHub](https://github.com/zerr0o/prime-agent-studio/releases).
 
+## 4.4.3
+
+- **Envoi des messages fiable** : dès l’envoi, le champ de saisie se grise et se verrouille avec « Envoi du message… », puis se vide quand le message apparaît dans la conversation. Un texte modifié pendant l’attente ne peut plus rester dans le champ après avoir été envoyé. En cas d’échec, le texte redevient modifiable. Même comportement pendant une exécution (Réorienter, À la suite).
+- **Configuration avant le premier message** : tant qu’aucun fournisseur n’est connecté ou qu’il manque le modèle de l’agent principal ou des sous-agents, une nouvelle conversation affiche trois étapes à la place des suggestions, et l’envoi attend la fin de la configuration. Sans connexion, le modèle par défaut du moteur échouait (erreur 401). S’il ne manque que le modèle des sous-agents, **Utiliser le même** suffit.
+- **Modèles simplifiés** : le bloc « Modèles avancés » et toute la gestion des quotas (relais après quota, plafonds, budgets autonomes) sont retirés. L’usage Codex reste affiché. Si d’anciennes valeurs existent, une carte « Anciens réglages détectés » les supprime en un clic ; un ancien modèle de secours bloque les exécutions jusqu’à cette réinitialisation.
+- **Installation des composants plus claire** : l’accueil indique s’il s’agit d’une première configuration ou d’une réparation. Pendant l’installation, une liste d’étapes affiche l’étape en cours, son temps écoulé, la taille téléchargée et une explication pour les étapes longues. Lors d’une première installation, le Studio s’ouvre tout seul à la fin.
+- **Démarrage plus robuste** : l’application ne dépend plus de la façon dont Node lit les chemins Windows longs (`\\?\C:\…`), et le build refuse un Node incompatible. Une erreur de démarrage affiche une explication simple, avec les détails techniques repliés.
+- **Interface** : « Préférences du Studio » depuis la zone de notification ne bloque plus la fenêtre. L’historique des sous-agents regroupe les appels d’outils entre deux messages et s’ouvre sur le dernier message. Le bouton « … » de la barre du haut est retiré : le menu reste sur chaque conversation de la liste (clic droit ou « … »). Les icônes à points restent visibles sur les écrans à très forte densité, et « Actualiser » est aligné avec la recherche dans la fenêtre Fournisseurs.
+
 ## 4.4.3-beta.1
 
 - **Menu « Préférences du Studio » corrigé** : depuis l’icône de la zone de notification, les Préférences s’ouvrent de nouveau au premier plan, sur l’onglet Mise à jour. Avant, une fenêtre invisible pouvait bloquer tous les clics.

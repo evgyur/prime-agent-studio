@@ -26,6 +26,16 @@ The [translation documentation](translations.md) describes the single table, fal
 
 ## Configure models
 
+### Before the first message
+
+While the setup is incomplete, a new conversation shows three steps instead of the suggestions: **Connect a provider**, **Main agent model** and **Subagent model**. Sending the first message stays disabled until they are done. Without a connection, the engine default model fails (401 error): these steps prevent a first message that cannot succeed.
+
+- A provider counts as connected once it offers at least one usable model.
+- Both models must come from a connected provider. **Use the same** reuses the main model for subagents.
+- The choices are saved as default models: change them later in **Preferences → Models & agents → Configure models**.
+- If a provider is disconnected later, the steps come back in new conversations. Existing conversations keep their history and show a warning banner.
+- Read-only remote access does not show these steps.
+
 ### Interactive questions and conversation images
 
 The **Allow questions** checkbox beside thinking enables the question tool for this conversation. It is checked by default and can be changed between runs. **Preferences → Models & agents → Allow questions by default** sets the initial value, shared by devices connected to this PC. Saved conversation choices take precedence. The agent offers choices with short descriptions, collapsed by default and accessible via **Show description**. Select an option, write another answer, or skip. Studio uses Prime Agent’s native interactive protocol and records the result in its tool history. Answering on a phone also resolves the request on the PC. Reloading the page restores requests while the run and server remain active; stopping the engine cancels them.

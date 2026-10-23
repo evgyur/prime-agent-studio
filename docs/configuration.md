@@ -26,6 +26,16 @@ La [documentation des traductions](translations.md) décrit la table unique, le 
 
 ## Configurer les modèles
 
+### Avant le premier message
+
+Tant que la configuration est incomplète, une nouvelle conversation affiche trois étapes à la place des suggestions : **Connecter un fournisseur**, **Modèle de l’agent principal** et **Modèle des sous-agents**. L’envoi du premier message reste désactivé jusqu’à la fin. Sans connexion, le modèle par défaut du moteur échoue (erreur 401) : ces étapes évitent un premier message qui ne peut pas aboutir.
+
+- Un fournisseur compte comme connecté dès qu’il propose au moins un modèle utilisable.
+- Les deux modèles doivent venir d’un fournisseur connecté. **Utiliser le même** reprend le modèle principal pour les sous-agents.
+- Les choix sont enregistrés comme modèles par défaut : **Préférences → Modèles et agents → Configurer les modèles** permet de les modifier ensuite.
+- Si un fournisseur est déconnecté plus tard, les étapes réapparaissent dans les nouvelles conversations. Les conversations existantes gardent leur historique et affichent un bandeau d’avertissement.
+- Les accès distants en lecture seule ne voient pas ces étapes.
+
 ### Questions interactives et images dans la conversation
 
 La case **Autoriser les questions**, près du niveau de réflexion, autorise l’outil de questions pour cette conversation. Elle est cochée par défaut et se change entre deux exécutions. **Préférences → Modèles et agents → Autoriser les questions par défaut** définit la valeur initiale, commune aux appareils connectés à ce PC. Les choix déjà enregistrés dans les conversations restent prioritaires. L’agent propose des choix avec une courte description, repliée par défaut et consultable via **Afficher la description**. Vous pouvez sélectionner une option, écrire une autre réponse ou passer. Le Studio utilise le protocole interactif natif de Prime Agent et enregistre le résultat dans son historique d’outils. Répondre sur le téléphone clôt également la demande sur le PC. Recharger la page retrouve les demandes tant que l’exécution et le serveur sont actifs ; un arrêt du moteur les annule.

@@ -17,6 +17,16 @@ const cwd = join(temp, 'Atelier'),
   dataDir = join(temp, 'data'),
   agentHome = join(temp, 'agent');
 for (const dir of [cwd, sessionDir, dataDir, agentHome]) await mkdir(dir, { recursive: true });
+// Complete setup (provider, main and subagent models): sending is allowed.
+await writeFile(
+  join(dataDir, 'subagent-defaults.json'),
+  JSON.stringify({
+    version: 1,
+    revision: 'fixture',
+    global: { model: 'fixture/model', thinking: '' },
+    projects: {},
+  }),
+);
 let failNext = false;
 const handles = [];
 const runtime = {

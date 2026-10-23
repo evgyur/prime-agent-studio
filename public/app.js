@@ -19,6 +19,7 @@ import { createLiveMessages } from './live-messages.js';
 import { createImageComposer, renderImages } from './images.js';
 import { createMcpSettings } from './mcp.js';
 import { createProviderSettings } from './providers.js';
+import { setupState, createSetupGate } from './setup-gate.js';
 import { createCommands } from './commands.js';
 import {
   composerText,
@@ -421,6 +422,9 @@ const state = {
   loading: false,
   sending: false,
   sendingViewId: null,
+  // Global subagent default model; undefined until loaded (gate stays off).
+  subagentModel: undefined,
+  setup: { complete: true, unknown: true },
   archived: false,
   requestId: 0,
   initialized: false,
@@ -679,13 +683,102 @@ function setSelectedModel(value, persist = false, render = true, view = null) {
   if (render && $('model-dialog').open) renderModelList();
   renderConfigurationWarning();
 }
+// First-message gate: a new conversation needs a connected provider plus main
+// and subagent default models from a connected provider (see setup-gate.js).
+function computeSetup() {
+  state.setup =
+    state.readOnly || state.subagentModel === undefined
+      ? { complete: true, unknown: true }
+      : setupState({
+          configuredProviders: state.configuredProviders,
+          models: state.models,
+          mainModel: state.modelCatalogDefault,
+          subagentModel: state.subagentModel,
+        });
+  return state.setup;
+}
+// The welcome of a view is shown only while its conversation has no message:
+// that is exactly where the setup steps appear and the first send waits.
+const welcomeOf = (view) => view?.shell?.welcome || $('welcome');
+async function refreshSubagentDefault() {
+  try {
+    const data = await api('/api/subagent-defaults');
+    state.subagentModel = typeof data?.global?.model === 'string' ? data.global.model : '';
+  } catch {
+    // Read-only or older servers: an unknown setting never blocks sending.
+  }
+  updateComposer();
+}
+async function saveSubagentDefault(model) {
+  if (!model) return;
+  try {
+    const current = await api('/api/subagent-defaults');
+    // Keep the saved reasoning level only when the new model supports it.
+    const thinking = current.global?.thinking || '';
+    const supported = state.models.find((item) => item.id === model)?.thinkingLevels?.includes(thinking);
+    const saved = await api('/api/subagent-defaults', {
+      method: 'POST',
+      body: { revision: current.revision, policy: { model, thinking: supported ? thinking : '' } },
+    });
+    state.subagentModel = saved.global?.model || '';
+    document.dispatchEvent(
+      new CustomEvent('subagent-defaults-changed', { detail: { source: 'setup', cwd: null } }),
+    );
+    toast(() => tr('ui.reglages_des_sous_agents_enregistres'));
+  } catch (error) {
+    toast(() => translateKnown(error.message), true);
+  }
+  updateComposer();
+}
+document.addEventListener('subagent-defaults-changed', (event) => {
+  if (event.detail?.source !== 'setup' && !event.detail?.cwd) void refreshSubagentDefault();
+});
+const setupGate = createSetupGate({
+  getState: () => ({
+    setup: state.setup,
+    models: state.models,
+    mainModel: state.modelCatalogDefault,
+    subagentModel: state.subagentModel,
+    readOnly: state.readOnly,
+    providersAvailable: state.providersAvailable,
+  }),
+  connectProvider: (button) => providerSettingsUI.open(button),
+  chooseMainModel: (button) =>
+    openModelPicker({
+      button,
+      value: state.modelCatalogDefault,
+      noDefault: true,
+      get title() {
+        return tr('ui.modele_principal_par_defaut_2');
+      },
+      onSelect: (id) => void saveDefaultModel(id),
+    }),
+  chooseSubagentModel: (button) =>
+    openModelPicker({
+      button,
+      value: state.subagentModel || '',
+      noDefault: true,
+      get title() {
+        return tr('ui.modele_des_sous_agents_2');
+      },
+      onSelect: (id) => void saveSubagentDefault(id),
+    }),
+  useMainForSubagents: () => saveSubagentDefault(state.modelCatalogDefault),
+});
 function renderConfigurationWarning() {
+  const wasIncomplete = state.setup.complete === false;
+  const setup = computeSetup();
+  setupGate.render();
+  if (wasIncomplete && setup.complete && !setup.unknown) toast(() => tr('setup.done'));
   const providerMissing = Array.isArray(state.configuredProviders) && state.configuredProviders.length === 0;
   const modelMissing = !($('model-select').value || state.modelCatalogDefault);
+  // An empty conversation shows the setup steps instead of this banner.
+  const gateShown = setup.complete === false && !welcomeOf(convViews?.focused()).hidden;
   const visible =
     state.initialized &&
     state.online &&
     state.version?.available !== false &&
+    !gateShown &&
     (providerMissing || modelMissing);
   $('configuration-warning').hidden = !visible;
   if (!visible) return;
@@ -782,7 +875,7 @@ function renderModelList({ focusFavorite, preserveFocus = false } = {}) {
     defaultMatches = normalizeModelSearch(
       modelPickerTarget?.defaultLabel || tr('ui.modele_par_defaut_configuration_prime_agent'),
     ).includes(query),
-    showDefault = !state.modelFavoritesOnly && defaultMatches,
+    showDefault = !state.modelFavoritesOnly && defaultMatches && !modelPickerTarget?.noDefault,
     visibleCount = favoriteModels.length + otherModels.length + Number(showDefault),
     availableFavoriteCount = state.models.filter((model) => favorites.has(model.id)).length;
   root.replaceChildren();
@@ -1312,6 +1405,8 @@ function updateComposer(view = null) {
   if (!view || convViews?.isFocused(target?.id)) renderConfigurationWarning();
   IMG?.update();
   CMD?.update();
+  // The first message of a conversation waits for the setup steps.
+  const setupBlocked = state.setup.complete === false && !running && !welcomeOf(target).hidden;
   sendButton.hidden = running;
   stopButton.hidden = !running;
   stopButton.disabled = state.readOnly || run?.status === 'stopping';
@@ -1320,6 +1415,7 @@ function updateComposer(view = null) {
     viewOverview ||
     (!textNow.trim() && !IMG?.hasImages()) ||
     IMG?.blocked() ||
+    setupBlocked ||
     !state.projectCwd ||
     state.sending ||
     generationPending.has(viewSessionId) ||
@@ -1366,7 +1462,9 @@ function updateComposer(view = null) {
         : state.projectCwd
           ? running
             ? tr('ui.preparez_votre_prochain_message')
-            : tr('ui.que_souhaitez_vous_construire')
+            : setupBlocked
+              ? tr('setup.placeholder')
+              : tr('ui.que_souhaitez_vous_construire')
           : tr('ui.ajoutez_un_projet_pour_commencer'),
     );
   }
@@ -4352,9 +4450,8 @@ async function openModelConfig(preferencesOwner = settingsDockApi) {
     toast(message, true);
   }
 }
-async function saveDefaultModel() {
-  const button = $('save-default-model'),
-    model = $('default-main-model').value;
+async function saveDefaultModel(model = $('default-main-model').value) {
+  const button = $('save-default-model');
   button.disabled = true;
   $('default-main-model').disabled = true;
   try {
@@ -4490,6 +4587,7 @@ async function bootstrap() {
     state.version = data.version || {};
     for (const run of data.runs || []) state.runs.set(run.id, run);
     populateModels(data.models);
+    void refreshSubagentDefault();
     state.projectCwd =
       state.projects.find((p) => samePath(p.cwd, selection.cwd))?.cwd || state.projects[0]?.cwd || null;
     const initialView = convViews?.focused();

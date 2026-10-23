@@ -43,7 +43,7 @@ const app = createApp({
   initialCwd: cwd,
   runtime: {
     getStatus: async () => ({ available: true, version: 'fixture' }),
-    getModels: async () => ({ models: [], configuredProviders: ['fixture'], default: {} }),
+    getModels: async () => ({ models: [], default: {} }),
     start: async () => {
       throw new Error('inert fixture');
     },

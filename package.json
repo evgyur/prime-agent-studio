@@ -18,7 +18,7 @@
     "test:pwa": "node scripts/test-pwa-ui.mjs",
     "test:machines": "node --test test/machines.test.mjs && node scripts/test-machines-ui.mjs",
     "test": "node --test test/*.test.mjs",
-    "test:ui": "node scripts/test-ui.mjs && node scripts/test-composer-send-ui.mjs && node scripts/test-conversation-menu-ui.mjs",
+    "test:ui": "node scripts/test-ui.mjs && node scripts/test-composer-send-ui.mjs && node scripts/test-conversation-menu-ui.mjs && node scripts/test-setup-gate-ui.mjs",
     "test:message-heading": "node scripts/test-message-heading-ui.mjs",
     "test:i18n": "node scripts/test-i18n-ui.mjs",
     "check:translations": "node scripts/check-translations.mjs",

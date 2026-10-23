@@ -502,6 +502,59 @@
                     ><span class="starter-arrow" data-icon="arrow-up-right"></span>
                   </button>
                 </div>
+                <section class="setup-gate" hidden>
+                  <div class="welcome-eyebrow">
+                    <span class="eyebrow-line"></span
+                    ><span data-i18n="setup.eyebrow">CONFIGURATION REQUISE</span>
+                  </div>
+                  <h2 class="setup-gate-title" data-i18n="setup.title">Avant votre premier message</h2>
+                  <p class="setup-gate-note" data-i18n="setup.note">
+                    Connectez un fournisseur, puis choisissez les modèles de l’agent principal et des
+                    sous-agents.
+                  </p>
+                  <ol class="setup-gate-steps">
+                    <li class="setup-gate-step" data-setup-step="provider">
+                      <span class="setup-gate-marker" aria-hidden="true"
+                        ><span class="setup-gate-number">1</span
+                        ><span class="setup-gate-check" data-icon="check"></span
+                      ></span>
+                      <span class="setup-gate-body"
+                        ><strong data-i18n="setup.provider_title">Connecter un fournisseur</strong
+                        ><span class="setup-gate-detail"></span
+                      ></span>
+                      <span class="setup-gate-actions"
+                        ><button type="button" data-setup-action="provider"></button
+                      ></span>
+                    </li>
+                    <li class="setup-gate-step" data-setup-step="main">
+                      <span class="setup-gate-marker" aria-hidden="true"
+                        ><span class="setup-gate-number">2</span
+                        ><span class="setup-gate-check" data-icon="check"></span
+                      ></span>
+                      <span class="setup-gate-body"
+                        ><strong data-i18n="setup.main_title">Modèle de l’agent principal</strong
+                        ><span class="setup-gate-detail"></span
+                      ></span>
+                      <span class="setup-gate-actions"
+                        ><button type="button" data-setup-action="main"></button
+                      ></span>
+                    </li>
+                    <li class="setup-gate-step" data-setup-step="subagent">
+                      <span class="setup-gate-marker" aria-hidden="true"
+                        ><span class="setup-gate-number">3</span
+                        ><span class="setup-gate-check" data-icon="check"></span
+                      ></span>
+                      <span class="setup-gate-body"
+                        ><strong data-i18n="setup.subagent_title">Modèle des sous-agents</strong
+                        ><span class="setup-gate-detail"></span
+                      ></span>
+                      <span class="setup-gate-actions"
+                        ><button type="button" data-setup-action="subagent-same"></button
+                        ><button type="button" data-setup-action="subagent"></button
+                      ></span>
+                    </li>
+                  </ol>
+                </section>
               </div>
               <div
                 id="messages"

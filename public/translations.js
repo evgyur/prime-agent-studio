@@ -676,6 +676,41 @@ export const messages = {
     fr: 'Ouvrir les réglages de l’application pour préparer Prime Agent, uv et Python (aucune installation automatique)',
     en: 'Open the application settings to prepare Prime Agent, uv and Python (no automatic install)',
   },
+  'setup.eyebrow': { fr: 'CONFIGURATION REQUISE', en: 'SETUP REQUIRED' },
+  'setup.title': { fr: 'Avant votre premier message', en: 'Before your first message' },
+  'setup.note': {
+    fr: 'Connectez un fournisseur, puis choisissez les modèles de l’agent principal et des sous-agents.',
+    en: 'Connect a provider, then choose the models for the main agent and subagents.',
+  },
+  'setup.provider_title': { fr: 'Connecter un fournisseur', en: 'Connect a provider' },
+  'setup.provider_note': {
+    fr: 'Un compte ou une clé API, par exemple OpenAI, Anthropic ou OpenRouter.',
+    en: 'An account or an API key, for example OpenAI, Anthropic or OpenRouter.',
+  },
+  'setup.provider_done': { fr: 'Connecté : {value1}', en: 'Connected: {value1}' },
+  'setup.main_title': { fr: 'Modèle de l’agent principal', en: 'Main agent model' },
+  'setup.main_note': {
+    fr: 'Utilisé par défaut dans les nouvelles conversations.',
+    en: 'Used by default in new conversations.',
+  },
+  'setup.subagent_title': { fr: 'Modèle des sous-agents', en: 'Subagent model' },
+  'setup.subagent_note': {
+    fr: 'Utilisé quand l’agent délègue une tâche.',
+    en: 'Used when the agent delegates a task.',
+  },
+  'setup.connect': { fr: 'Connecter', en: 'Connect' },
+  'setup.manage': { fr: 'Gérer', en: 'Manage' },
+  'setup.choose': { fr: 'Choisir', en: 'Choose' },
+  'setup.change': { fr: 'Modifier', en: 'Change' },
+  'setup.same_as_main': { fr: 'Utiliser le même', en: 'Use the same' },
+  'setup.placeholder': {
+    fr: 'Terminez la configuration ci-dessus pour envoyer votre premier message.',
+    en: 'Finish the setup above to send your first message.',
+  },
+  'setup.done': {
+    fr: 'Configuration terminée. Vous pouvez envoyer votre premier message.',
+    en: 'Setup complete. You can send your first message.',
+  },
   'configuration.providerMissing': { fr: 'Aucun fournisseur configuré.', en: 'No provider configured.' },
   'configuration.modelMissing': { fr: 'Aucun modèle sélectionné.', en: 'No model selected.' },
   'configuration.bothMissing': {

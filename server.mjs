@@ -26,8 +26,6 @@ import { createModelConfigStore } from './lib/model-config.mjs';
 import { createModelDefaultsStore } from './lib/model-defaults.mjs';
 import { createEngineSettingsStore } from './lib/engine-settings.mjs';
 import { createSubagentDefaultsStore } from './lib/subagent-defaults.mjs';
-import { createQuotaFallbackStore, planQuotaFallback, resolveQuotaIdentities } from './lib/quota-fallback.mjs';
-import { createBudgetSettings } from './lib/budgets.mjs';
 import { validPolicy, effectivePolicy } from './runtime/subagent-policy.mjs';
 import { directoryForReference, openDirectory } from './lib/open-directory.mjs';
 import { openTerminal } from './lib/open-terminal.mjs';
@@ -253,8 +251,6 @@ export function createApp(options = {}) {
     ...options.networkOptions,
   });
   const subagentDefaults = createSubagentDefaultsStore({ dataDir });
-  const quotaFallback = createQuotaFallbackStore({ dataDir });
-  const budgets = createBudgetSettings({ dataDir });
   const runs = new Map(),
     sessionLocks = new Set();
   const eventProjections = new WeakMap();
@@ -411,7 +407,6 @@ export function createApp(options = {}) {
       cliPath: process.env.PRIME_AGENT_CLI,
       kernelRoot: process.env.PRIME_AGENT_GUI_KERNEL_ROOT,
       subagentPolicyFile: subagentDefaults.file,
-      quotaFallback,
       metricsDir: metrics.rawDir,
       knowledge: { dataDir },
       codeContext: { dataDir },
@@ -420,7 +415,7 @@ export function createApp(options = {}) {
     });
   const modelConfig = options.modelConfig || createModelConfigStore({ agentHome });
   const modelDefaults = options.modelDefaults || createModelDefaultsStore({ agentHome });
-  const engineSettings = options.engineSettings || createEngineSettingsStore({ agentHome });
+  const engineSettings = options.engineSettings || createEngineSettingsStore({ agentHome, dataDir });
   const mcp = options.mcp || createMcpService({ agentHome });
   const directoryPicker = options.directoryPicker || createDirectoryPicker();
   const providers =
@@ -496,12 +491,12 @@ export function createApp(options = {}) {
   async function runSuggestModel({ system, user }) {
     const cli = discoverCli(process.env.PRIME_AGENT_CLI);
     if (!cli?.packageDir) throw new HttpError(409, tr('git.suggest_no_model'));
-    const auxiliary = (await engineSettings.get().catch(() => null))?.auxiliaryModel?.trim() || '';
+    // Removed settings are never read here: suggestions use the normal
+    // default model path, as when the auxiliary model was unset.
     const defaultModel = (await modelDefaults.get().catch(() => null))?.mainModel?.trim() || '';
     const payload = JSON.stringify({
       packageDir: cli.packageDir,
       agentHome,
-      auxiliary,
       defaultModel,
       system,
       user,
@@ -528,7 +523,6 @@ export function createApp(options = {}) {
     }
     if (!parsed?.ok) {
       if (parsed?.code === 'NO_MODEL') throw new HttpError(409, tr('git.suggest_no_model'));
-      if (parsed?.code === 'NO_AUXILIARY_MODEL') throw new HttpError(409, tr('engine.auxiliary_unavailable'));
       throw new HttpError(502, tr('git.suggest_failed'));
     }
     return String(parsed.text || '');
@@ -540,10 +534,7 @@ export function createApp(options = {}) {
       filesFor,
     });
   const knowledge = options.knowledge || createKnowledge({ store, dataDir, agentHome, sessionDir });
-  // Live image turns use the same native imageModel route as new runs; the
-  // resolver is read-only and the engine applies settings.json itself.
-  const liveClient = (endpoint) =>
-    endpoint ? createLiveSessionClient({ ...endpoint, imageRoute: () => imageRouteModel() }) : null;
+  const liveClient = (endpoint) => (endpoint ? createLiveSessionClient({ ...endpoint }) : null);
   const inspector = createSessionInspector({
     store,
     agentHome,
@@ -665,19 +656,6 @@ export function createApp(options = {}) {
     }
     return configuredModels(modelDefaults.set(selection));
   }
-  function findEngineModel(catalog, reference) {
-    const trimmed = String(reference || '').trim();
-    if (!trimmed) return null;
-    const lowered = trimmed.toLowerCase();
-    const exact = (catalog.models || []).find((model) => String(model.id).toLowerCase() === lowered);
-    if (exact) return exact;
-    // Bare model id: resolve only when unambiguous, mirroring the native resolver.
-    const bare = !trimmed.includes('/')
-      ? (catalog.models || []).filter((model) => String(model.id).split('/').pop().toLowerCase() === lowered)
-      : [];
-    if (bare.length === 1) return bare[0];
-    return null;
-  }
   // Global Computer Use preferences (Preferences > Tools, one global setting).
   // Backend changes only apply when the desktop is off and not owned; the
   // stored model must exist, be available and read images when metadata says so.
@@ -747,116 +725,22 @@ export function createApp(options = {}) {
     }
     return store.setStudioPreferences(body);
   }
-  async function setEngineSettings(body) {
+  // The only engine-settings write left: reset (delete) every removed
+  // setting on explicit user action. Removed values stay untouched otherwise.
+  async function resetEngineSettings(body) {
     if (!body || typeof body !== 'object' || Array.isArray(body))
       throw new HttpError(400, tr('server.reglages_moteur_invalides'));
-    // The catalog is only required to validate non-empty model references;
-    // budget-only writes must succeed even when the catalog is down.
-    const refs = ['auxiliaryModel', 'imageModel', 'providerBackupModel', 'nativeSubagentDefaultModel'].filter(
-      (field) => typeof body[field] === 'string' && body[field].trim(),
-    );
-    const catalog = refs.length ? await models() : null;
-    for (const field of refs) {
-      const selected = findEngineModel(catalog, body[field]);
-      if (!selected) throw new HttpError(400, tr('server.ce_modele_n_est_pas_disponible_dans_prime_agent'));
-      if (selected.availability === 'unavailable') throw new HttpError(409, tr('model.unavailableSelection'));
-      if (field === 'imageModel' && !modelSupportsImages(selected.id, catalog))
-        throw new HttpError(400, tr('engine.image_unsupported'));
-    }
-    return engineSettings.set(body);
-  }
-  // Native imageModel route (Prime Agent 0.9.6): an image-attaching turn on a
-  // text-only model is served on settings.imageModel instead, and the
-  // conversation model is preserved after. Returns the usable imageModel id
-  // or null when unset, unresolvable, unavailable or text-only, in which case
-  // the explicit refusal stays. Uses the existing catalog and helper only.
-  async function imageRouteModel(catalog) {
-    const ref = (await engineSettings.get().catch(() => null))?.imageModel?.trim();
-    if (!ref) return null;
-    const list = catalog || (await models().catch(() => null));
-    if (!list) return null;
-    const found = findEngineModel(list, ref);
-    if (!found || found.availability === 'unavailable' || !modelSupportsImages(found.id, list)) return null;
-    return found.id;
-  }
-  async function modelsWithImageRoute({ refresh = false } = {}) {
-    const catalog = await models({ refresh });
-    const imageModel = await imageRouteModel(catalog).catch(() => null);
-    return { ...catalog, imageModel };
+    return engineSettings.reset(body);
   }
   function activeRuns() {
     return [...runs.values()]
       .filter((r) => r.status === 'running' || r.status === 'stopping')
       .map(withComputerFlag);
   }
-  async function retryQuota(run, model, { automatic = false, confirmBillingChange = false } = {}) {
-    if ((!run.finished && !run.quotaFinalizing) || run.status !== 'failed' || !run.quota || !run.sessionId)
-      throw new HttpError(409, 'Quota retry requires a failed run with an existing conversation.');
-    if (run.quotaRetryPending || run.quotaRetryRunId)
-      throw new HttpError(409, 'This quota failure has already been retried.');
-    run.quotaRetryPending = true;
-    try {
-      const settings = await quotaFallback.get();
-      const catalog = await models();
-      const selected = catalog.models?.find((item) => item.id === model);
-      if (!settings.models.includes(model) || model === run.model || !selected || selected.availability === 'unavailable')
-        throw new HttpError(409, 'This fallback model is no longer available. Review the fallback list.');
-      const latestIdentities = await resolveQuotaIdentities({ agentHome, models: [run.model, model] });
-      // Keep the failing run's account proof, never replace it with a new login.
-      const identities = { ...latestIdentities, [run.model]: run.quotaIdentity };
-      const plan = planQuotaFallback({ failure: run.quota, currentModel: run.model, settings,
-        identities, availableModels: catalog.models });
-      if (automatic && (!plan.candidates.some((item) => item.model === model && item.automaticEligible) ||
-          run.apiRequestId || run.quotaChain.includes(model)))
-        throw new HttpError(409, 'Automatic retry is not authorized for this account and model.');
-      const sameAccount = plan.candidates.some((item) => item.model === model &&
-        ['eligible', 'automatic_disabled'].includes(item.reason));
-      if (!automatic && !sameAccount && !confirmBillingChange)
-        throw Object.assign(new HttpError(409, 'Confirm that this retry may change provider account or billing, including pay-per-use.'),
-          { code: 'quota_confirmation_required' });
-      const input = { ...run.retryInput, cwd: run.cwd, sessionId: run.sessionId, model,
-        thinking: selected.thinkingLevels?.includes(run.thinking) ? run.thinking : '' };
-      const authorize = () => {
-        if (run.status !== 'failed' || closing)
-          throw new HttpError(409, 'Quota retry was cancelled.');
-      };
-      const next = await startRun(input, { authorize, requiredModel: model, quotaChain: [...run.quotaChain, run.model],
-        ...(sameAccount ? { quotaAuthorization: { sourceModel: run.model, targetModel: model, identities } } : {}) });
-      if (run.status !== 'failed' || closing) {
-        const admitted = runs.get(next.id);
-        if (admitted) await stopRun(admitted);
-        throw new HttpError(409, 'Quota retry was cancelled.');
-      }
-      run.quotaRetryRunId = next.id;
-      return next;
-    } finally {
-      run.quotaRetryPending = false;
-    }
-  }
-  async function finishQuotaRun(run, event) {
-    run.quotaFinalizing = true;
-    run.status = 'failed';
-    if (run.sessionId) sessionLocks.delete(run.sessionId);
-    try {
-      const next = await retryQuota(run, event.quota.automaticModel, { automatic: true });
-      event = { ...event, quota: { ...event.quota, retryRunId: next.id } };
-    } catch (error) {
-      event = { ...event, quota: { ...event.quota, retryError: error.message } };
-    } finally {
-      run.quotaFinalizing = false;
-    }
-    pushEvent(run, event);
-  }
   function pushEvent(run, event) {
-    if (event.budget) run.budget = event.budget;
-    if (event.quota) run.quota = event.quota;
-    if (event.kind === 'done' && run.quotaFinalizing) return;
-    if (event.kind === 'done' && event.status === 'failed' && event.quota?.automaticModel &&
-        !run.quotaChecked && !run.apiRequestId && run.sessionId && !closing) {
-      run.quotaChecked = true;
-      void finishQuotaRun(run, event);
-      return;
-    }
+    // Runs no longer carry budget or quota state: removed settings are never
+    // re-attached here. Stored histories may still contain such data and keep
+    // rendering through the generic message path.
     if (event.kind === 'interaction') {
       run.interactions ||= [];
       const index = run.interactions.findIndex((item) => item.id === event.request.id);
@@ -1105,7 +989,7 @@ export function createApp(options = {}) {
     );
   }
 
-  async function startRun(body, { authorize, apiRequestId, quotaChain = [], quotaAuthorization, requiredModel } = {}) {
+  async function startRun(body, { authorize, apiRequestId } = {}) {
     await authorize?.();
     // Admission revision for the Computer Use opt-in: slow validation
     // follows, and a stop landing meanwhile must win. A stale grant is
@@ -1192,13 +1076,10 @@ export function createApp(options = {}) {
     if (images.length) {
       const catalog = await models();
       const selected = catalog.models?.find((model) => model.id === (body.model || catalog.default?.model));
-      // A usable native imageModel routes the image turn on the engine side;
-      // the conversation model is never replaced here. Otherwise refuse as before.
-      if (
-        selected?.input &&
-        !selected.input.includes('image') &&
-        !(await imageRouteModel(catalog).catch(() => null))
-      )
+      // Removed imageModel setting is never consulted here: the engine still
+      // applies a saved value itself for runs that start, but Studio refuses
+      // image turns on text-only models as when the setting was unset.
+      if (selected?.input && !selected.input.includes('image'))
         throw new HttpError(400, tr('ui.ce_modele_ne_prend_pas_en_charge_les_images_choisissez_un_modele'));
     }
     if (
@@ -1313,9 +1194,6 @@ export function createApp(options = {}) {
       body.allowQuestions ?? settings?.allowQuestions ?? (await studioPreferences()).allowQuestionsByDefault;
     if (catalog.models?.find((model) => model.id === selectedModel)?.availability === 'unavailable')
       throw new HttpError(409, tr('model.unavailableSelection'));
-    const quotaIdentities = await resolveQuotaIdentities({ agentHome, models: [selectedModel] });
-    const configuredBudget = await budgets.forRun(worktreeAuth?.projectCwd || cwd);
-    const budget = configuredBudget ? { ...configuredBudget, allowQuestions: !apiRequestId && allowQuestions } : null;
     // Check after awaited validation so simultaneous HTTP requests cannot race the lock.
     if (activeRuns().length >= 8)
       throw new HttpError(429, tr('server.huit_sessions_tournent_deja_arretez_en_une_avant_de_continuer'));
@@ -1338,9 +1216,6 @@ export function createApp(options = {}) {
       bytes: 0,
       clients: new Set(),
       finished: false,
-      quotaChain,
-      quotaIdentity: quotaIdentities[selectedModel],
-      retryInput: { ...body, computerUse: false, computerUseBackend: undefined },
     };
     if (worktreeAuth) {
       run.worktreeId = worktreeAuth.entry.id;
@@ -1397,8 +1272,6 @@ export function createApp(options = {}) {
         model: selectedModel || undefined,
         thinking: selectedThinking || undefined,
         allowQuestions,
-        quotaAuthorization,
-        budget,
         onEvent: (event) => pushEvent(run, event),
       });
       void context.notify(metricsProjectId(worktreeAuth?.projectCwd || cwd)).catch(() => {});
@@ -1413,8 +1286,6 @@ export function createApp(options = {}) {
               status: result?.status || 'completed',
               code: result?.code || 0,
               error: result?.error,
-              ...(result?.quota ? { quota: result.quota } : {}),
-              ...(result?.budget ? { budget: result.budget } : {}),
             });
         },
         (error) =>
@@ -1635,10 +1506,10 @@ export function createApp(options = {}) {
         );
       if (method === 'POST' && path === '/api/updates/request')
         return json(res, 200, await remoteUpdates.requestUpdate(await readBody(req)));
-      if (method === 'GET' && path === '/api/models') return json(res, 200, await modelsWithImageRoute());
+      if (method === 'GET' && path === '/api/models') return json(res, 200, await models());
       if (method === 'POST' && path === '/api/models/refresh') {
         await readBody(req);
-        return json(res, 200, await modelsWithImageRoute({ refresh: true }));
+        return json(res, 200, await models({ refresh: true }));
       }
       if (method === 'GET' && path === '/api/inspector')
         return json(
@@ -1786,28 +1657,6 @@ export function createApp(options = {}) {
       const mcpJob = path.match(/^\/api\/mcp\/login\/([a-f0-9-]{36})$/);
       if (mcpJob && method === 'GET') return json(res, 200, mcp.job(mcpJob[1]));
       if (mcpJob && method === 'DELETE') return json(res, 200, mcp.cancel(mcpJob[1]));
-      if (path === '/api/budgets' && method === 'GET')
-        return json(res, 200, await budgets.read());
-      if (path === '/api/budgets' && method === 'PUT') {
-        const body = await readBody(req);
-        if (body.projects && typeof body.projects === 'object' && !Array.isArray(body.projects))
-          for (const cwd of Object.keys(body.projects)) await store.findProject(cwd);
-        return json(res, 200, await budgets.write(body));
-      }
-      if (path === '/api/quota-fallback' && method === 'GET')
-        return json(res, 200, await quotaFallback.get());
-      if (path === '/api/quota-fallback' && method === 'PUT') {
-        const body = await readBody(req);
-        if (Array.isArray(body.models)) {
-          const catalog = await models();
-          for (const id of body.models) {
-            const model = catalog.models?.find((model) => model.id === id);
-            if (!model) throw new HttpError(400, tr('server.ce_modele_n_est_pas_disponible_dans_prime_agent'));
-            if (model.availability === 'unavailable') throw new HttpError(409, tr('model.unavailableSelection'));
-          }
-        }
-        return json(res, 200, await quotaFallback.set(body));
-      }
       if (method === 'GET' && path === '/api/model-defaults')
         return json(res, 200, await modelDefaults.get());
       if (
@@ -1852,7 +1701,7 @@ export function createApp(options = {}) {
       if (method === 'GET' && path === '/api/engine-settings')
         return json(res, 200, await engineSettings.get());
       if (method === 'POST' && path === '/api/engine-settings')
-        return json(res, 200, await setEngineSettings(await readBody(req)));
+        return json(res, 200, await resetEngineSettings(await readBody(req)));
       if (method === 'POST' && path === '/api/model-config')
         return json(res, 200, await configuredModels(modelConfig.upsert(await readBody(req))));
       if (method === 'DELETE' && path === '/api/model-config')
@@ -2253,17 +2102,10 @@ export function createApp(options = {}) {
       if (method === 'GET' && path === '/api/runs') return json(res, 200, { runs: activeRuns() });
       if (method === 'POST' && path === '/api/runs')
         return json(res, 201, await startRun(await readBody(req)));
-      const runRoute = path.match(/^\/api\/runs\/([a-f0-9-]+)\/(events|stop|interactions|quota-retry)$/);
+      const runRoute = path.match(/^\/api\/runs\/([a-f0-9-]+)\/(events|stop|interactions)$/);
       if (runRoute) {
         const run = runs.get(runRoute[1]);
         if (!run) throw new HttpError(404, tr('server.execution_introuvable_rechargez_son_historique'));
-        if (method === 'POST' && runRoute[2] === 'quota-retry') {
-          const body = await readBody(req);
-          if (Object.keys(body).some((key) => !['model', 'confirmBillingChange'].includes(key)) ||
-              (body.confirmBillingChange !== undefined && typeof body.confirmBillingChange !== 'boolean'))
-            throw new HttpError(400, 'Invalid quota retry.');
-          return json(res, 201, await retryQuota(run, body.model, { confirmBillingChange: body.confirmBillingChange }));
-        }
         if (method === 'POST' && runRoute[2] === 'interactions') {
           return json(res, 200, await respondRun(run, await readBody(req)));
         }
@@ -2349,7 +2191,7 @@ export function createApp(options = {}) {
         (error.code.startsWith('roadmap_') ||
           error.code.startsWith('pastudio_') ||
           error.code.startsWith('computer_use_') ||
-          error.code.startsWith('worktree_') || error.code === 'quota_confirmation_required')
+          error.code.startsWith('worktree_'))
           ? {
               code: error.code,
               // Allowlisted .pastudio pending-contract fields only (server-generated, no secrets).

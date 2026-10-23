@@ -214,13 +214,11 @@ export function createImageComposer({ getContext, onChange, onError, roots }) {
       } catch {}
     }
   }
-  // A server-validated native imageModel id routes the image turn on the
-  // engine side, so attachments stay allowed; otherwise the truthful
-  // refusal stands. The gate is a single id-or-null value by design.
+  // Removed imageModel setting is never consulted: image attachments stay
+  // allowed only on image-capable conversation models, as when unset.
   const incompatible = () => {
     const context = getContext();
     if (!entry().items.some((item) => item.type === 'image')) return false;
-    if (typeof context.imageModel === 'string' && context.imageModel) return false;
     return Array.isArray(context.input) && !context.input.includes('image');
   };
   function update() {

@@ -46,7 +46,7 @@ import {
 } from './project-navigation.js';
 import { createKnowledgeBrowser } from './knowledge.js';
 import { createPerformance } from './performance.js';
-import { renderRunGuard, confirmQuotaBilling } from './run-guards.js';
+import { renderRunGuard } from './run-guards.js';
 import { createContext } from './context.js';
 import { createProjectArchives } from './project-archives.js';
 import { createWorktreesUI } from './worktrees.js';
@@ -431,10 +431,6 @@ const state = {
   modelCatalogDefault: '',
   modelCatalogRefreshing: false,
   modelCatalogNotice: '',
-  // Native imageModel route id (server-validated) or null. Single gate:
-  // truthy means image turns ride the engine imageModel; the conversation
-  // model selector is never touched by it.
-  imageModel: null,
 };
 const selection = readStorage('selection', {});
 const sessionActivity = createSessionActivity({
@@ -1284,12 +1280,8 @@ function updateComposer(view = null) {
   const viewSessionId = target?.sessionId ?? state.sessionId;
   const run = target ? runForView(target) : activeRun();
   const running = isRunning(run);
-  const guardRun = run || (target?.guardRunToken === target?.token ? state.runs.get(target?.guardRunId) : null) || [...state.runs.values()].filter((entry) => viewSessionId && entry.sessionId === viewSessionId).sort((a, b) => String(b.startedAt).localeCompare(String(a.startedAt)))[0];
-  renderRunGuard(node('composer-form', 'form'), guardRun, {
-    models: state.models,
-    disabled: state.readOnly || !state.online || state.sending || running,
-    onRetry: (failed, model) => void retryQuotaRun(failed, model, target),
-  });
+  const guardRun = run || [...state.runs.values()].filter((entry) => viewSessionId && entry.sessionId === viewSessionId).sort((a, b) => String(b.startedAt).localeCompare(String(a.startedAt)))[0];
+  renderRunGuard(node('composer-form', 'form'), guardRun);
   const isPrimaryTarget = !target || target.id === PRIMARY_VIEW_ID;
   const viewLoading = target ? !!target.loading : state.loading;
   const viewOverview = isPrimaryTarget ? state.projectOverview : false;
@@ -2708,7 +2700,6 @@ function imageContextFor(view) {
       !view.projectCwd,
     input: state.models.find((model) => model.id === (modelForView(view) || state.modelCatalogDefault))
       ?.input,
-    imageModel: state.imageModel,
   };
 }
 function liveContextFor(view) {
@@ -3732,13 +3723,7 @@ function applyRunEvent(run, e) {
       if (state.viewRunId === run.id)
         toast(() => tr('ui.le_debut_de_cette_execution_sera_recharge_depuis_l_historique_a_l'));
       break;
-    case 'budget':
-      run.budget = e.budget;
-      document.dispatchEvent(new CustomEvent('studio-budget-update', { detail: { run } }));
-      updateComposer(convViews?.byRun(run.id) || undefined);
-      break;
     case 'done':
-      run.quota = e.quota || run.quota;
       for (const entry of toolViews?.entries.values() || [])
         if (entry.kind === 'performance') entry.ui?.runDone();
       performancePopup?.ui.runDone();
@@ -3800,45 +3785,6 @@ function subscribe(run) {
     void refreshOverview();
   };
 }
-async function retryQuotaRun(failed, model, origin = null) {
-  if (state.readOnly || !state.online || state.sending || isRunning(origin ? runForView(origin) : activeRun())) return;
-  const token = origin?.token;
-  const candidate = failed.quota?.candidates?.find((entry) => entry.model === model);
-  if (!candidate || candidate.reason === 'unavailable') return;
-  const confirmBillingChange = candidate.automaticEligible !== true && !['eligible', 'automatic_disabled'].includes(candidate.reason);
-  state.sending = true;
-  try {
-    if (confirmBillingChange && !await confirmQuotaBilling(failed.model || failed.quota.provider, model, state.models)) return;
-    // Closing a modal after navigation never sends into a different conversation.
-    if (state.readOnly || !state.online || (origin && (convViews?.byId(origin.id) !== origin || origin.token !== token))) return;
-    if (isRunning(origin ? runForView(origin) : activeRun())) return;
-    updateComposer(origin || undefined);
-    const retryPath = `/api/runs/${encodeURIComponent(failed.id)}/quota-retry`;
-    let run;
-    try {
-      run = await api(retryPath, { method: 'POST', body: { model, ...(confirmBillingChange ? { confirmBillingChange: true } : {}) } });
-    } catch (error) {
-      // Identity may have changed since the candidate list was generated.
-      // The server asks for fresh consent; retry once, never auto-confirm or loop.
-      if (confirmBillingChange || error.code !== 'quota_confirmation_required') throw error;
-      if (!await confirmQuotaBilling(failed.model || failed.quota.provider, model, state.models)) return;
-      if (state.readOnly || !state.online || (origin && (convViews?.byId(origin.id) !== origin || origin.token !== token))) return;
-      if (isRunning(origin ? runForView(origin) : activeRun())) return;
-      run = await api(retryPath, { method: 'POST', body: { model, confirmBillingChange: true } });
-    }
-    Object.assign(run, { initialized: true, base: [...(failed.base || []), ...(failed.messages || [])], messages: [], lastSeq: 0, currentMessage: null });
-    state.runs.set(run.id, run);
-    failed.quota = { ...failed.quota, retryRunId: run.id };
-    if (origin && convViews?.byId(origin.id) === origin && origin.token === token) {
-      origin.viewRunId = run.id;
-      if (convViews.isFocused(origin.id)) state.viewRunId = run.id;
-      else convViews.refreshView(origin.id);
-    } else if (!origin && state.sessionId === failed.sessionId) state.viewRunId = run.id;
-    subscribe(run);
-    renderNavigation();
-  } catch (error) { toast(translateKnown(error.message), true); }
-  finally { state.sending = false; updateComposer(origin || undefined); }
-}
 async function finishRun(run, e) {
   run.replayedDone = true;
   run.status = e.status || 'completed';
@@ -3863,10 +3809,6 @@ async function finishRun(run, e) {
   } else if (e.status === 'stopped' || e.status === 'cancelled') toast(() => tr('ui.l_agent_a_ete_arrete'));
   const finishOrigin = convViews?.byRun(run.id) || null;
   const finishViewToken = finishOrigin?.token;
-  if (finishOrigin && (run.quota || run.budget)) {
-    finishOrigin.guardRunId = run.id;
-    finishOrigin.guardRunToken = finishOrigin.token;
-  }
   if (convViews && finishOrigin) {
     if (finishOrigin.kind === 'new' && run.sessionId) {
       finishOrigin.sessionId = run.sessionId;
@@ -3886,19 +3828,6 @@ async function finishRun(run, e) {
     state.history = [...run.base, ...run.messages];
     saveSelection();
     scheduleMessages();
-  }
-  if (e.quota?.retryRunId) {
-    const retryId = e.quota.retryRunId;
-    const retry = state.runs.get(retryId) || {
-      id: retryId, sessionId: run.sessionId, cwd: run.cwd, status: 'running',
-      model: e.quota.automaticModel || run.model, thinking: run.thinking,
-      startedAt: new Date().toISOString(), initialized: true,
-      base: [...(run.base || []), ...(run.messages || [])], messages: [], lastSeq: 0, currentMessage: null,
-    };
-    state.runs.set(retryId, retry);
-    if (finishOrigin && finishOrigin.viewRunId === run.id) finishOrigin.viewRunId = retryId;
-    if (state.viewRunId === run.id) state.viewRunId = retryId;
-    subscribe(retry);
   }
   if (run.sessionId && (finishOrigin || state.viewRunId === run.id)) {
     try {
@@ -4421,8 +4350,6 @@ function populateModels(catalog, { preserveSelection = false } = {}) {
     ? catalog.configuredProviders
     : null;
   state.modelCatalogDefault = typeof catalog?.default?.model === 'string' ? catalog.default.model : '';
-  state.imageModel =
-    typeof catalog?.imageModel === 'string' && catalog.imageModel ? catalog.imageModel : null;
   state.modelCatalogThinking = catalog?.default?.thinking || '';
   state.modelCatalogRefreshing = catalog?.refreshing === true;
   state.modelCatalogNotice = '';

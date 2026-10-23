@@ -1028,17 +1028,32 @@ test('LAN full control reaches former local-only routes, consultation stays bloc
   assert.equal((await full.api('/api/health', { headers: fullHeaders })).status, 404);
 });
 
-test('routing and budget preferences require authenticated full control over LAN', async (t) => {
+test('legacy engine settings require authenticated full control over LAN; retired quota routes stay gone', async (t) => {
   for (const readOnly of [false, true]) {
     const f = await fixture(t, { readOnly });
     const Cookie = await f.authenticate();
-    for (const path of ['/api/quota-fallback', '/api/budgets']) {
-      assert.equal((await f.api(path)).status, 401);
-      const state = await f.api(path, { headers: { Cookie } });
-      assert.equal(state.status, readOnly ? 404 : 200, state.text);
-      const write = await f.api(path, { method: 'PUT', body: JSON.stringify(state.json),
-        headers: { Cookie, 'Content-Type': 'application/json' } });
-      assert.equal(write.status, readOnly ? 405 : 200, write.text);
+    // Removed settings are never visible over LAN, whatever the access level.
+    for (const [path, method, body] of [
+      ['/api/quota-fallback', 'GET', undefined],
+      ['/api/quota-fallback', 'PUT', '{}'],
+      ['/api/budgets', 'GET', undefined],
+      ['/api/budgets', 'PUT', '{}'],
+    ]) {
+      assert.equal((await f.api(path, { method })).status, 401);
+      const response = await f.api(path, { method, headers: { Cookie }, ...(body !== undefined ? { body } : {}) });
+      assert.ok([404, 405].includes(response.status), `${method} ${path} got ${response.status}`);
+    }
+    // Legacy detection and reset keep the former engine-settings gating.
+    assert.equal((await f.api('/api/engine-settings')).status, 401);
+    const detected = await f.api('/api/engine-settings', { headers: { Cookie } });
+    assert.equal(detected.status, readOnly ? 404 : 200, detected.text);
+    const reset = await f.api('/api/engine-settings', {
+      method: 'POST', body: '{}', headers: { Cookie, 'Content-Type': 'application/json' },
+    });
+    if (readOnly) assert.ok([404, 405].includes(reset.status), `reset got ${reset.status}`);
+    else {
+      assert.equal(reset.status, 200, reset.text);
+      assert.equal(reset.json.hasLegacy, false);
     }
     const retry = await f.api('/api/runs/00000000-0000-0000-0000-000000000000/quota-retry', {
       method: 'POST', body: JSON.stringify({ model: 'test/model' }),

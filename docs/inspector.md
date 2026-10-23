@@ -8,7 +8,7 @@ Le bouton de panneau en haut à droite du chat ouvre l’espace de travail. Il r
 
 Retrouvez le projet, l’état de la session, les exécutions actives et l’export de la conversation. Le suivi distingue la génération d’une réponse, l’exécution d’un outil, la réduction du contexte et l’attente des sous-agents.
 
-Le statut du chat distingue aussi une attente de quota, un fournisseur indisponible et l’utilisation du modèle de secours choisi dans les préférences. Ces indications suivent les événements du moteur ; elles ne modifient ni le modèle sélectionné ni les limites de reprise.
+Le statut du chat distingue aussi une erreur de quota ou de fournisseur. Ces indications suivent les événements du moteur ; elles ne modifient ni le modèle sélectionné ni les limites de reprise.
 
 La consommation additionne les données enregistrées par Prime Agent sur la branche actuelle de la conversation : tokens entrants hors cache, sortants, lus depuis le cache et écrits dans le cache. Le **taux de cache** est la part des tokens d’entrée servis par le cache : lus ÷ (entrants + lus + écrits), sans les tokens sortants. Le coût estimé apparaît uniquement si le moteur le fournit ; sinon il reste **inconnu**, pas nul. Il ne correspond pas à la facturation de votre abonnement.
 

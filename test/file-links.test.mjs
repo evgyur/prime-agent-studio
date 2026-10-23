@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, symlink, writeFile, rm, realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { isFileReference } from '../public/file-links.js';
 import { parentFolder } from '../public/file-presentation.js';
 import { createProjectFiles } from '../lib/project-files.mjs';
@@ -27,6 +29,8 @@ test('file links cover dot folders, binaries, spaces, encoded and folder paths',
     'docs/',
     'docs/sub/',
     '.local/release/app.exe',
+    'lib/provider-auth.mjs:62-63',
+    'beta.json',
   ])
     assert.equal(isFileReference(reference), true, reference);
   for (const value of [
@@ -39,6 +43,10 @@ test('file links cover dot folders, binaries, spaces, encoded and folder paths',
     'x\n.md',
     'justaword',
     'README',
+    // Versions are not file names.
+    'v4.4.3',
+    '4.4.3-local.3',
+    'local.2',
     '',
     null,
     undefined,
@@ -161,4 +169,101 @@ test('project root references resolve as folders and symlinks never widen resolu
   // path is refused for leaving the project.
   await assert.rejects(files.resolveReference(root, 'secret.txt'), { status: 404 });
   await assert.rejects(files.resolveReference(root, 'escape/secret.txt'), { status: 403 });
+});
+
+test('file names and path endings resolve through the git file list, ignoring build outputs', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'prime-file-links-index-'));
+  t.after(async () => {
+    assert.equal(dirname(root), resolve(tmpdir()));
+    await rm(root, { recursive: true, force: true });
+  });
+  for (const dir of ['web/src/components', 'build/web/src/components', 'docs'])
+    await mkdir(join(root, dir), { recursive: true });
+  await writeFile(join(root, '.gitignore'), 'build/\n');
+  await writeFile(join(root, 'web', 'src', 'app.js'), 'export {};\n');
+  await writeFile(join(root, 'web', 'src', 'components', 'button.js'), 'export {};\n');
+  await writeFile(join(root, 'docs', 'button.js'), '// other button\n');
+  // Ignored build copies must never shadow or duplicate the real file.
+  await writeFile(join(root, 'build', 'web', 'src', 'app.js'), 'compiled\n');
+  await writeFile(join(root, 'build', 'web', 'src', 'components', 'button.js'), 'compiled\n');
+  await promisify(execFile)('git', ['-C', root, 'init', '-q']);
+  const files = createProjectFiles({ store: { findProject: async () => ({ cwd: root }) }, protectedRoots: [] });
+  assert.deepEqual(await files.resolveReference(root, 'app.js'), { path: 'web/src/app.js' });
+  assert.deepEqual(await files.resolveReference(root, 'app.js:12'), { path: 'web/src/app.js' });
+  assert.deepEqual(await files.resolveReference(root, 'src/app.js:62-63'), { path: 'web/src/app.js' });
+  assert.deepEqual(await files.resolveReference(root, './components/button.js'), {
+    path: 'web/src/components/button.js',
+  });
+  // The same name in two real folders stays a choice.
+  assert.deepEqual(await files.resolveReference(root, 'button.js'), {
+    matches: [{ path: 'docs/button.js' }, { path: 'web/src/components/button.js' }],
+  });
+  // A path ending matches whole folder names only.
+  await assert.rejects(files.resolveReference(root, 'rc/app.js'), { status: 404 });
+  // Explicit relative paths are never guessed from another folder.
+  await assert.rejects(files.resolveReference(root, '../src/app.js'), { status: 403 });
+  if (process.platform === 'win32')
+    assert.deepEqual(await files.resolveReference(root, '/web/src/app.js'), { path: 'web/src/app.js' });
+  // A new file is found once the short index cache expires (5 s): an exact path works at once.
+  await writeFile(join(root, 'docs', 'new.md'), '# New\n');
+  assert.deepEqual(await files.resolveReference(root, 'docs/new.md'), { path: 'docs/new.md' });
+});
+
+test('folders outside git still resolve file names with the bounded walk', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'prime-file-links-walk-'));
+  t.after(async () => {
+    assert.equal(dirname(root), resolve(tmpdir()));
+    await rm(root, { recursive: true, force: true });
+  });
+  await mkdir(join(root, 'notes', 'deep'), { recursive: true });
+  await writeFile(join(root, 'notes', 'deep', 'plan.md'), '# Plan\n');
+  const files = createProjectFiles({ store: { findProject: async () => ({ cwd: root }) }, protectedRoots: [] });
+  assert.deepEqual(await files.resolveReference(root, 'plan.md'), { path: 'notes/deep/plan.md' });
+  await assert.rejects(files.resolveReference(root, 'missing.md'), { status: 404 });
+});
+
+test('reference checks report what each rendered reference would open', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'prime-file-links-check-'));
+  const outsideDir = await mkdtemp(join(tmpdir(), 'prime-file-links-outside-'));
+  t.after(async () => {
+    for (const dir of [root, outsideDir]) {
+      assert.equal(dirname(dir), resolve(tmpdir()));
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+  await mkdir(join(root, 'docs'), { recursive: true });
+  await mkdir(join(root, 'a'), { recursive: true });
+  await mkdir(join(root, 'b'), { recursive: true });
+  await mkdir(join(root, '.git'), { recursive: true });
+  await writeFile(join(root, 'docs', 'guide.md'), '# Guide\n');
+  await writeFile(join(root, 'a', 'same.txt'), 'a\n');
+  await writeFile(join(root, 'b', 'same.txt'), 'b\n');
+  await writeFile(join(root, '.git', 'config'), '[core]\n');
+  await writeFile(join(outsideDir, 'secret.md'), '# Secret\n');
+  const files = createProjectFiles({ store: { findProject: async () => ({ cwd: root }) }, protectedRoots: [] });
+  const references = [
+    'docs/guide.md:3',
+    'guide.md',
+    'docs/',
+    'same.txt',
+    'missing.md',
+    '.git/config',
+    join(outsideDir, 'secret.md'),
+    'https://example.com/a.md',
+  ];
+  const { results } = await files.checkReferences(root, references);
+  assert.deepEqual(
+    results.map((item) => item.status),
+    ['file', 'file', 'directory', 'ambiguous', 'missing', 'blocked', 'outside', 'invalid'],
+  );
+  assert.deepEqual(
+    results.map((item) => item.reference),
+    references,
+  );
+  // Relative references follow the rendered document folder.
+  assert.deepEqual((await files.checkReferences(root, ['guide.md'], 'docs/index.md')).results, [
+    { reference: 'guide.md', status: 'file' },
+  ]);
+  await assert.rejects(files.checkReferences(root, 'docs/guide.md'), { status: 400 });
+  await assert.rejects(files.checkReferences(root, Array(51).fill('a.md')), { status: 400 });
 });

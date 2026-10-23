@@ -30,7 +30,7 @@ import {
   setComposerSending,
 } from './composer.js';
 import { createInspector, renderComposerGauge } from './inspector.js';
-import { fileLinkRenderer, bindFileLinks } from './file-links.js';
+import { fileLinkRenderer, bindFileLinks, createReferenceChecker } from './file-links.js';
 import { createSessionActivity } from './session-activity.js';
 import { parseAgentEnvelope } from './agent-messages.js';
 import { parseSkillBlocks, readableCopyText } from './skill-blocks.js';
@@ -2021,6 +2021,14 @@ function renderNavigation() {
   updateToolPanels();
 }
 marked.setOptions({ gfm: true, breaks: false });
+// One shared checker: every rendered message asks which of its file
+// references exist, in batched read-only requests (also allowed in remote
+// consultation).
+const fileReferences = createReferenceChecker((cwd, basePath, references) => {
+  const query = new URLSearchParams({ cwd, basePath });
+  for (const reference of references) query.append('reference', reference);
+  return api(`/api/project-files/check?${query}`).then((data) => data.results);
+});
 function markdown(text, { cwd = execCwdOf(), basePath = '', imageRoot } = {}) {
   const n = el('div', 'markdown');
   const references = [],
@@ -2072,11 +2080,12 @@ function markdown(text, { cwd = execCwdOf(), basePath = '', imageRoot } = {}) {
         body: { cwd: context.cwd, reference, basePath: context.basePath || '' },
       }),
     copy: (text) => copyText(text),
+    check: (reference, context) => fileReferences.check(context.cwd, context.basePath || '', reference),
     toast,
   });
   bindInlineImages(n, images, { cwd, basePath, imageRoot });
   n.querySelectorAll('a').forEach((a) => {
-    if (a.classList.contains('document-link')) return;
+    if (a.matches('.document-link, .document-link-pending, .document-link-missing')) return;
     const href = a.getAttribute('href') || '';
     if (!/^(https?:|mailto:|#|\/)/i.test(href)) {
       a.removeAttribute('href');

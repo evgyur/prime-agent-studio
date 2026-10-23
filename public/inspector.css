@@ -485,6 +485,13 @@
 .markdown a.document-link:hover {
   text-decoration-style: solid;
 }
+/* A Markdown link to a file that does not exist reads as plain, muted text. */
+.markdown a.document-link-missing {
+  color: var(--muted);
+  text-decoration: line-through;
+  text-decoration-color: var(--faint);
+  cursor: help;
+}
 .inspector-view-body {
   overflow: auto;
   overscroll-behavior: contain;

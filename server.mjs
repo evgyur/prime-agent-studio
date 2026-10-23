@@ -1564,6 +1564,16 @@ export function createApp(options = {}) {
         if (path === '/api/project-files/changes') return json(res, 200, await filesFor(cwd).changes(cwd));
         if (path === '/api/project-files/preview')
           return json(res, 200, await filesFor(cwd).preview(cwd, file));
+        if (path === '/api/project-files/check')
+          return json(
+            res,
+            200,
+            await filesFor(cwd).checkReferences(
+              cwd,
+              url.searchParams.getAll('reference'),
+              url.searchParams.get('basePath') || '',
+            ),
+          );
         if (path === '/api/project-files/resolve')
           return json(
             res,

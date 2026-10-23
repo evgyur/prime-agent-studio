@@ -1,18 +1,22 @@
 import { t as tr, bindAttribute } from './i18n.js';
-// Any project looking path is linked, whatever its extension. Plain prose,
-// code blocks and external URLs stay unchanged. The project file resolve API
-// stays the source of truth for existence and access, so unknown, protected
-// or binary targets open the viewer with a clear message instead of plain text.
+// Path-looking references in messages are candidates, whatever their extension.
+// Plain prose, code blocks and external URLs stay unchanged. The server checks
+// each candidate (GET /api/project-files/check) and only real, readable targets
+// become links; the resolve API stays the source of truth when a link is opened.
+// Line and range suffixes: `app.js:12`, `app.js:12:3`, `app.js:62-63`,
+// `app.js#L4-L9`. Keep in sync with lib/project-files.mjs.
+const LINE_SUFFIX = /(?:#L?\d+(?:[-:]L?\d+)?|:\d+(?:[-:]\d+)?)$/;
 export function isFileReference(value) {
   if (typeof value !== 'string' || value.length > 4096 || /[\x00-\x1f]/.test(value)) return false;
   const path = value.trim();
   if (!path || path.startsWith('#') || /^\/\//.test(path)) return false;
   if (/^[a-z][\w+.-]*:/i.test(path) && !/^(?:file:|[a-z]:[\\/])/i.test(path)) return false;
-  const stripped = path.replace(/(?:#L?\d+(?:[-:]L?\d+)?|:\d+(?::\d+)?)$/, '');
+  const stripped = path.replace(LINE_SUFFIX, '');
   if (!stripped) return false;
   if (/^file:/i.test(stripped) || /^[a-z]:[\\/]/i.test(stripped)) return true;
   if (/[\\/]/.test(stripped)) return true;
-  return /\.[A-Za-z0-9]{1,10}$/.test(stripped);
+  // An extension needs a letter: versions such as v4.4.3 are not file names.
+  return /\.(?=[A-Za-z0-9]*[A-Za-z])[A-Za-z0-9]{1,10}$/.test(stripped);
 }
 
 export function fileLinkRenderer(marked, references, images) {
@@ -29,6 +33,84 @@ export function fileLinkRenderer(marked, references, images) {
     return `<a href="#studio-file-${id}" data-studio-file="${id}">${this.parser.parseInline(token.tokens)}</a>`;
   };
   return renderer;
+}
+
+// Statuses returned by GET /api/project-files/check that open something.
+const LINKABLE = new Set(['file', 'directory', 'ambiguous']);
+
+// Batches the checks of rendered references (one request per folder and short
+// delay) and caches the answers, so streaming re-renders reuse them at once and
+// links do not flicker. Missing files are retried sooner than found ones.
+export function createReferenceChecker(
+  fetchStatuses,
+  { foundTtl = 60000, missingTtl = 10000, delay = 30 } = {},
+) {
+  const cache = new Map(),
+    pending = new Map(),
+    queue = new Map();
+  let timer = null;
+  function flush() {
+    timer = null;
+    const groups = [...queue.values()];
+    queue.clear();
+    for (const { cwd, basePath, waiting } of groups)
+      for (const chunk of chunks([...waiting.keys()]))
+        fetchStatuses(cwd, basePath, chunk).then(
+          (results) => {
+            const statuses = new Map((results || []).map((item) => [item.reference, item.status]));
+            for (const reference of chunk) {
+              const status = statuses.get(reference) || 'unknown';
+              if (status !== 'unknown') {
+                // Bounded memory over a long session: drop the oldest answers.
+                if (cache.size >= 5000) for (const key of [...cache.keys()].slice(0, 1000)) cache.delete(key);
+                cache.set(keyOf(cwd, basePath, reference), { status, at: Date.now() });
+              }
+              waiting.get(reference)(status);
+            }
+          },
+          () => {
+            for (const reference of chunk) waiting.get(reference)('unknown');
+          },
+        );
+  }
+  return {
+    // A known status is returned at once; otherwise a promise of the status.
+    check(cwd, basePath, reference) {
+      if (!cwd) return 'unknown';
+      const key = keyOf(cwd, basePath, reference);
+      const known = cache.get(key);
+      if (known && Date.now() - known.at < (LINKABLE.has(known.status) ? foundTtl : missingTtl))
+        return known.status;
+      if (pending.has(key)) return pending.get(key);
+      const group = `${cwd}\u0000${basePath}`;
+      if (!queue.has(group)) queue.set(group, { cwd, basePath, waiting: new Map() });
+      const promise = new Promise((done) => queue.get(group).waiting.set(reference, done));
+      pending.set(key, promise);
+      void promise.then(() => pending.delete(key));
+      timer ??= setTimeout(flush, delay);
+      return promise;
+    },
+  };
+}
+const keyOf = (cwd, basePath, reference) => `${cwd}\u0000${basePath}\u0000${reference}`;
+// Requests stay well under URL length limits: at most 50 references or about
+// 6,000 encoded characters each.
+function chunks(references) {
+  const result = [];
+  let current = [],
+    size = 0;
+  for (const reference of references) {
+    const length = encodeURIComponent(reference).length + 11;
+    if (current.length && (current.length >= 50 || size + length > 6000)) {
+      result.push(current);
+      current = [];
+      size = 0;
+    }
+    current.push(reference);
+    size += length;
+  }
+  if (current.length) result.push(current);
+  return result;
 }
 
 // Shared message file menu, one document level popover reused by every bound
@@ -211,17 +293,48 @@ export function bindFileLinks(root, references, open, menu = null) {
       });
     }
   }
+  // With a checker, a reference becomes a link only once the server confirms
+  // it opens something. An unknown answer (older server, network error) keeps
+  // the previous behavior: clickable, and the viewer explains any problem.
+  // Outside paths stay useful only where the native folder reveal is allowed.
+  function verify(reference, apply) {
+    if (!menu?.check) return apply(true, 'unknown');
+    const linkable = (status) => {
+      if (LINKABLE.has(status) || status === 'unknown') return true;
+      const context = menu.context();
+      return status === 'outside' && !context.readOnly && context.nativeFileOpen && context.online;
+    };
+    const status = menu.check(reference, menu.context());
+    if (typeof status === 'string') apply(linkable(status), status);
+    else void status.then((value) => apply(linkable(value), value));
+  }
   root.querySelectorAll('a').forEach((anchor) => {
     const id = anchor.getAttribute('data-studio-file');
     const reference = id !== null && /^\d+$/.test(id) ? references[Number(id)] : anchor.getAttribute('href');
     anchor.removeAttribute('data-studio-file');
-    if (isFileReference(reference)) bind(anchor, reference);
+    if (!isFileReference(reference)) return;
+    // Not clickable until checked; a broken Markdown link reads as unavailable.
+    anchor.removeAttribute('href');
+    anchor.classList.add('document-link-pending');
+    verify(reference, (linkable, status) => {
+      anchor.classList.remove('document-link-pending');
+      if (linkable) bind(anchor, reference);
+      else {
+        anchor.classList.add('document-link-missing');
+        const key = ['blocked', 'outside'].includes(status) ? 'files.link_inaccessible' : 'files.link_unavailable';
+        bindAttribute(anchor, 'title', () => tr(key, { value1: reference }));
+      }
+    });
   });
   root.querySelectorAll('code').forEach((code) => {
     if (code.closest('pre, a') || !isFileReference(code.textContent)) return;
-    const anchor = document.createElement('a');
-    bind(anchor, code.textContent.trim());
-    code.replaceWith(anchor);
-    anchor.append(code);
+    const reference = code.textContent.trim();
+    verify(reference, (linkable) => {
+      if (!linkable || code.closest('a')) return;
+      const anchor = document.createElement('a');
+      bind(anchor, reference);
+      code.replaceWith(anchor);
+      anchor.append(code);
+    });
   });
 }

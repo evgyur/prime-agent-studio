@@ -52,7 +52,9 @@ Tracking uses Prime Agent **0.9.7**’s protocol. Viewing a card does not resume
 
 The diff compares current contents with the latest commit, including staged and working-tree changes. It covers **the entire project**: several sessions or manual edits may contribute to the same files. Changes are not automatically attributed to an agent. File browsing remains available without Git.
 
-Markdown links to project documents and file references written as code in messages are clickable. They open a preview with the same **Open** button, without switching sessions or losing the draft. Relative, absolute and `file://` paths are recognized, including line references. A bare filename is searched for within the project; if several files share that name, Studio lets you choose.
+Markdown links to project documents and file references written as code in messages become clickable when the file exists. They open a preview with the same **Open** button, without switching sessions or losing the draft. Relative, absolute and `file://` paths are recognized, including line and line-range references (`app.js:12`, `app.js:62-63`, `app.js#L4-L9`).
+
+A bare filename or a path ending (`src/app.js` for `web/src/app.js`) is searched for in the project file list. In a Git repository, this list honors `.gitignore`: build folders never hide the real file. If several files match, Studio lets you choose. Before showing a message, Studio checks its references in a single request: a version number, a branch name or a missing file stays plain text, and a Markdown link to a missing file appears struck through, with a tooltip. Agents also receive an instruction to write paths from the project folder.
 
 Links are not limited to selected extensions: a binary file such as an `.exe` or `.zip` can open the panel without being executed. A link’s context menu offers **Open**, **Open folder**, and **Copy path**. The panel also includes **Open folder**, next to **Open**, to open the containing folder on the host PC.
 

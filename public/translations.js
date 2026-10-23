@@ -629,6 +629,14 @@ export const messages = {
     fr: 'Ouvrir les réglages de l’application pour préparer Prime Agent, uv et Python (aucune installation automatique)',
     en: 'Open the application settings to prepare Prime Agent, uv and Python (no automatic install)',
   },
+  'files.link_unavailable': {
+    fr: 'Fichier introuvable dans le projet : {value1}',
+    en: 'File not found in the project: {value1}',
+  },
+  'files.link_inaccessible': {
+    fr: 'Fichier non accessible depuis le Studio : {value1}',
+    en: 'File not accessible from Studio: {value1}',
+  },
   'setup.eyebrow': { fr: 'CONFIGURATION REQUISE', en: 'SETUP REQUIRED' },
   'setup.title': { fr: 'Avant votre premier message', en: 'Before your first message' },
   'setup.note': {

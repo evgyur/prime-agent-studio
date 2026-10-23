@@ -187,7 +187,10 @@ test('file names and path endings resolve through the git file list, ignoring bu
   await writeFile(join(root, 'build', 'web', 'src', 'app.js'), 'compiled\n');
   await writeFile(join(root, 'build', 'web', 'src', 'components', 'button.js'), 'compiled\n');
   await promisify(execFile)('git', ['-C', root, 'init', '-q']);
-  const files = createProjectFiles({ store: { findProject: async () => ({ cwd: root }) }, protectedRoots: [] });
+  const files = createProjectFiles({
+    store: { findProject: async () => ({ cwd: root }) },
+    protectedRoots: [],
+  });
   assert.deepEqual(await files.resolveReference(root, 'app.js'), { path: 'web/src/app.js' });
   assert.deepEqual(await files.resolveReference(root, 'app.js:12'), { path: 'web/src/app.js' });
   assert.deepEqual(await files.resolveReference(root, 'src/app.js:62-63'), { path: 'web/src/app.js' });
@@ -204,9 +207,15 @@ test('file names and path endings resolve through the git file list, ignoring bu
   await assert.rejects(files.resolveReference(root, '../src/app.js'), { status: 403 });
   if (process.platform === 'win32')
     assert.deepEqual(await files.resolveReference(root, '/web/src/app.js'), { path: 'web/src/app.js' });
-  // A new file is found once the short index cache expires (5 s): an exact path works at once.
+  // Files created a moment ago are found at once, by path and by name: agents
+  // mention files right after writing them.
   await writeFile(join(root, 'docs', 'new.md'), '# New\n');
   assert.deepEqual(await files.resolveReference(root, 'docs/new.md'), { path: 'docs/new.md' });
+  assert.deepEqual(await files.resolveReference(root, 'new.md'), { path: 'docs/new.md' });
+  assert.deepEqual((await files.checkReferences(root, ['new.md', 'app.js'])).results, [
+    { reference: 'new.md', status: 'file' },
+    { reference: 'app.js', status: 'file' },
+  ]);
 });
 
 test('folders outside git still resolve file names with the bounded walk', async (t) => {
@@ -217,7 +226,10 @@ test('folders outside git still resolve file names with the bounded walk', async
   });
   await mkdir(join(root, 'notes', 'deep'), { recursive: true });
   await writeFile(join(root, 'notes', 'deep', 'plan.md'), '# Plan\n');
-  const files = createProjectFiles({ store: { findProject: async () => ({ cwd: root }) }, protectedRoots: [] });
+  const files = createProjectFiles({
+    store: { findProject: async () => ({ cwd: root }) },
+    protectedRoots: [],
+  });
   assert.deepEqual(await files.resolveReference(root, 'plan.md'), { path: 'notes/deep/plan.md' });
   await assert.rejects(files.resolveReference(root, 'missing.md'), { status: 404 });
 });
@@ -240,7 +252,10 @@ test('reference checks report what each rendered reference would open', async (t
   await writeFile(join(root, 'b', 'same.txt'), 'b\n');
   await writeFile(join(root, '.git', 'config'), '[core]\n');
   await writeFile(join(outsideDir, 'secret.md'), '# Secret\n');
-  const files = createProjectFiles({ store: { findProject: async () => ({ cwd: root }) }, protectedRoots: [] });
+  const files = createProjectFiles({
+    store: { findProject: async () => ({ cwd: root }) },
+    protectedRoots: [],
+  });
   const references = [
     'docs/guide.md:3',
     'guide.md',

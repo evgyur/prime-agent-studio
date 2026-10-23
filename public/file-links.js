@@ -4,15 +4,17 @@ import { t as tr, bindAttribute } from './i18n.js';
 // each candidate (GET /api/project-files/check) and only real, readable targets
 // become links; the resolve API stays the source of truth when a link is opened.
 // Line and range suffixes: `app.js:12`, `app.js:12:3`, `app.js:62-63`,
-// `app.js#L4-L9`. Keep in sync with lib/project-files.mjs.
-const LINE_SUFFIX = /(?:#L?\d+(?:[-:]L?\d+)?|:\d+(?:[-:]\d+)?)$/;
+// `app.js#L4-L9`. Must equal lib/project-files.mjs (unit-tested).
+export const LINE_SUFFIX = /(?:#L?\d+(?:[-:]L?\d+)?|:\d+(?:[-:]\d+)?)$/;
 export function isFileReference(value) {
   if (typeof value !== 'string' || value.length > 4096 || /[\x00-\x1f]/.test(value)) return false;
   const path = value.trim();
   if (!path || path.startsWith('#') || /^\/\//.test(path)) return false;
-  if (/^[a-z][\w+.-]*:/i.test(path) && !/^(?:file:|[a-z]:[\\/])/i.test(path)) return false;
+  // Strip the line suffix first: in `app.js:12` the colon is a location, not
+  // a URL scheme like `https:` or `mailto:`.
   const stripped = path.replace(LINE_SUFFIX, '');
   if (!stripped) return false;
+  if (/^[a-z][\w+.-]*:/i.test(stripped) && !/^(?:file:|[a-z]:[\\/])/i.test(stripped)) return false;
   if (/^file:/i.test(stripped) || /^[a-z]:[\\/]/i.test(stripped)) return true;
   if (/[\\/]/.test(stripped)) return true;
   // An extension needs a letter: versions such as v4.4.3 are not file names.
@@ -321,7 +323,9 @@ export function bindFileLinks(root, references, open, menu = null) {
       if (linkable) bind(anchor, reference);
       else {
         anchor.classList.add('document-link-missing');
-        const key = ['blocked', 'outside'].includes(status) ? 'files.link_inaccessible' : 'files.link_unavailable';
+        const key = ['blocked', 'outside'].includes(status)
+          ? 'files.link_inaccessible'
+          : 'files.link_unavailable';
         bindAttribute(anchor, 'title', () => tr(key, { value1: reference }));
       }
     });

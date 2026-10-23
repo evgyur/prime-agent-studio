@@ -133,11 +133,10 @@ test('run plans use one visible console that stays open in the script folder', (
       { status: 400, message: messages['server.renommez_ce_script_pour_l_executer_depuis_le_studio'].fr },
       file,
     );
+  // An interpreter under a path with % is refused too, without blaming the script name.
   assert.throws(
     () => buildRunLaunch('py', 'C:\\proj\\ok.py', { interpreter: 'C:\\50%\\py.exe', cmdPath: cmd }),
-    {
-      status: 400,
-    },
+    { status: 502, message: messages['server.le_pc_n_a_pas_pu_executer_ce_script'].fr },
   );
 });
 

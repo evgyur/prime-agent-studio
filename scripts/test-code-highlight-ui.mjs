@@ -48,6 +48,9 @@ await writeFile(join(cwd, 'demo.py'), pySource);
 await writeFile(join(cwd, 'page.html'), htmlSource);
 await writeFile(join(cwd, 'evil.html'), evilSource);
 await writeFile(join(cwd, 'many-lines.js'), hugeSource);
+// Windows line endings (CRLF): the most common case on this platform.
+const crlfSource = 'function crlf() {\r\n  return 1;\r\n}\r\n';
+await writeFile(join(cwd, 'windows.js'), crlfSource);
 const git = (...args) => exec('git', ['-C', cwd, ...args], { windowsHide: true });
 await git('init', '-q');
 await git('config', 'user.name', 'Fixture');
@@ -164,6 +167,12 @@ try {
     'function names keep their scope class',
   );
   await page.screenshot({ path: resolve('.local/code-highlight-preview-dark.png'), animations: 'disabled' });
+  await viewer().getByRole('button', { name: 'Fermer', exact: true }).click();
+
+  // A Windows (CRLF) file highlights too, with exactly its own text.
+  await openFile('windows.js');
+  await expect.poll(() => viewer().locator('.inspector-code .code-line').count(), { timeout: 20000 }).toBe(3);
+  assert.equal(await viewer().locator('.inspector-code').textContent(), crlfSource);
   await viewer().getByRole('button', { name: 'Fermer', exact: true }).click();
 
   // Python and HTML previews highlight with their own grammars.

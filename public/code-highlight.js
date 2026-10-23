@@ -249,7 +249,11 @@ export function canHighlightBlock(language, text) {
   return highlightLimit(value) === null;
 }
 
-const escapeHtml = (text) => String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+// A raw carriage return would be turned into \n by the HTML parser of
+// innerHTML: Windows (CRLF) files would never match their source text and
+// would stay plain. The &#13; reference keeps it exact.
+const escapeHtml = (text) =>
+  String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\r/g, '&#13;');
 
 const ENTITY = /^&(amp|lt|gt|quot|#\d+|#x[\dA-Fa-f]+);$/;
 const TOKEN = /<span class="([^"]*)">|<\/span>|&[^;\s]*;?|[^<&]+|[<&]/g;
@@ -325,7 +329,8 @@ let cachedChars = 0;
 export function cachedHighlightLines(language, text, highlight) {
   const key = highlightCacheKey(language, text);
   const cached = lineCache.get(key);
-  if (cached) {
+  // The key is a hash: compare the text so a collision never shows other code.
+  if (cached && cached.language === language && cached.text === text) {
     highlightStats.cacheHits++;
     return cached.lines;
   }
@@ -333,8 +338,12 @@ export function cachedHighlightLines(language, text, highlight) {
   const lines = splitHighlightLines(highlight(text, { language }).value);
   highlightStats.totalMs += performance.now() - started;
   highlightStats.blocks++;
-  const size = lines.reduce((total, line) => total + line.length, 0);
-  lineCache.set(key, { lines, size });
+  if (cached) {
+    lineCache.delete(key);
+    cachedChars -= cached.size;
+  }
+  const size = text.length + lines.reduce((total, line) => total + line.length, 0);
+  lineCache.set(key, { language, text, lines, size });
   cachedChars += size;
   // Oldest first; the entry just added always stays.
   for (const [oldKey, entry] of lineCache) {
@@ -352,7 +361,14 @@ export function cachedHighlightLines(language, text, highlight) {
 let hljsPromise = null;
 const registeredExtras = new Set();
 export function loadHljs() {
-  if (!hljsPromise) hljsPromise = import('/vendor/hljs.js').then((module) => module.default || module);
+  // A failed load (server restarting) is retried by the next block.
+  hljsPromise ??= import('/vendor/hljs.js').then(
+    (module) => module.default || module,
+    (error) => {
+      hljsPromise = null;
+      throw error;
+    },
+  );
   return hljsPromise;
 }
 
@@ -398,6 +414,12 @@ function observeBlock(element, work) {
           blockObserver.unobserve(target);
           pendingWorks.delete(target);
         }
+    // Hard cap: the oldest never-visible blocks simply stay plain text.
+    for (const target of pendingWorks.keys()) {
+      if (pendingWorks.size < 400) break;
+      blockObserver.unobserve(target);
+      pendingWorks.delete(target);
+    }
     pendingWorks.set(element, work);
     blockObserver.observe(element);
     return;

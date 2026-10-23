@@ -5,9 +5,10 @@ import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { isFileReference } from '../public/file-links.js';
+import { isFileReference, LINE_SUFFIX as browserLineSuffix } from '../public/file-links.js';
 import { parentFolder } from '../public/file-presentation.js';
-import { createProjectFiles } from '../lib/project-files.mjs';
+import { createProjectFiles, LINE_SUFFIX } from '../lib/project-files.mjs';
+import { directoryForReference } from '../lib/open-directory.mjs';
 import { pathToFileURL } from 'node:url';
 
 test('file links cover dot folders, binaries, spaces, encoded and folder paths', () => {
@@ -31,6 +32,10 @@ test('file links cover dot folders, binaries, spaces, encoded and folder paths',
     '.local/release/app.exe',
     'lib/provider-auth.mjs:62-63',
     'beta.json',
+    // Bare names with a location: the colon is not a URL scheme.
+    'app.js:12',
+    'app.js:12:3',
+    'app.js:62-63',
   ])
     assert.equal(isFileReference(reference), true, reference);
   for (const value of [
@@ -281,4 +286,26 @@ test('reference checks report what each rendered reference would open', async (t
   ]);
   await assert.rejects(files.checkReferences(root, 'docs/guide.md'), { status: 400 });
   await assert.rejects(files.checkReferences(root, Array(51).fill('a.md')), { status: 400 });
+});
+
+test('the browser and the server strip the same line suffixes; the folder reveal understands ranges', async (t) => {
+  assert.equal(browserLineSuffix.source, LINE_SUFFIX.source);
+  const root = await mkdtemp(join(tmpdir(), 'prime-file-links-suffix-'));
+  t.after(async () => {
+    assert.equal(dirname(root), resolve(tmpdir()));
+    await rm(root, { recursive: true, force: true });
+  });
+  await mkdir(join(root, 'src'), { recursive: true });
+  await writeFile(join(root, 'src', 'app.js'), 'export {};\n');
+  await writeFile(join(root, 'src', '100%.md'), '# Percent\n');
+  const folder = await realpath(join(root, 'src'));
+  for (const reference of ['src/app.js:62-63', 'src/app.js:12:3', 'src/app.js#L4-L9'])
+    assert.equal(await directoryForReference({ cwd: root, reference }), folder, reference);
+  const files = createProjectFiles({
+    store: { findProject: async () => ({ cwd: root }) },
+    protectedRoots: [],
+  });
+  // A literal percent sign is part of the name, not an encoding error.
+  assert.deepEqual(await files.resolveReference(root, 'src/100%.md'), { path: 'src/100%.md' });
+  assert.deepEqual(await files.resolveReference(root, 'src/100%25.md'), { path: 'src/100%.md' });
 });

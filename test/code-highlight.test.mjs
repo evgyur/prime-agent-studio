@@ -170,6 +170,25 @@ describe('splitHighlightLines', () => {
   });
 });
 
+describe('loadHljs', () => {
+  it('retries after a failed load instead of keeping the failure', async () => {
+    // '/vendor/hljs.js' does not exist for node: both loads fail, and the
+    // second one is a new attempt.
+    const { loadHljs } = await import('../public/code-highlight.js');
+    const first = loadHljs();
+    await assert.rejects(first);
+    const second = loadHljs();
+    assert.notEqual(second, first);
+    await assert.rejects(second);
+  });
+});
+
+describe('carriage returns', () => {
+  it('stay in the painted HTML as a character reference', () => {
+    assert.deepEqual(splitHighlightLines('a\r\nb'), ['a&#13;', 'b']);
+  });
+});
+
 describe('paintNumberedLines', () => {
   // Minimal DOM stand-in: enough for the painter (elements, text, innerHTML).
   function fakeCode() {
@@ -183,6 +202,7 @@ describe('paintNumberedLines', () => {
             {
               text: html
                 .replace(/<[^>]+>/g, '')
+                .replaceAll('&#13;', '\r')
                 .replaceAll('&lt;', '<')
                 .replaceAll('&gt;', '>')
                 .replaceAll('&amp;', '&'),
@@ -208,7 +228,8 @@ describe('paintNumberedLines', () => {
   }
   it('keeps the exact text with one line block per line and no extra final line', async () => {
     const { paintNumberedLines } = await import('../public/code-highlight.js');
-    for (const text of ['a\nb', 'a\nb\n', 'one', '', '\n\n', 'x\n\ny\n']) {
+    // Windows files (CRLF) included: a raw \r would be rewritten by innerHTML.
+    for (const text of ['a\nb', 'a\nb\n', 'one', '', '\n\n', 'x\n\ny\n', 'a\r\nb\r\n', 'a\r\n\r\nb']) {
       const code = fakeCode();
       paintNumberedLines(code, splitHighlightLines(text));
       assert.equal(code.textContent, text, JSON.stringify(text));

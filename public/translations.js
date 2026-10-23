@@ -2868,6 +2868,34 @@ export const messages = {
     fr: 'Ouverture demandée sur le PC.',
     en: 'Opening requested on the PC.',
   },
+  'ui.executer_sur_le_pc': {
+    fr: 'Exécuter sur le PC',
+    en: 'Run on PC',
+  },
+  'ui.executer': {
+    fr: 'Exécuter',
+    en: 'Run',
+  },
+  'ui.executer_dans_une_console_du_pc': {
+    fr: 'Exécuter dans une console du PC',
+    en: 'Run in a PC console window',
+  },
+  'ui.executer_ce_script': {
+    fr: 'Exécuter ce script ?',
+    en: 'Run this script?',
+  },
+  'ui.le_script_va_s_executer_sur_votre_pc_dans_une_fenetre_visible': {
+    fr: 'Ce script va s’exécuter sur votre PC, dans une nouvelle fenêtre de console qui reste ouverte, avec vos droits Windows. Vérifiez son contenu avant de confirmer.',
+    en: 'This script will run on your PC, in a new console window that stays open, with your Windows rights. Check its contents before confirming.',
+  },
+  'ui.execution_sur_le_pc': {
+    fr: 'Exécution sur le PC…',
+    en: 'Running on the PC…',
+  },
+  'ui.execution_demandee_sur_le_pc': {
+    fr: 'Exécution demandée sur le PC.',
+    en: 'Run requested on the PC.',
+  },
   'ui.etat_actuel_compare_au_dernier_commit_head_index_et_fichiers_de_t': {
     fr: 'État actuel comparé au dernier commit (HEAD), index et fichiers de travail compris.',
     en: 'Current state compared with the latest commit (HEAD), including staged and working files.',
@@ -5510,6 +5538,22 @@ export const messages = {
   'server.ce_type_de_fichier_ne_peut_pas_etre_ouvert_depuis_le_studio': {
     fr: 'Ce type de fichier ne peut pas être ouvert depuis le Studio.',
     en: 'This file type cannot be opened from the Studio.',
+  },
+  'server.ce_script_ne_peut_pas_etre_execute_depuis_le_studio': {
+    fr: 'Ce script ne peut pas être exécuté depuis le Studio.',
+    en: 'This script cannot be run from Studio.',
+  },
+  'server.execution_de_scripts_uniquement_sur_windows': {
+    fr: 'L’exécution de scripts est disponible uniquement sur Windows.',
+    en: 'Running scripts is only available on Windows.',
+  },
+  'server.interpreteur_introuvable_pour_executer_ce_script': {
+    fr: 'Interpréteur introuvable pour exécuter ce script ({value1}).',
+    en: 'Interpreter not found to run this script ({value1}).',
+  },
+  'server.le_pc_n_a_pas_pu_executer_ce_script': {
+    fr: 'Le PC n’a pas pu exécuter ce script. Réessayez.',
+    en: 'The PC could not run this script. Please try again.',
   },
   'server.fichier_invalide': {
     fr: 'Fichier invalide.',

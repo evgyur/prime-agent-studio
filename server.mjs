@@ -49,6 +49,7 @@ import { validateImages, imageBodyLimit } from './lib/images.mjs';
 import { createFileStore, validateFiles, appendFileMessage, splitFileMessage } from './lib/files.mjs';
 import { createProjectFiles } from './lib/project-files.mjs';
 import { openFile as openLocalFile, fileLaunchMode } from './lib/open-file.mjs';
+import { runFile as runLocalFile } from './lib/run-file.mjs';
 import { createSessionInspector } from './lib/session-inspector.mjs';
 import { createKnowledge } from './lib/knowledge.mjs';
 import { createRoadmapService } from './lib/roadmap.mjs';
@@ -1537,6 +1538,11 @@ export function createApp(options = {}) {
         const file = await filesFor(body.cwd).localFile(body.cwd, body.path);
         fileLaunchMode(file);
         return json(res, 200, await (options.openFile || openLocalFile)(file));
+      }
+      if (method === 'POST' && path === '/api/project-files/run') {
+        const body = await readBody(req);
+        const file = await filesFor(body.cwd).localFile(body.cwd, body.path);
+        return json(res, 200, await (options.runFile || runLocalFile)(file));
       }
       if (['GET', 'HEAD'].includes(method) && path === '/api/project-files/image') {
         const image = await filesFor(url.searchParams.get('cwd')).image(

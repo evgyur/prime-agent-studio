@@ -475,6 +475,49 @@
   flex-basis: 100%;
   margin: 0;
 }
+.inspector-run {
+  font-size: 12px;
+  color: var(--accent-text, var(--text));
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  padding: 6px;
+}
+.script-run-dialog {
+  width: min(440px, calc(100vw - 32px));
+}
+.script-run-dialog .modal-heading {
+  margin-bottom: 8px;
+}
+.script-run-file {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 4px;
+  overflow-wrap: anywhere;
+}
+.script-run-path {
+  margin: 0 0 12px;
+}
+.script-run-path code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.script-run-warning {
+  margin: 0 0 8px;
+}
+.script-run-feedback {
+  margin: 0 0 8px;
+}
+.script-run-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
 .markdown a.document-link {
   color: var(--accent-text, var(--accent));
   text-decoration: underline;

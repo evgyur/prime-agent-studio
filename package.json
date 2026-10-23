@@ -97,6 +97,7 @@
     "test:skills": "node scripts/test-skills-ui.mjs",
     "test:terminal": "node --test test/open-terminal.test.mjs && node scripts/test-terminal-ui.mjs",
     "test:terminal:native": "node scripts/test-open-terminal.mjs",
+    "test:open-run": "node --test test/open-file.test.mjs && node --test test/run-file.test.mjs && node scripts/test-open-run-ui.mjs",
     "test:conversation-settings": "node scripts/test-conversation-settings-ui.mjs",
     "test:context-notices": "node scripts/test-context-notices-ui.mjs",
     "test:sync": "node scripts/test-sync-settings-ui.mjs",

@@ -21,20 +21,11 @@ const LEGACY_ITEMS = [
 export function createEngineSettings({
   api,
   getContext = () => ({}),
-  getModels,
-  openModelPicker,
-  icon,
   onChanged = () => {},
   getElement = null,
   domId = null,
-  instanceId = '',
   isPrimary = true,
 } = {}) {
-  void getModels;
-  void openModelPicker;
-  void icon;
-  void instanceId;
-  void isPrimary;
   const scopedId = (logical) => (typeof domId === 'function' ? domId(logical) : logical);
   const root =
     typeof getElement === 'function'

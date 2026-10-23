@@ -362,13 +362,9 @@ test('legacy card ids are unique per instance and reset state stays independent'
     createEngineSettings({
       api,
       getContext: context,
-      getModels: () => [],
-      openModelPicker: () => {},
-      icon: null,
       onChanged: () => {},
       getElement: scope.getElement,
       domId: scope.domId,
-      instanceId: scope.prefix,
       isPrimary: primary,
     });
   const a = makeScope('A');

@@ -320,8 +320,10 @@ const icons = {
   settings:
     'm10 3-.5 2-2 .9-1.8-.6-2 3.4L5.2 10v2l-1.5 1.3 2 3.4 1.8-.6 2 .9.5 2h4l.5-2 2-.9 1.8.6 2-3.4-1.5-1.3v-2l1.5-1.3-2-3.4-1.8.6-2-.9L14 3h-4ZM15 11a3 3 0 1 1-6 0 3 3 0 0 1 6 0',
   menu: 'M4 6h16M4 12h16M4 18h16',
-  more: 'M5 12h.01M12 12h.01M19 12h.01',
-  grip: 'M9 5h.01M15 5h.01M9 12h.01M15 12h.01M9 19h.01M15 19h.01',
+  // Dots are drawn as small circles, not near-zero-length strokes: those
+  // can vanish on very high-density screens.
+  more: 'M4 12a1 1 0 1 0 2 0a1 1 0 1 0-2 0M11 12a1 1 0 1 0 2 0a1 1 0 1 0-2 0M18 12a1 1 0 1 0 2 0a1 1 0 1 0-2 0',
+  grip: 'M8 5a1 1 0 1 0 2 0a1 1 0 1 0-2 0M14 5a1 1 0 1 0 2 0a1 1 0 1 0-2 0M8 12a1 1 0 1 0 2 0a1 1 0 1 0-2 0M14 12a1 1 0 1 0 2 0a1 1 0 1 0-2 0M8 19a1 1 0 1 0 2 0a1 1 0 1 0-2 0M14 19a1 1 0 1 0 2 0a1 1 0 1 0-2 0',
   panel: 'M3 4h18v16H3V4Zm12 0v16',
   layout: 'M3 4h18v16H3V4Zm11 0v16m0-8h7',
   map: 'M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3V6Zm6-3v15m6-12v15',
@@ -1888,7 +1890,6 @@ function renderDetails() {
   bindText($('welcome-project').lastElementChild, () =>
     welcomeProjectText(dockingUI?.active ? convViews?.byId(PRIMARY_VIEW_ID)?.projectCwd : state.projectCwd),
   );
-  $('session-menu-button').disabled = !state.sessionId;
   $('session-state').hidden = !isRunning(run);
   bindText($('session-state'), () => tr('ui.agent_en_cours'));
   if (toolViews) renderToolSession(toolViews.entries.get('session'));
@@ -4960,7 +4961,6 @@ async function logout(button = $('logout-button')) {
 function closeSessionMenu() {
   $('session-menu').hidden = true;
   sessionMenuAnchor?.setAttribute('aria-expanded', 'false');
-  $('session-menu-button').setAttribute('aria-expanded', 'false');
 }
 function openSessionMenu(id, anchor) {
   if (state.readOnly || !id) return;
@@ -4986,7 +4986,6 @@ function openSessionMenu(id, anchor) {
   menu.hidden = false;
   positionMenus();
   anchor.setAttribute('aria-expanded', 'true');
-  $('session-menu-button').setAttribute('aria-expanded', 'true');
   menu.querySelector('button:not(:disabled):not([hidden])')?.focus({ preventScroll: true });
 }
 async function patchSession(id, patch) {
@@ -6035,10 +6034,6 @@ $('show-archived').onclick = () => {
   renderSessions();
   renderProjectOverview();
 };
-$('session-menu-button').onclick = (e) => {
-  if ($('session-menu').hidden) openSessionMenu(state.sessionId, e.currentTarget);
-  else closeSessionMenu();
-};
 $('session-menu').onclick = (e) => {
   const b = e.target.closest('[data-action]');
   if (b) void menuAction(b.dataset.action);
@@ -6303,12 +6298,7 @@ document.addEventListener('click', (event) => {
 });
 document.addEventListener('click', (e) => {
   if (!e.target.closest('#project-menu') && !e.target.closest('.project-more')) closeProjectMenu();
-  if (
-    !e.target.closest('#session-menu') &&
-    !e.target.closest('#session-menu-button, [data-panel-id="session-menu-button"]') &&
-    !e.target.closest('.session-more')
-  )
-    closeSessionMenu();
+  if (!e.target.closest('#session-menu') && !e.target.closest('.session-more')) closeSessionMenu();
 });
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {

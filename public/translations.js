@@ -1853,10 +1853,6 @@ export const messages = {
     fr: 'Nouvelle session',
     en: 'New session',
   },
-  'ui.options_de_la_session': {
-    fr: 'Options de la session',
-    en: 'Session options',
-  },
   'ui.aucune_session_ne_correspond_a_votre_recherche': {
     fr: 'Aucune session ne correspond à votre recherche.',
     en: 'No sessions match your search.',

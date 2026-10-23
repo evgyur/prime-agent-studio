@@ -526,12 +526,6 @@ kbd {
     flex-basis: 28px;
     min-height: 44px;
   }
-  .session-row .session-more {
-    display: flex;
-    width: 32px;
-    flex-basis: 32px;
-    min-height: 44px;
-  }
 }
 .danger-text,
 .popover-menu .danger-text {
@@ -647,6 +641,16 @@ kbd {
 .session-row:hover .session-more,
 .session-row:focus-within .session-more {
   display: flex;
+}
+/* Touch screens have no hover: the conversation menu button stays visible.
+   Declared after the base rule so it wins at equal specificity. */
+@media (pointer: coarse) {
+  .session-row .session-more {
+    display: flex;
+    width: 32px;
+    flex-basis: 32px;
+    min-height: 44px;
+  }
 }
 .session-row:hover .session-select {
   padding-right: 0;
@@ -1669,7 +1673,6 @@ a.sidebar-settings {
 [data-read-only='true'] .starter-grid,
 [data-read-only='true'] #new-session,
 [data-read-only='true'] #add-project,
-[data-read-only='true'] #session-menu-button,
 [data-read-only='true'] .session-more,
 [data-read-only='true'] #session-menu {
   display: none !important;

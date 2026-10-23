@@ -61,8 +61,8 @@ const assistantText = [
   'const total = items.reduce((sum, item) => sum + item.price, 0);',
   '```',
   'And an unknown fence stays plain:',
-  '```toml',
-  'key = "value"',
+  '```cobol',
+  'DISPLAY "HELLO".',
   '```',
 ].join('\n');
 const fixture = [
@@ -142,18 +142,43 @@ try {
   await expect.poll(() => code.locator('.code-line').count(), { timeout: 20000 }).toBeGreaterThan(0);
   assert.ok((await code.locator('span[class*="hljs-"]').count()) > 0, 'expected highlighted spans');
   assert.equal(await code.textContent(), jsSource);
+  // Rows match the source lines (the final newline closes the last row) and
+  // are contiguous: each row is exactly one line high.
+  const sourceLines = jsSource.endsWith('\n') ? jsSource.split('\n').length - 1 : jsSource.split('\n').length;
+  assert.equal(await code.locator('.code-line').count(), sourceLines);
+  const rows = await code
+    .locator('.code-line')
+    .evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect()));
+  const lineHeight = await code
+    .locator('.code-line')
+    .first()
+    .evaluate((node) => parseFloat(getComputedStyle(node).lineHeight));
+  for (let i = 1; i < rows.length; i++)
+    assert.ok(Math.abs(rows[i].top - rows[i - 1].bottom) < 1, `row ${i} is contiguous`);
+  assert.ok(
+    Math.abs(rows[0].height - lineHeight) < 1,
+    `row height ${rows[0].height} = line height ${lineHeight}`,
+  );
+  assert.ok(
+    (await code.locator('.hljs-title.function_').count()) > 0,
+    'function names keep their scope class',
+  );
   await page.screenshot({ path: resolve('.local/code-highlight-preview-dark.png'), animations: 'disabled' });
   await viewer().getByRole('button', { name: 'Fermer', exact: true }).click();
 
   // Python and HTML previews highlight with their own grammars.
   await openFile('demo.py');
-  await expect.poll(() => viewer().locator('.inspector-code .code-line').count(), { timeout: 20000 }).toBeGreaterThan(0);
+  await expect
+    .poll(() => viewer().locator('.inspector-code .code-line').count(), { timeout: 20000 })
+    .toBeGreaterThan(0);
   assert.ok((await viewer().locator('.inspector-code span[class*="hljs-"]').count()) > 0);
   assert.equal(await viewer().locator('.inspector-code').textContent(), pySource);
   await viewer().getByRole('button', { name: 'Fermer', exact: true }).click();
 
   await openFile('page.html');
-  await expect.poll(() => viewer().locator('.inspector-code .code-line').count(), { timeout: 20000 }).toBeGreaterThan(0);
+  await expect
+    .poll(() => viewer().locator('.inspector-code .code-line').count(), { timeout: 20000 })
+    .toBeGreaterThan(0);
   assert.ok((await viewer().locator('.inspector-code span[class*="hljs-"]').count()) > 0);
   assert.equal(await viewer().locator('.inspector-code').textContent(), htmlSource);
   await viewer().getByRole('button', { name: 'Fermer', exact: true }).click();
@@ -178,23 +203,35 @@ try {
   await viewer().getByRole('button', { name: 'Fermer', exact: true }).click();
 
   // Conversation: the js fence is highlighted with the option ON (default),
-  // the unknown toml fence stays plain.
+  // the unknown cobol fence stays plain.
   await page.locator('#session-list').getByText('Show me the highlighted change.', { exact: true }).click();
   await expect(page.locator('#messages')).toContainText('Here is the change:');
   const jsBlock = page.locator('#messages pre[data-hl-language="js"]');
   await expect(jsBlock).toBeVisible();
   await expect.poll(() => jsBlock.locator('.code-line').count(), { timeout: 20000 }).toBeGreaterThan(0);
   assert.ok((await jsBlock.locator('span[class*="hljs-"]').count()) > 0);
-  const tomlBlock = page.locator('#messages pre[data-hl-language="toml"]');
-  await expect(tomlBlock).toBeVisible();
+  const plainBlock = page.locator('#messages pre[data-hl-language="cobol"]');
+  await expect(plainBlock).toBeVisible();
   await page.waitForTimeout(1000);
-  assert.equal(await tomlBlock.locator('.code-line').count(), 0);
+  assert.equal(await plainBlock.locator('.code-line').count(), 0);
+  // One rendered row per source line: no blank row between lines, no extra
+  // final row for the closing newline, and function names keep their color.
+  const blockRows = await jsBlock.locator('.code-line').count();
+  assert.equal(blockRows, 1);
+  assert.equal(
+    await jsBlock
+      .locator('code')
+      .evaluate((node) => [...node.childNodes].every((child) => child.nodeType === 1)),
+    true,
+  );
   await page.screenshot({ path: resolve('.local/code-highlight-conversation.png'), animations: 'disabled' });
 
   // Preference OFF (no reload): conversation blocks go back to plain text.
   await page.locator('#open-settings').click();
   await expect(page.locator('#settings-dialog')).toBeVisible();
-  const toggle = page.locator('#settings-dialog #code-highlight, #settings-dialog [data-panel-id="code-highlight"]');
+  const toggle = page.locator(
+    '#settings-dialog #code-highlight, #settings-dialog [data-panel-id="code-highlight"]',
+  );
   await expect(toggle).toHaveCount(1);
   await expect(toggle).toBeChecked();
   await page.screenshot({ path: resolve('.local/code-highlight-preference.png'), animations: 'disabled' });
@@ -216,12 +253,22 @@ try {
   await context.close();
 
   assert.deepEqual(errors, []);
-  console.log(JSON.stringify({ passed: true, files: ['demo.js', 'demo.py', 'page.html', 'many-lines.js', 'evil.html'], conversation: true, preference: true, themes: ['dark', 'light'] }));
+  console.log(
+    JSON.stringify({
+      passed: true,
+      files: ['demo.js', 'demo.py', 'page.html', 'many-lines.js', 'evil.html'],
+      conversation: true,
+      preference: true,
+      themes: ['dark', 'light'],
+    }),
+  );
 } catch (error) {
   await page?.screenshot({ path: 'test-results/code-highlight-failure.png' }).catch(() => {});
   throw error;
 } finally {
   await browser?.close();
-  app.server.close();
+  // Close the whole Studio, not only its HTTP server: open handles would keep
+  // the process (and `npm run test:inspector`) alive after the test passed.
+  await app.close();
   await rm(temp, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }).catch(() => {});
 }

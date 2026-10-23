@@ -38,17 +38,14 @@
   --c-meta: #af00db;
 }
 /* Numbered lines. The gutter is generated content with user-select: none,
-   so line numbers are never selected or copied. Empty lines keep an empty
-   span (textContent stays identical to the source); the ::before space only
-   preserves their height on screen. */
+   so line numbers are never selected or copied. Each line block ends with its
+   own newline (textContent stays identical to the source); min-height keeps
+   empty lines visible. Line height follows the surrounding code style. */
 code.hljs > .code-line {
   display: block;
   position: relative;
-  min-height: 1.7em;
+  min-height: 1lh;
   padding-left: 3.4em;
-  white-space: pre;
-}
-.markdown pre code.hljs > .code-line {
   white-space: pre;
 }
 .inspector-code code.hljs > .code-line {
@@ -65,9 +62,6 @@ code.hljs > .code-line::before {
   color: var(--c-gutter);
   user-select: none;
   pointer-events: none;
-}
-code.hljs > .code-line:empty::before {
-  content: counter(hl-line) ' ';
 }
 .hljs-comment,
 .hljs-quote {

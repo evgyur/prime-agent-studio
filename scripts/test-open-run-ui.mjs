@@ -85,10 +85,7 @@ try {
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto(url);
   await expect(page.locator('#connection-label')).toHaveText('Moteur connecté');
-  await page
-    .locator('#session-list .session-select')
-    .filter({ hasText: 'Vérifier les boutons' })
-    .click();
+  await page.locator('#session-list .session-select').filter({ hasText: 'Vérifier les boutons' }).click();
   if (!(await page.locator('#details-panel').isVisible())) await page.locator('#toggle-details').click();
   await page.getByRole('tab', { name: 'Fichiers', exact: true }).click();
   const viewer = page.locator('.inspector-viewer[data-inspector-unit="files"]');

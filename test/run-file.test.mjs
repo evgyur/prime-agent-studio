@@ -133,9 +133,12 @@ test('run plans use one visible console that stays open in the script folder', (
       { status: 400, message: messages['server.renommez_ce_script_pour_l_executer_depuis_le_studio'].fr },
       file,
     );
-  assert.throws(() => buildRunLaunch('py', 'C:\\proj\\ok.py', { interpreter: 'C:\\50%\\py.exe', cmdPath: cmd }), {
-    status: 400,
-  });
+  assert.throws(
+    () => buildRunLaunch('py', 'C:\\proj\\ok.py', { interpreter: 'C:\\50%\\py.exe', cmdPath: cmd }),
+    {
+      status: 400,
+    },
+  );
 });
 
 // The real cmd.exe parses the command line, not CommandLineToArgvW: this test
@@ -181,10 +184,7 @@ test(
 test('interpreter resolution never executes anything and reports plain paths', () => {
   const env = { SystemRoot: 'C:\\Windows', PATH: 'C:\\Python;D:\\tools' };
   const exists = (path) => path === 'C:\\Python\\py.exe';
-  assert.equal(
-    resolveRunnerInterpreter('py', { env, exists }),
-    'C:\\Python\\py.exe',
-  );
+  assert.equal(resolveRunnerInterpreter('py', { env, exists }), 'C:\\Python\\py.exe');
   assert.equal(resolveRunnerInterpreter('py', { env, exists: () => false }), null);
   assert.equal(resolveRunnerInterpreter('ruby', { env, exists: () => false }), null);
   assert.equal(
@@ -253,7 +253,10 @@ test('script runner validates before touching the helper and stays hidden itself
   assert.match(exe, /powershell\.exe$/i);
   assert.equal(options.shell, false);
   assert.equal(options.windowsHide, true);
-  assert.ok(args.some((arg) => String(arg).endsWith('run-file.ps1')), 'hidden run helper');
+  assert.ok(
+    args.some((arg) => String(arg).endsWith('run-file.ps1')),
+    'hidden run helper',
+  );
   assert.equal(options.env.PRIME_STUDIO_RUN_FOLDER, root);
   assert.match(options.env.PRIME_STUDIO_RUN_EXE, /cmd\.exe$/i);
   assert.ok(options.env.PRIME_STUDIO_RUN_ARGS.includes(quoteCmdArg(script)));
@@ -476,7 +479,8 @@ test('project run route surfaces runner failures as 502', async (t) => {
   });
   await writeFile(join(f.cwd, 'task.ps1'), 'x');
   assert.equal(
-    (await f.api('/api/project-files/run', { method: 'POST', body: { cwd: f.cwd, path: 'task.ps1' } })).status,
+    (await f.api('/api/project-files/run', { method: 'POST', body: { cwd: f.cwd, path: 'task.ps1' } }))
+      .status,
     502,
   );
 });

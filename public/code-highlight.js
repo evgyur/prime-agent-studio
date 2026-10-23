@@ -10,16 +10,49 @@ export const HIGHLIGHT_MAX_LINES = 5000;
 export const HIGHLIGHT_MAX_LINE_LENGTH = 4000;
 // Per conversation code block: larger blocks stay plain text.
 export const HIGHLIGHT_BLOCK_MAX_CHARS = 50000;
-// Cache of highlighted blocks (language + text -> numbered lines).
+// Cache of highlighted blocks (language + text -> numbered lines), bounded by
+// entries and by total characters: a few large files must not pin memory.
 export const HIGHLIGHT_CACHE_SIZE = 200;
+export const HIGHLIGHT_CACHE_MAX_CHARS = 4 * 1024 * 1024;
 
 // Languages bundled in es/highlight.min.js (36 common languages).
 export const HIGHLIGHT_BUNDLED_LANGUAGES = [
-  'bash', 'c', 'cpp', 'csharp', 'css', 'diff', 'go', 'graphql', 'ini', 'java',
-  'javascript', 'json', 'kotlin', 'less', 'lua', 'makefile', 'markdown',
-  'objectivec', 'perl', 'php', 'php-template', 'plaintext', 'python',
-  'python-repl', 'r', 'ruby', 'rust', 'scss', 'shell', 'sql', 'swift',
-  'typescript', 'vbnet', 'wasm', 'xml', 'yaml',
+  'bash',
+  'c',
+  'cpp',
+  'csharp',
+  'css',
+  'diff',
+  'go',
+  'graphql',
+  'ini',
+  'java',
+  'javascript',
+  'json',
+  'kotlin',
+  'less',
+  'lua',
+  'makefile',
+  'markdown',
+  'objectivec',
+  'perl',
+  'php',
+  'php-template',
+  'plaintext',
+  'python',
+  'python-repl',
+  'r',
+  'ruby',
+  'rust',
+  'scss',
+  'shell',
+  'sql',
+  'swift',
+  'typescript',
+  'vbnet',
+  'wasm',
+  'xml',
+  'yaml',
 ];
 
 // Extra languages served locally on explicit allowlist routes only
@@ -34,20 +67,48 @@ export const HIGHLIGHT_EXTRA_LANGUAGES = {
 };
 
 export const isHighlightLanguage = (language) =>
-  HIGHLIGHT_BUNDLED_LANGUAGES.includes(language) ||
-  Object.hasOwn(HIGHLIGHT_EXTRA_LANGUAGES, language);
+  HIGHLIGHT_BUNDLED_LANGUAGES.includes(language) || Object.hasOwn(HIGHLIGHT_EXTRA_LANGUAGES, language);
 
 const FENCE_ALIASES = {
-  js: 'javascript', mjs: 'javascript', cjs: 'javascript', jsx: 'javascript',
-  ts: 'typescript', mts: 'typescript', cts: 'typescript', tsx: 'typescript',
-  py: 'python', pyw: 'python', rb: 'ruby',
-  sh: 'shell', zsh: 'shell', console: 'shell', shellsession: 'shell',
-  yml: 'yaml', html: 'xml', xhtml: 'xml',
-  md: 'markdown', mkd: 'markdown', mdown: 'markdown',
-  ps1: 'powershell', psd1: 'powershell', psm1: 'powershell',
-  bat: 'dos', cmd: 'dos', batch: 'dos',
-  make: 'makefile', mk: 'makefile', dockerfile: 'dockerfile',
-  'c++': 'cpp', 'c#': 'csharp', rs: 'rust', kt: 'kotlin',
+  js: 'javascript',
+  mjs: 'javascript',
+  cjs: 'javascript',
+  jsx: 'javascript',
+  ts: 'typescript',
+  mts: 'typescript',
+  cts: 'typescript',
+  tsx: 'typescript',
+  py: 'python',
+  pyw: 'python',
+  rb: 'ruby',
+  sh: 'shell',
+  zsh: 'shell',
+  console: 'shell',
+  shellsession: 'shell',
+  yml: 'yaml',
+  html: 'xml',
+  xhtml: 'xml',
+  md: 'markdown',
+  mkd: 'markdown',
+  mdown: 'markdown',
+  ps1: 'powershell',
+  psd1: 'powershell',
+  psm1: 'powershell',
+  bat: 'dos',
+  cmd: 'dos',
+  batch: 'dos',
+  make: 'makefile',
+  mk: 'makefile',
+  dockerfile: 'dockerfile',
+  'c++': 'cpp',
+  'c#': 'csharp',
+  rs: 'rust',
+  kt: 'kotlin',
+  toml: 'ini',
+  jsonc: 'json',
+  json5: 'json',
+  pwsh: 'powershell',
+  vb: 'vbnet',
 };
 
 // Markdown fence info (```js) -> highlight.js language, or null for plain.
@@ -64,24 +125,74 @@ export function languageForFence(info) {
 }
 
 const EXTENSION_TO_LANGUAGE = {
-  js: 'javascript', mjs: 'javascript', cjs: 'javascript', jsx: 'javascript',
-  ts: 'typescript', mts: 'typescript', cts: 'typescript', tsx: 'typescript',
-  py: 'python', pyw: 'python', rb: 'ruby', php: 'php', java: 'java',
-  c: 'c', cpp: 'cpp', cc: 'cpp', cxx: 'cpp', hpp: 'cpp',
-  cs: 'csharp', go: 'go', rs: 'rust', swift: 'swift', kt: 'kotlin', kts: 'kotlin',
-  lua: 'lua', pl: 'perl', pm: 'perl', r: 'r', sql: 'sql',
-  css: 'css', scss: 'scss', less: 'less',
-  html: 'xml', htm: 'xml', xhtml: 'xml', svg: 'xml', vue: 'xml',
-  json: 'json', jsonc: 'json',
-  yml: 'yaml', yaml: 'yaml', md: 'markdown', markdown: 'markdown', mdown: 'markdown', mkd: 'markdown',
-  sh: 'shell', bash: 'shell', zsh: 'shell',
-  ini: 'ini', cfg: 'ini',
-  gql: 'graphql', graphql: 'graphql',
-  diff: 'diff', patch: 'diff',
-  ps1: 'powershell', psm1: 'powershell', psd1: 'powershell',
-  bat: 'dos', cmd: 'dos',
-  cmake: 'cmake', properties: 'properties',
-  txt: 'plaintext', text: 'plaintext', log: 'plaintext', h: 'c',
+  js: 'javascript',
+  mjs: 'javascript',
+  cjs: 'javascript',
+  jsx: 'javascript',
+  ts: 'typescript',
+  mts: 'typescript',
+  cts: 'typescript',
+  tsx: 'typescript',
+  py: 'python',
+  pyw: 'python',
+  rb: 'ruby',
+  php: 'php',
+  java: 'java',
+  c: 'c',
+  cpp: 'cpp',
+  cc: 'cpp',
+  cxx: 'cpp',
+  hpp: 'cpp',
+  cs: 'csharp',
+  go: 'go',
+  rs: 'rust',
+  swift: 'swift',
+  kt: 'kotlin',
+  kts: 'kotlin',
+  lua: 'lua',
+  pl: 'perl',
+  pm: 'perl',
+  r: 'r',
+  sql: 'sql',
+  css: 'css',
+  scss: 'scss',
+  less: 'less',
+  html: 'xml',
+  htm: 'xml',
+  xhtml: 'xml',
+  svg: 'xml',
+  vue: 'xml',
+  json: 'json',
+  jsonc: 'json',
+  xml: 'xml',
+  toml: 'ini',
+  vb: 'vbnet',
+  yml: 'yaml',
+  yaml: 'yaml',
+  md: 'markdown',
+  markdown: 'markdown',
+  mdown: 'markdown',
+  mkd: 'markdown',
+  sh: 'shell',
+  bash: 'shell',
+  zsh: 'shell',
+  ini: 'ini',
+  cfg: 'ini',
+  gql: 'graphql',
+  graphql: 'graphql',
+  diff: 'diff',
+  patch: 'diff',
+  ps1: 'powershell',
+  psm1: 'powershell',
+  psd1: 'powershell',
+  bat: 'dos',
+  cmd: 'dos',
+  cmake: 'cmake',
+  properties: 'properties',
+  txt: 'plaintext',
+  text: 'plaintext',
+  log: 'plaintext',
+  h: 'c',
 };
 
 const FILENAME_TO_LANGUAGE = {
@@ -100,8 +211,7 @@ export function languageForPath(path) {
   if (Object.hasOwn(FILENAME_TO_LANGUAGE, base)) return FILENAME_TO_LANGUAGE[base];
   if (base === 'dockerfile' || base.startsWith('dockerfile.') || base.endsWith('.dockerfile'))
     return 'dockerfile';
-  if (base === 'makefile' || base.startsWith('makefile.') || base.endsWith('.makefile'))
-    return 'makefile';
+  if (base === 'makefile' || base.startsWith('makefile.') || base.endsWith('.makefile')) return 'makefile';
   const dot = base.lastIndexOf('.');
   if (dot < 0) return null;
   return EXTENSION_TO_LANGUAGE[base.slice(dot + 1)] || null;
@@ -139,8 +249,7 @@ export function canHighlightBlock(language, text) {
   return highlightLimit(value) === null;
 }
 
-const escapeHtml = (text) =>
-  String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const escapeHtml = (text) => String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 const ENTITY = /^&(amp|lt|gt|quot|#\d+|#x[\dA-Fa-f]+);$/;
 const TOKEN = /<span class="([^"]*)">|<\/span>|&[^;\s]*;?|[^<&]+|[<&]/g;
@@ -159,9 +268,12 @@ export function splitHighlightLines(html) {
   while ((match = TOKEN.exec(input)) !== null) {
     const token = match[0];
     if (token.startsWith('<span')) {
+      // hljs-* classes plus the scope modifiers highlight.js adds to them
+      // (title.function -> "hljs-title function_", title.function.invoke ->
+      // "... invoke__"): lowercase letters and underscores only.
       const kept = match[1]
         .split(/\s+/)
-        .filter((cls) => /^hljs-[\w-]+$/.test(cls))
+        .filter((cls) => /^hljs-[\w-]+$/.test(cls) || /^[a-z]+_+$/.test(cls))
         .join(' ');
       stack.push(kept);
       lines[lines.length - 1] += kept ? `<span class="${kept}">` : '<span>';
@@ -209,19 +321,31 @@ export function resetHighlightStats() {
 // --- Browser enhancement (DOM + dynamic import). Never called in node. ---
 
 const lineCache = new Map();
+let cachedChars = 0;
 export function cachedHighlightLines(language, text, highlight) {
   const key = highlightCacheKey(language, text);
   const cached = lineCache.get(key);
   if (cached) {
     highlightStats.cacheHits++;
-    return cached;
+    return cached.lines;
   }
   const started = performance.now();
   const lines = splitHighlightLines(highlight(text, { language }).value);
   highlightStats.totalMs += performance.now() - started;
   highlightStats.blocks++;
-  lineCache.set(key, lines);
-  if (lineCache.size > HIGHLIGHT_CACHE_SIZE) lineCache.delete(lineCache.keys().next().value);
+  const size = lines.reduce((total, line) => total + line.length, 0);
+  lineCache.set(key, { lines, size });
+  cachedChars += size;
+  // Oldest first; the entry just added always stays.
+  for (const [oldKey, entry] of lineCache) {
+    if (
+      lineCache.size <= 1 ||
+      (lineCache.size <= HIGHLIGHT_CACHE_SIZE && cachedChars <= HIGHLIGHT_CACHE_MAX_CHARS)
+    )
+      break;
+    lineCache.delete(oldKey);
+    cachedChars -= entry.size;
+  }
   return lines;
 }
 
@@ -253,18 +377,27 @@ let blockObserver = null;
 const pendingWorks = new Map();
 function observeBlock(element, work) {
   if (typeof IntersectionObserver === 'function') {
-    if (!blockObserver) blockObserver = new IntersectionObserver((entries) => {
-      for (const entry of entries) {
-        if (!entry.isIntersecting) continue;
-        blockObserver.unobserve(entry.target);
-        const pending = pendingWorks.get(entry.target);
-        pendingWorks.delete(entry.target);
-        if (!pending) continue;
-        whenIdle(() => {
-          if (entry.target.isConnected) pending();
-        });
-      }
-    });
+    if (!blockObserver)
+      blockObserver = new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          blockObserver.unobserve(entry.target);
+          const pending = pendingWorks.get(entry.target);
+          pendingWorks.delete(entry.target);
+          if (!pending) continue;
+          whenIdle(() => {
+            if (entry.target.isConnected) pending();
+          });
+        }
+      });
+    // Re-rendered or paged-out blocks may never become visible: drop the
+    // detached ones so a long session does not accumulate them.
+    if (pendingWorks.size > 200)
+      for (const target of pendingWorks.keys())
+        if (!target.isConnected) {
+          blockObserver.unobserve(target);
+          pendingWorks.delete(target);
+        }
     pendingWorks.set(element, work);
     blockObserver.observe(element);
     return;
@@ -272,22 +405,24 @@ function observeBlock(element, work) {
   whenIdle(() => element.isConnected && work());
 }
 
-// Paint numbered lines into a <code> element. The code element keeps its
-// exact text: one text node '\n' between line spans, empty lines rendered
-// through CSS (::before space) instead of filler text.
+// Paint one block per line into a <code> element. Each line ends with its
+// own newline: whitespace text between block lines would render as blank
+// lines. A final newline closes the last line instead of opening an empty
+// one. The code element keeps exactly the source text.
 export function paintNumberedLines(code, lines) {
   code.replaceChildren();
   code.classList.add('hljs');
   const document_ = code.ownerDocument;
-  lines.forEach((html, index) => {
-    if (index > 0) code.append(document_.createTextNode('\n'));
+  const count = lines.length > 1 && lines.at(-1) === '' ? lines.length - 1 : lines.length;
+  for (let index = 0; index < count; index++) {
     const line = document_.createElement('span');
     line.className = 'code-line';
-    // `html` comes from splitHighlightLines: escaped text plus
-    // <span class="hljs-..."> only, built above, never raw input HTML.
-    line.innerHTML = html;
+    // From splitHighlightLines: escaped text plus <span class="hljs-..."> only,
+    // built above, never raw input HTML.
+    line.innerHTML = lines[index];
+    if (index < lines.length - 1) line.append('\n');
     code.append(line);
-  });
+  }
 }
 
 // Enhance every code block under root that carries data-hl-language.
@@ -312,7 +447,10 @@ export function enhanceCodeBlocks(root, { enabled = false } = {}) {
         if (!pre.isConnected) return;
         // Skip stale nodes: repaints (streaming, paging) replace the block.
         if (code.textContent !== text) return;
-        paintNumberedLines(code, cachedHighlightLines(language, text, (value, options) => hljs.highlight(value, options)));
+        paintNumberedLines(
+          code,
+          cachedHighlightLines(language, text, (value, options) => hljs.highlight(value, options)),
+        );
       } catch (error) {
         // Plain text stays readable when highlighting fails.
       }

@@ -35,15 +35,20 @@
   line-height: 1.65;
   margin: 0 0 20px;
 }
+/* Search and Refresh share one row and one height. */
 .providers-toolbar {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   gap: 12px;
   margin-bottom: 18px;
 }
-.providers-toolbar input {
+.providers-toolbar input:not([type='checkbox']) {
   flex: 1;
   min-width: 0;
+  margin: 0;
+}
+.providers-toolbar button {
+  flex-shrink: 0;
 }
 .providers-count {
   font-size: 12px;

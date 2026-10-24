@@ -924,6 +924,18 @@ test('message folder reveal accepts outside references without widening content 
     '/api/project-files/resolve?' + new URLSearchParams({ cwd: f.cwd, reference: file }),
   );
   assert.equal(resolved.status, 403);
+  // The batch check never reads outside content; it only reports the status.
+  const query = new URLSearchParams({ cwd: f.cwd });
+  for (const reference of [file, 'missing-notes.md']) query.append('reference', reference);
+  const checked = await f.api('/api/project-files/check?' + query);
+  assert.equal(checked.status, 200, checked.text);
+  assert.deepEqual(checked.json, {
+    results: [
+      { reference: file, status: 'outside' },
+      { reference: 'missing-notes.md', status: 'missing' },
+    ],
+  });
+  assert.equal(checked.text.includes('Outside content must not be served'), false);
   const preview = await f.api(
     '/api/project-files/preview?' + new URLSearchParams({ cwd: f.cwd, path: '../outside notes/private.txt' }),
   );

@@ -2,6 +2,7 @@ import { t as tr, bindText, bindAttribute, translateKnown, getLanguage, onLangua
 import { filePresentation, defaultFileView, parentFolder } from './file-presentation.js';
 import { placeViewportMenu } from './file-links.js';
 import { thinkingLabel } from './reasoning.js';
+import { languageForPath, enhanceFileBlock } from './code-highlight.js';
 import { createSubagentSettings } from './subagent-settings.js';
 
 const $ = (id) => document.getElementById(id);
@@ -68,6 +69,14 @@ const busy = new Set([
 ]);
 
 const INSPECTOR_UNIT_IDS = Object.freeze(['session', 'agents', 'files']);
+// Mirror of lib/run-file.mjs RUNNABLE_SCRIPT_EXTENSIONS (button visibility
+// only; the server re-checks). Parity is unit-tested in test/run-file.test.mjs.
+const RUNNABLE_SCRIPT_EXTENSIONS = new Set(
+  'bat cmd ps1 py pyw js mjs cjs sh bash vbs vbe wsf jse rb pl php lua'.split(' '),
+);
+function isRunnableScriptPath(path) {
+  return RUNNABLE_SCRIPT_EXTENSIONS.has(String(path).split('.').at(-1)?.toLowerCase() || '');
+}
 
 /**
  * Visible-datasets-only fetch matrix (pure, unit-tested).
@@ -2119,14 +2128,19 @@ export function createInspector({
         document.classList.add('inspector-document');
         body.append(document);
       } else {
-        const pre = node('pre', 'inspector-code inspector-file-source', () =>
-          source ? text : presentation.text,
-        );
+        const shown = source ? text : presentation.text;
+        const pre = node('pre', 'inspector-code inspector-file-source', () => shown);
         pre.tabIndex = 0;
         bindAttribute(pre, 'aria-label', () =>
           source ? tr('ui.source_du_fichier') : tr('ui.contenu_du_fichier'),
         );
         body.append(pre);
+        // Plain text first (tests compare textContent), then paint numbered
+        // highlighted lines in place when the file maps to a known language.
+        enhanceFileBlock(pre, {
+          language: languageForPath(file.path),
+          text: shown,
+        });
       }
       body.scrollTop = 0;
     }
@@ -2147,6 +2161,65 @@ export function createInspector({
       controls.insertBefore(options, controls.querySelector('.inspector-open'));
     }
     render();
+  }
+  function confirmScriptRun(file, cwd) {
+    document.querySelector('.script-run-dialog')?.remove();
+    const name = file.path.split(/[\\/]/).at(-1);
+    const dialog = node('dialog', 'modal script-run-dialog');
+    dialog.setAttribute('aria-labelledby', 'script-run-title');
+    const heading = node('div', 'modal-heading');
+    const title = node('h2', '', () => tr('ui.executer_ce_script'));
+    title.id = 'script-run-title';
+    heading.append(title);
+    const fileName = node('p', 'script-run-file', name);
+    // The folder matters only when the script is not at the project root.
+    const filePath = node('p', 'script-run-path');
+    const code = document.createElement('code');
+    code.textContent = file.path;
+    filePath.append(code);
+    filePath.hidden = file.path === name;
+    const warning = node('p', 'script-run-warning', () =>
+      tr('ui.le_script_va_s_executer_sur_votre_pc_dans_une_fenetre_visible'),
+    );
+    const feedback = node('p', 'inspector-note script-run-feedback');
+    feedback.setAttribute('role', 'status');
+    feedback.hidden = true;
+    const actions = node('div', 'script-run-actions');
+    const cancel = node('button', 'secondary-button', () => tr('ui.annuler'));
+    cancel.type = 'button';
+    cancel.autofocus = true;
+    const confirm = node('button', 'primary-button', () =>
+      current.remote ? tr('ui.executer_sur_le_pc') : tr('ui.executer'),
+    );
+    confirm.type = 'button';
+    actions.append(cancel, confirm);
+    dialog.append(heading, fileName, filePath, warning, feedback, actions);
+    dialog.addEventListener('close', () => dialog.remove());
+    cancel.onclick = () => dialog.close();
+    confirm.onclick = async () => {
+      confirm.disabled = true;
+      cancel.disabled = true;
+      feedback.hidden = false;
+      bindText(feedback, () => tr('ui.execution_sur_le_pc'));
+      try {
+        await api('/api/project-files/run', { method: 'POST', body: { cwd, path: file.path } });
+        dialog.close();
+        const done =
+          controls.querySelector('.inspector-open-feedback') ||
+          node('span', 'inspector-note inspector-open-feedback');
+        done.setAttribute('role', 'status');
+        bindText(done, () => tr('ui.execution_demandee_sur_le_pc'));
+        controls.append(done);
+      } catch (error) {
+        bindText(feedback, () => translateKnown(error.message));
+        confirm.disabled = false;
+        cancel.disabled = false;
+        cancel.focus();
+      }
+    };
+    document.body.append(dialog);
+    dialog.showModal();
+    cancel.focus();
   }
   async function openFile(file, mode, explicitCwd) {
     const viewCwd = explicitCwd || current.cwd;
@@ -2193,6 +2266,15 @@ export function createInspector({
           }
         };
         controls.append(open);
+        if (isRunnableScriptPath(file.path)) {
+          const run = node('button', 'inspector-run', () =>
+            current.remote ? tr('ui.executer_sur_le_pc') : tr('ui.executer'),
+          );
+          run.type = 'button';
+          bindAttribute(run, 'title', () => tr('ui.executer_dans_une_console_du_pc'));
+          run.onclick = () => confirmScriptRun(file, cwd);
+          controls.append(run);
+        }
       }
       const folder = node('button', 'inspector-open-folder', () =>
         current.remote ? tr('ui.ouvrir_le_dossier_sur_le_pc') : tr('ui.ouvrir_le_dossier'),

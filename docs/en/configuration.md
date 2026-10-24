@@ -24,6 +24,10 @@ A preference cookie, `prime_studio_language`, separate from the authentication c
 
 The [translation documentation](translations.md) describes the single table, fallback and automated checks.
 
+## Syntax highlighting
+
+**Preferences → Appearance → Syntax highlighting in conversations** highlights conversation code blocks with highlight.js (BSD-3-Clause license), served locally with no CDN. The option is on by default, stored for this browser and address, and applies without reloading the page. Blocks are highlighted after display, only when they become visible, with a per-language and per-text cache: long histories slow down neither typing nor streaming (a message that is still streaming stays plain text until it completes). Unknown languages and large blocks stay plain text.
+
 ## Configure models
 
 ### Before the first message

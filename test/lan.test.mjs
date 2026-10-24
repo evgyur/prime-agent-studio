@@ -495,6 +495,13 @@ test('successful LAN login issues an opaque HttpOnly cookie and enables read-onl
   assert.equal(bootstrap.json.preferences.remote, true);
   // Consultation never sees settings readable only in full control.
   assert.equal('subagentModel' in bootstrap.json, false);
+  // Read-only clients check file references like the preview they can open.
+  const check = await api(
+    '/api/project-files/check?' + new URLSearchParams({ cwd: bootstrap.json.projects[0].cwd, reference: 'missing.md' }),
+    { headers },
+  );
+  assert.equal(check.status, 200, check.text);
+  assert.deepEqual(check.json.results, [{ reference: 'missing.md', status: 'missing' }]);
   const history = await api('/api/history?id=native-session', { headers });
   assert.equal(history.status, 200);
   assert.match(history.text, /Existing conversation/);

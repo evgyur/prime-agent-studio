@@ -1,6 +1,6 @@
 {
   "name": "prime-agent-studio",
-  "version": "4.4.3",
+  "version": "4.4.4",
   "private": true,
   "author": "zerr0o",
   "license": "MIT",
@@ -47,7 +47,7 @@
     "test:context-gauge": "node scripts/test-context-gauge-ui.mjs",
     "test:context": "node scripts/test-context-tab-ui.mjs",
     "test:context:native": "node scripts/test-code-native.mjs",
-    "test:inspector": "node scripts/test-inspector-ui.mjs && node scripts/test-agent-history-ui.mjs && node scripts/test-file-context-ui.mjs && node scripts/test-inspector-folder-ui.mjs",
+    "test:inspector": "node scripts/test-inspector-ui.mjs && node scripts/test-agent-history-ui.mjs && node scripts/test-file-context-ui.mjs && node scripts/test-inspector-folder-ui.mjs && node scripts/test-code-highlight-ui.mjs",
     "test:git-panel": "node scripts/test-git-panel-ui.mjs",
     "test:file-links": "node scripts/test-file-links-ui.mjs",
     "test:providers": "node scripts/test-providers-ui.mjs",
@@ -97,6 +97,7 @@
     "test:skills": "node scripts/test-skills-ui.mjs",
     "test:terminal": "node --test test/open-terminal.test.mjs && node scripts/test-terminal-ui.mjs",
     "test:terminal:native": "node scripts/test-open-terminal.mjs",
+    "test:open-run": "node --test test/open-file.test.mjs && node --test test/run-file.test.mjs && node scripts/test-open-run-ui.mjs",
     "test:conversation-settings": "node scripts/test-conversation-settings-ui.mjs",
     "test:context-notices": "node scripts/test-context-notices-ui.mjs",
     "test:sync": "node scripts/test-sync-settings-ui.mjs",
@@ -110,6 +111,7 @@
     "node": ">=22.13.0"
   },
   "dependencies": {
+    "@highlightjs/cdn-assets": "11.12.0",
     "@simplewebauthn/browser": "^14.0.0",
     "@simplewebauthn/server": "^14.0.1",
     "dompurify": "3.4.16",

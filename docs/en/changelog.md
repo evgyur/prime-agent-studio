@@ -4,6 +4,13 @@
 
 Changes by version. See [GitHub releases](https://github.com/zerr0o/prime-agent-studio/releases) for installers and source archives.
 
+## 4.4.4
+
+- **Code highlighting**: file previews and code blocks in conversations are colored like in VS Code (dark and light themes), with line numbers. highlight.js is served by Studio itself and loaded only when code is shown; very large files stay plain text. The **Syntax highlighting in conversations** option, in Preferences → Appearance, turns it off in conversations.
+- **Open with the Windows app**: **Open** uses the default Windows application for documents, web pages and code (the browser for an `.html` file, your editor for a `.ts` or `.json` file). Scripts that Windows would run (`.js`, `.ps1`, `.bat`, `.py`…) still open in Notepad, and programs are still refused.
+- **Run a script**: the new **Run** button starts the script, after a confirmation, in a visible console opened in its folder, which stays open at the end. It is available on the PC and in remote full-control access, never in read-only access.
+- **Reliable file links**: in messages, only references to an existing file become links. Bare names and path endings are looked up in the project files, honoring `.gitignore`, and line ranges (`app.js:62-63`) are understood. A link to a missing file appears struck through; version numbers and branch names stay plain text. Agents are also told to write paths from the project folder.
+
 ## 4.4.3
 
 - **Reliable message sending**: as soon as you send, the input turns grey and locks with “Sending message…”, then empties when the message appears in the conversation. Text edited during the wait can no longer stay in the field after it was sent. On failure, the text becomes editable again. Same behavior during a run (Steer, Follow up).

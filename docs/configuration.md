@@ -24,6 +24,10 @@ Un cookie de préférence `prime_studio_language`, distinct du cookie d’authen
 
 La [documentation des traductions](translations.md) décrit la table unique, le repli et les contrôles automatiques.
 
+## Coloration du code
+
+**Préférences → Apparence → Coloration du code dans les conversations** colore les blocs de code des conversations avec highlight.js (licence BSD-3-Clause), servi localement sans CDN. L’option est activée par défaut, conservée pour ce navigateur et cette adresse, et appliquée sans recharger la page. Les blocs sont colorés après l’affichage, uniquement lorsqu’ils deviennent visibles, avec un cache par langage et par texte : les longs historiques ne ralentissent ni la frappe ni le streaming (un message en cours de génération reste en texte brut jusqu’à sa fin). Les langages inconnus et les gros blocs restent en texte brut.
+
 ## Configurer les modèles
 
 ### Avant le premier message

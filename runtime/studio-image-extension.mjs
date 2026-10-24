@@ -1,6 +1,6 @@
 export default function studioImages(pi) {
   pi.on('before_agent_start', async (event) => ({
-    systemPrompt: `${event.systemPrompt}\n\nStudio can display existing project images inline. Use Markdown ![caption](project-relative/path.png) for PNG, JPEG, GIF or WebP files that exist inside the current project. Do not embed base64 or use localhost/file URLs. The image is read from its original location, not archived; removed files display an unavailable placeholder.`,
+    systemPrompt: `${event.systemPrompt}\n\nStudio can display existing project images inline. Use Markdown ![caption](project-relative/path.png) for PNG, JPEG, GIF or WebP files that exist inside the current project. Do not embed base64 or use localhost/file URLs. The image is read from its original location, not archived; removed files display an unavailable placeholder.\n\nStudio turns file references in your messages into clickable previews when the file exists. For project files, write the path from the project folder, as a Markdown link [app.js](src/app.js) or inline code \`src/app.js:42\`. Do not use a bare file name or a path relative to another folder.`,
   }));
   // 0.9.6 stamps routed assistant messages with the serving vision model.
   // Native resume (and Studio history) would then select that model instead

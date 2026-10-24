@@ -772,3 +772,13 @@
   min-width: 0;
   overflow: hidden;
 }
+
+/* Outside-project previews: explicit read-only badge plus absolute path. */
+.inspector-outside-badge {
+  font-weight: 600;
+  color: var(--warning, #b45309);
+}
+.inspector-outside-path {
+  font-family: ui-monospace, Consolas, monospace;
+  overflow-wrap: anywhere;
+}

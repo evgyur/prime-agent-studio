@@ -31,6 +31,7 @@ import {
 } from './composer.js';
 import { createInspector, renderComposerGauge } from './inspector.js';
 import { fileLinkRenderer, bindFileLinks, createReferenceChecker } from './file-links.js';
+import { fetchFilePreviewSettings, onAllowOutsidePreviewChange } from './file-preview-settings.js';
 import { createSessionActivity } from './session-activity.js';
 import { parseAgentEnvelope } from './agent-messages.js';
 import { parseSkillBlocks, readableCopyText } from './skill-blocks.js';
@@ -2033,6 +2034,20 @@ const fileReferences = createReferenceChecker((cwd, basePath, references) => {
   for (const reference of references) query.append('reference', reference);
   return api(`/api/project-files/check?${query}`).then((data) => data.results);
 });
+// Outside-preview preference flips link eligibility immediately: drop cached
+// check answers and re-render so outside references gain/lose their link.
+try {
+  onAllowOutsidePreviewChange(() => {
+    try { fileReferences.clear?.(); } catch {}
+    try { messageNodes.clear(); } catch {}
+    try {
+      if (typeof convViews !== 'undefined' && convViews) {
+        for (const view of convViews.views.values()) convViews.markDirty(view.id);
+      }
+    } catch {}
+    try { renderMessages(true); } catch {}
+  });
+} catch {}
 function markdown(text, { cwd = execCwdOf(), basePath = '', imageRoot, streaming = false } = {}) {
   const n = el('div', 'markdown');
   const references = [],
@@ -4560,6 +4575,10 @@ async function bootstrap() {
     }
     state.projectOverview = Boolean(state.projectCwd && (selection.projectOverview ?? state.remote));
     state.initialized = true;
+    // Outside-preview default (global server pref): prefetch so file links
+    // know their eligibility before Preferences is ever opened. Failure keeps
+    // the enabled default; the settings form surfaces the error on open.
+    void fetchFilePreviewSettings(api).catch(() => {});
     setConnection(true);
     bindText($('cli-version'), () => (state.version.version ? `v${state.version.version}` : ''));
     bindText($('settings-runtime'), () =>

@@ -38,6 +38,16 @@ Progress shows actual stages and received bytes, without an invented overall per
 
 **Repair Studio** installs and validates components without stopping the server. One **Restart now** button then applies ready changes. Validated components remain available after failure. Server identity must be proved before a stop: marker, PID, instance, executable, arguments, generation and Windows port owner. A missing marker can be recovered only when this evidence agrees; an unverified port or process is never stopped. Previous generations remain available.
 
+## Local port — 4.4.5
+
+The application tries its remembered port, or **3088** on first launch. If Windows reserves that port (for example through Hyper-V, WSL or Docker), or another application uses it, Studio selects an available port and remembers it. You do not need to change Windows port reservations or run Studio as administrator.
+
+In **Preferences → System**, the local port setting shows the current address and lets you choose another port. The change requires confirmation, stops the server, then restarts the application. If agents are active, a second confirmation is required to interrupt them. After a startup failure, the launcher also offers a port change.
+
+Projects and conversations are preserved. Browser preferences and drafts stored for the old address may no longer be visible, because the port is part of the Web origin. Remote access ports are independent and can be changed in **Preferences → Remote access → Connection options**.
+
+The `PRIME_STUDIO_DESKTOP_PORT` environment variable still takes priority: it forces a port and disables this setting and automatic fallback. If you set it as a workaround for issue #15, remove it through **Edit environment variables for your account**, quit Studio completely, then relaunch it from the Start menu to restore automatic selection.
+
 ## Window and background work
 
 - **Closing the window** hides it and keeps the icon near the clock. Agents, the server and mobile access continue.

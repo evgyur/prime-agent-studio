@@ -1616,6 +1616,26 @@
               </div>
               <input id="code-highlight" class="switch" type="checkbox" role="switch" checked />
             </div>
+            <div class="settings-row">
+              <div>
+                <label for="settings-allow-outside-preview" data-i18n="files.allow_outside_label"
+                  >Aperçus des fichiers hors projet</label
+                >
+                <p id="file-preview-note" data-i18n="files.allow_outside_note">
+                  Les liens vers des fichiers en dehors du projet s’ouvrent en lecture seule dans
+                  l’inspecteur.
+                </p>
+              </div>
+              <input
+                id="settings-allow-outside-preview"
+                class="switch"
+                type="checkbox"
+                role="switch"
+                checked
+                disabled
+              />
+            </div>
+            <p id="file-preview-error" class="form-error" role="alert" hidden></p>
             <div class="settings-row reasoning-settings">
               <div>
                 <label id="reasoning-label" data-i18n="ui.raisonnement_de_l_agent"
@@ -2301,6 +2321,29 @@
               </div>
               <input id="settings-autostart" class="switch" type="checkbox" role="switch" />
             </div>
+            <div class="settings-row" id="settings-port-row" hidden>
+              <div>
+                <label for="settings-port" data-i18n="settings.port_label"
+                  >Port local (application de bureau)</label
+                >
+                <p data-i18n="settings.local_port_note"></p>
+              </div>
+              <div class="settings-port-fields">
+                <input
+                  id="settings-port"
+                  type="number"
+                  min="1"
+                  max="65535"
+                  step="1"
+                  inputmode="numeric"
+                  autocomplete="off"
+                />
+                <button id="settings-port-apply" class="secondary-button" data-i18n="settings.port_apply">
+                  Appliquer
+                </button>
+              </div>
+            </div>
+            <p id="settings-port-status" class="settings-footnote" role="status" aria-live="polite" hidden></p>
             <p id="settings-system-error" class="form-error" role="alert" hidden></p>
             <div class="settings-row">
               <div>

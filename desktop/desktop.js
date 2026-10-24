@@ -174,6 +174,27 @@ const messages = {
     noBridge: 'Ouvrez cette page dans l’application Prime Agent Studio.',
     selected: 'Installation sélectionnée : ',
     autostartError: 'Le démarrage avec Windows n’a pas pu être modifié.',
+    portHeading: 'Port local',
+    portNote:
+      'Si le Studio ne démarre pas (port réservé par Windows, par exemple), choisissez un autre port puis appliquez. L’application et le serveur relancent avec ce port préféré.',
+    portApply: 'Appliquer et relancer',
+    portApplying: 'Application du nouveau port en cours…',
+    portFallback:
+      'Port {preferred} indisponible : repli automatique sur {port}. Ce port est mémorisé pour les prochains lancements.',
+    portUrl: 'Adresse locale : {url}',
+    portEnvOverride:
+      'Le port est imposé par la variable d’environnement PRIME_STUDIO_DESKTOP_PORT : le champ est désactivé.',
+    portInvalid: 'Choisissez un port entier entre 1 et 65535.',
+    portUnavailable: 'Ce port est occupé ou inutilisable. Choisissez-en un autre.',
+    portNotManaged: 'Le serveur n’est pas géré par le Studio : le port n’a pas été modifié.',
+    portStopFailed: 'Le serveur n’a pas pu être arrêté proprement : le port n’a pas été modifié.',
+    portSaveFailed:
+      'Le nouveau port n’a pas pu être enregistré et le serveur est arrêté : relancez le Studio pour le redémarrer.',
+    portBusy: 'Une opération est en cours. Réessayez dans quelques instants.',
+    portSame: 'Ce port est déjà utilisé. Aucun changement.',
+    portRestarting: 'Port enregistré. L’application redémarre…',
+    portRestartNote:
+      'Appliquer le port {port} et relancer l’application et le serveur ? Les préférences d’interface par origine peuvent être réinitialisées ; vos projets et conversations sont conservés.',
     updates: 'Mises à jour',
     updateIdle: 'Recherchez les nouvelles versions publiées sur GitHub.',
     updateCheck: 'Vérifier les mises à jour',
@@ -362,6 +383,27 @@ const messages = {
     noBridge: 'Open this page in the Prime Agent Studio application.',
     selected: 'Selected installation: ',
     autostartError: 'Could not change the start with Windows setting.',
+    portHeading: 'Local port',
+    portNote:
+      'If Studio does not start (a port reserved by Windows, for example), choose another port, then apply. The app and server relaunch with this preferred port.',
+    portApply: 'Apply and restart',
+    portApplying: 'Applying the new port…',
+    portFallback:
+      'Port {preferred} unavailable: automatically fell back to {port}. This port is remembered for future launches.',
+    portUrl: 'Local address: {url}',
+    portEnvOverride:
+      'The port is forced by the PRIME_STUDIO_DESKTOP_PORT environment variable: the field is disabled.',
+    portInvalid: 'Choose a whole port number between 1 and 65535.',
+    portUnavailable: 'This port is occupied or unusable. Choose another one.',
+    portNotManaged: 'The server is not managed by Studio: the port was not changed.',
+    portStopFailed: 'The server could not be stopped cleanly: the port was not changed.',
+    portSaveFailed:
+      'The new port could not be saved and the server is stopped: relaunch Studio to start it again.',
+    portBusy: 'An operation is in progress. Try again in a moment.',
+    portSame: 'This port is already in use. No change.',
+    portRestarting: 'Port saved. The app is restarting…',
+    portRestartNote:
+      'Apply port {port} and restart the app and server? Per-origin UI preferences may reset; your projects and conversations are kept.',
     updates: 'Updates',
     updateIdle: 'Check for new versions published on GitHub.',
     updateCheck: 'Check for updates',
@@ -429,6 +471,8 @@ for (const [id, key] of Object.entries({
   'update-impact': 'updateImpact',
   'server-heading': 'serverHeading',
   'server-restart': 'restart',
+  'port-heading': 'portHeading',
+  'port-apply': 'portApply',
   'restart-confirm-title': 'restartTitle',
   'restart-confirm-note': 'restartNote',
   'restart-cancel': 'restartCancel',
@@ -1139,6 +1183,202 @@ function startOperationPoll() {
     if ($('updates') && !$('updates').hidden) void pollOperationOnce();
   }, 1000);
 }
+// desktop-port:start — pure helpers (no DOM), covered by test/desktop-port-launcher.test.mjs.
+function parsePortInput(value) {
+  const text = String(value ?? '').trim();
+  if (!/^\d{1,5}$/.test(text)) return null;
+  const port = Number(text);
+  return Number.isInteger(port) && port >= 1 && port <= 65535 ? port : null;
+}
+function portErrorCode(message) {
+  const text = String(message ?? '');
+  for (const code of [
+    'port_invalid',
+    'port_env_override',
+    'port_unavailable',
+    'server_not_managed',
+    'server_stop_failed',
+    'port_save_failed',
+    'update_busy',
+  ])
+    if (text.includes(code)) return code;
+  return '';
+}
+function portErrorText(code) {
+  const reason = portErrorCode(code) || String(code ?? '');
+  if (reason === 'port_invalid') return t.portInvalid;
+  if (reason === 'port_env_override') return t.portEnvOverride;
+  if (reason === 'port_unavailable') return t.portUnavailable;
+  if (reason === 'server_not_managed') return t.portNotManaged;
+  if (reason === 'server_stop_failed') return t.portStopFailed;
+  if (reason === 'port_save_failed') return t.portSaveFailed;
+  if (reason === 'update_busy') return t.portBusy;
+  return '';
+}
+// desktop-port:end
+function setPortError(message) {
+  $('port-error').textContent = message || '';
+  $('port-error').hidden = !message;
+}
+function renderPortState(state) {
+  const port = Number(state?.port);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) return false;
+  $('port-input').value = String(port);
+  const envOverride = state?.envOverride === true;
+  const movedFrom = Number(state?.movedFrom);
+  const moved = Number.isInteger(movedFrom) && movedFrom >= 1 && movedFrom <= 65535 && movedFrom !== port;
+  $('port-input').disabled = envOverride;
+  $('port-apply').disabled = envOverride;
+  $('port-note').textContent = envOverride ? t.portEnvOverride : t.portNote;
+  if (moved) {
+    $('port-fallback').textContent = t.portFallback
+      .replace('{preferred}', String(movedFrom))
+      .replace('{port}', String(port));
+    $('port-fallback').hidden = false;
+  } else $('port-fallback').hidden = true;
+  $('port-url').textContent = t.portUrl.replace('{url}', `http://127.0.0.1:${port}/`);
+  $('port-url').hidden = false;
+  return moved;
+}
+async function refreshPortState() {
+  if (!invoke) return false;
+  setPortError('');
+  try {
+    return renderPortState(await invoke('desktop_port_state'));
+  } catch (error) {
+    const message = String(error?.message || error);
+    setPortError(portErrorText(message) || message);
+    return false;
+  }
+}
+function confirmPortApply(port, activeRuns) {
+  const dialog = $('restart-confirm');
+  // Reuse the restart confirm flow: explicit user approval, never silent.
+  $('restart-confirm-title').textContent = t.restartTitle;
+  $('restart-confirm-note').textContent =
+    `${t.portRestartNote.replace('{port}', String(port))}${activeRuns ? ` ${t.serverBusy}` : ''}`;
+  const accepted = new Promise((done) => {
+    dialog.returnValue = '';
+    $('restart-cancel').onclick = () => dialog.close('cancel');
+    $('restart-proceed').onclick = () => dialog.close('proceed');
+    dialog.addEventListener('close', () => done(dialog.returnValue === 'proceed'), { once: true });
+  });
+  if (!dialog.open) dialog.showModal();
+  $('restart-cancel').focus();
+  return accepted;
+}
+let applyingPort = false;
+async function applyPort() {
+  if (applyingPort || !invoke) return;
+  const port = parsePortInput($('port-input').value);
+  if (port === null) {
+    setPortError(t.portInvalid);
+    return;
+  }
+  applyingPort = true;
+  $('port-input').disabled = true;
+  $('port-apply').disabled = true;
+  setPortError('');
+  // The server stop may take seconds: show busy status, not a silent disabled control.
+  $('port-note').textContent = t.portApplying;
+  let restarted = false;
+  let sameNotice = false;
+  let cancelled = false;
+  // Requested-port failures stay prominent with the requested value kept
+  // for correction; a stale startup fallback notice must never replace them.
+  let problem = '';
+  const fail = (text) => {
+    problem = text;
+    setPortError(text);
+    $('port-note').textContent = text;
+  };
+  try {
+    // Always an explicit initial confirmation before any stop/restart,
+    // even with no known active runs.
+    if (!(await confirmPortApply(port, null))) {
+      cancelled = true;
+      return;
+    }
+    const attempt = (force) => invoke('desktop_port_set', { port, force });
+    const isNoop = (result) => Boolean(result && result.changed === false && !result.reason);
+    const first = await attempt(false);
+    if (first?.changed === true) {
+      restarted = true;
+      $('port-note').textContent = t.portRestarting;
+      return;
+    }
+    // No-op without a reason: already on this port, nothing restarts.
+    if (isNoop(first)) {
+      sameNotice = true;
+      return;
+    }
+    if (first?.reason === 'agents_running') {
+      const activeRuns = Number(first?.activeRuns) || 0;
+      // Second, explicit confirmation to force past active agents.
+      if (!(await confirmPortApply(port, activeRuns))) {
+        cancelled = true;
+        return;
+      }
+      const retry = await attempt(true);
+      if (retry?.changed === true) {
+        restarted = true;
+        $('port-note').textContent = t.portRestarting;
+        return;
+      }
+      if (isNoop(retry)) {
+        sameNotice = true;
+        return;
+      }
+      if (retry?.reason) fail(portErrorText(retry.reason) || String(retry.reason));
+      else fail(t.portBusy);
+      return;
+    }
+    if (first?.reason) fail(portErrorText(first.reason) || String(first.reason));
+    else fail(t.portBusy);
+  } catch (error) {
+    const message = typeof error === 'string' ? error : String(error?.message || error);
+    // A thrown agents_running is a refusal, never a silent proceed.
+    if (portErrorCode(message) === '' && message.includes('agents_running')) {
+      if (await confirmPortApply(port, 0)) {
+        try {
+          const retry = await invoke('desktop_port_set', { port, force: true });
+          if (retry?.changed === true) {
+            restarted = true;
+            $('port-note').textContent = t.portRestarting;
+            return;
+          }
+          if (isNoop(retry)) {
+            sameNotice = true;
+            return;
+          }
+          if (retry?.reason) fail(portErrorText(retry.reason) || String(retry.reason));
+          else fail(t.portBusy);
+        } catch (retryError) {
+          const retryMessage =
+            typeof retryError === 'string' ? retryError : String(retryError?.message || retryError);
+          fail(portErrorText(retryMessage) || retryMessage);
+        }
+      } else cancelled = true;
+    } else fail(portErrorText(message) || message);
+  } finally {
+    applyingPort = false;
+    // A requested restart keeps its notice with disabled controls; a
+    // failure keeps the requested value with its notice. Only cancels and
+    // the benign no-op re-read the persisted state.
+    if (restarted || problem) {
+      if (problem) {
+        $('port-input').disabled = false;
+        $('port-apply').disabled = false;
+      }
+      return;
+    }
+    try {
+      renderPortState(await invoke('desktop_port_state'));
+    } catch {}
+    if (sameNotice) $('port-note').textContent = t.portSame;
+    $('port-apply').disabled = $('port-input').disabled;
+  }
+}
 let quitting = false;
 function showQuitDialog(prefill = {}) {
   const dialog = $('quit-confirm');
@@ -1355,6 +1595,9 @@ async function start(options = {}) {
     // Occupied/transient or real failure: no duplicate spawn, no settings popup.
     $('progress').hidden = true;
     showLauncher();
+    // Recovery port input on launcher start error, with the current state.
+    $('port-section').hidden = false;
+    void refreshPortState();
     $('title').textContent = t.failure;
     // The connecting note ("we find or start the server") no longer applies.
     $('description').textContent = '';
@@ -1380,6 +1623,7 @@ $('logs').onclick = async () => {
     showError(String(error));
   }
 };
+if ($('port-apply')) $('port-apply').onclick = () => void applyPort().catch(() => {});
 $('autostart').onchange = async () => {
   const input = $('autostart');
   input.disabled = true;
@@ -1467,6 +1711,8 @@ $('import').onclick = async () => {
       // read-only diagnose so components can be configured here; installs
       // still require an explicit click and never start automatically.
       showLauncher();
+      $('port-section').hidden = false;
+      void refreshPortState();
       const diagnosed = await componentsAction('diagnose');
       // Explicit recovery surface: explain the 0.9.8 step when legacy
       // evidence is present. Fresh installs have none, so stay silent.

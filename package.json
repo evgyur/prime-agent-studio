@@ -81,6 +81,7 @@
     "test:desktop": "node scripts/test-desktop-native.mjs",
     "test:desktop-ui": "node scripts/test-desktop-ui.mjs && node scripts/test-desktop-notification-ui.mjs",
     "test:desktop-updates": "node scripts/test-desktop-updates-ui.mjs",
+    "test:port-ui": "node scripts/test-desktop-port-ui.mjs && node scripts/test-studio-port-ui.mjs",
     "test:settings-updates": "node scripts/test-settings-updates-ui.mjs && node scripts/test-update-badge-ui.mjs",
     "test:desktop-lifecycle": "node scripts/test-desktop-update-lifecycle.mjs",
     "test:desktop-interactions": "node scripts/test-desktop-interactions.mjs",

@@ -48,6 +48,7 @@ import { createPushService } from './lib/push.mjs';
 import { validateImages, imageBodyLimit } from './lib/images.mjs';
 import { createFileStore, validateFiles, appendFileMessage, splitFileMessage } from './lib/files.mjs';
 import { createProjectFiles } from './lib/project-files.mjs';
+import { createFilePreviewSettings } from './lib/file-preview-settings.mjs';
 import { openFile as openLocalFile, fileLaunchMode } from './lib/open-file.mjs';
 import { runFile as runLocalFile } from './lib/run-file.mjs';
 import { createSessionInspector } from './lib/session-inspector.mjs';
@@ -443,6 +444,8 @@ export function createApp(options = {}) {
       onChanged: () => invalidateModels(),
     });
   const projectFiles = createProjectFiles({ store, protectedRoots: [agentHome, sessionDir, dataDir] });
+  const filePreviewSettings =
+    options.filePreviewSettings || createFilePreviewSettings({ dataDir });
   const isTaskFilesCwd = (value) => {
     try {
       if (typeof value !== 'string' || !value || !worktrees?.managedRoot) return false;
@@ -1617,6 +1620,28 @@ export function createApp(options = {}) {
           });
           return res.end(result.data);
         }
+      }
+      // Conversation-linked files outside the project require the enabled
+      // preview setting (on by default). Existing project-files routes above stay confined; this
+      // companion route only serves exact explicit outside references.
+      if (method === 'GET' && path === '/api/file-preview-settings')
+        return json(res, 200, await filePreviewSettings.get());
+      if (method === 'POST' && path === '/api/file-preview-settings')
+        return json(res, 200, await filePreviewSettings.set(await readBody(req)));
+      if (method === 'GET' && path === '/api/file-previews/external') {
+        const settings = await filePreviewSettings.get();
+        if (!settings.allowOutsideProject)
+          throw new HttpError(403, tr('server.ce_lien_sort_du_projet'));
+        return json(
+          res,
+          200,
+          await filesFor(url.searchParams.get('cwd')).externalPreview(
+            url.searchParams.get('cwd'),
+            url.searchParams.get('reference'),
+            url.searchParams.get('basePath') || '',
+            settings,
+          ),
+        );
       }
       if (method === 'GET' && /^\/api\/files\/[a-f0-9-]+$/.test(path)) {
         const file = await fileStore.read(path.slice('/api/files/'.length));

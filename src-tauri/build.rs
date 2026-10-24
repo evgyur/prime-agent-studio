@@ -15,6 +15,8 @@ fn main() {
             "desktop_update_cancel",
             "desktop_server_restart",
             "desktop_quit",
+            "desktop_port_state",
+            "desktop_port_set",
             "desktop_update_check",
             "desktop_update_install",
             "desktop_notification_preferences",

@@ -4,6 +4,13 @@
 
 Les changements par version. Retrouvez les installateurs et les archives du code source dans les [releases GitHub](https://github.com/zerr0o/prime-agent-studio/releases).
 
+## 4.4.4
+
+- **Coloration du code** : l’aperçu des fichiers et les blocs de code des conversations sont colorés comme dans VS Code (thèmes sombre et clair), avec des numéros de ligne. highlight.js est servi par le Studio lui-même et chargé seulement quand un code s’affiche ; les très gros fichiers restent en texte simple. L’option **Coloration du code dans les conversations**, dans Préférences → Apparence, la désactive dans les conversations.
+- **Ouvrir avec l’application de Windows** : **Ouvrir** utilise l’application par défaut de Windows pour les documents, les pages web et le code (le navigateur pour un fichier `.html`, votre éditeur pour un `.ts` ou un `.json`). Les scripts que Windows exécuterait (`.js`, `.ps1`, `.bat`, `.py`…) s’ouvrent toujours dans le Bloc-notes, et les programmes restent refusés.
+- **Exécuter un script** : le nouveau bouton **Exécuter** lance le script, après confirmation, dans une console visible ouverte dans son dossier, qui reste ouverte à la fin. Il est disponible sur le PC et en accès distant en contrôle complet, jamais en consultation.
+- **Liens de fichiers fiables** : dans les messages, seules les références vers un fichier existant deviennent des liens. Les noms seuls et les fins de chemin sont cherchés dans les fichiers du projet, en respectant `.gitignore`, et les plages de lignes (`app.js:62-63`) sont comprises. Un lien vers un fichier absent apparaît barré ; les numéros de version et les noms de branche restent du texte simple. Les agents reçoivent aussi une consigne pour écrire les chemins depuis le dossier du projet.
+
 ## 4.4.3
 
 - **Envoi des messages fiable** : dès l’envoi, le champ de saisie se grise et se verrouille avec « Envoi du message… », puis se vide quand le message apparaît dans la conversation. Un texte modifié pendant l’attente ne peut plus rester dans le champ après avoir été envoyé. En cas d’échec, le texte redevient modifiable. Même comportement pendant une exécution (Réorienter, À la suite).

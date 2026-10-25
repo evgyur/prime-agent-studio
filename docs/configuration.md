@@ -24,7 +24,21 @@ Un cookie de préférence `prime_studio_language`, distinct du cookie d’authen
 
 La [documentation des traductions](translations.md) décrit la table unique, le repli et les contrôles automatiques.
 
+## Coloration du code
+
+**Préférences → Apparence → Coloration du code dans les conversations** colore les blocs de code des conversations avec highlight.js (licence BSD-3-Clause), servi localement sans CDN. L’option est activée par défaut, conservée pour ce navigateur et cette adresse, et appliquée sans recharger la page. Les blocs sont colorés après l’affichage, uniquement lorsqu’ils deviennent visibles, avec un cache par langage et par texte : les longs historiques ne ralentissent ni la frappe ni le streaming (un message en cours de génération reste en texte brut jusqu’à sa fin). Les langages inconnus et les gros blocs restent en texte brut.
+
 ## Configurer les modèles
+
+### Avant le premier message
+
+Tant que la configuration est incomplète, une nouvelle conversation affiche trois étapes à la place des suggestions : **Connecter un fournisseur**, **Modèle de l’agent principal** et **Modèle des sous-agents**. L’envoi du premier message reste désactivé jusqu’à la fin. Sans connexion, le modèle par défaut du moteur échoue (erreur 401) : ces étapes évitent un premier message qui ne peut pas aboutir.
+
+- Un fournisseur compte comme connecté dès qu’il propose au moins un modèle utilisable.
+- Les deux modèles doivent venir d’un fournisseur connecté. **Utiliser le même** reprend le modèle principal pour les sous-agents.
+- Les choix sont enregistrés comme modèles par défaut : **Préférences → Modèles et agents → Configurer les modèles** permet de les modifier ensuite. L’étape 3 porte sur le réglage global des sous-agents ; une exception par projet reste possible dans l’onglet **Agents**.
+- Si un fournisseur est déconnecté plus tard, les étapes réapparaissent dans les nouvelles conversations. Les conversations existantes gardent leur historique et affichent un bandeau d’avertissement.
+- Les accès distants en lecture seule ne voient pas ces étapes.
 
 ### Questions interactives et images dans la conversation
 
@@ -64,35 +78,17 @@ Le même écran ajoute, modifie ou supprime aussi des définitions personnalisé
 
 Avant une écriture, le Studio conserve une copie `models.json.prime-studio.bak` ou `settings.json.prime-studio.bak` dans le même dossier. Le configurateur et ses routes d’écriture sont disponibles sur le PC et depuis un appareil distant authentifié en contrôle complet, mais pas en mode consultation. Les modèles déjà configurés restent disponibles dans le sélecteur du téléphone.
 
-### Modèles avancés et budgets autonomes (Prime Agent 0.9.7)
+### Anciens réglages détectés
 
-La carte **Modèles avancés**, dans le même écran **Configurer**, expose les nouveaux réglages natifs de Prime Agent 0.9.7 sans changer vos valeurs actuelles. Tant que les champs restent vides, le comportement natif est préservé : aucun modèle de secours ni mode autonome n’est activé automatiquement, et les modèles par défaut restent inchangés.
+Les réglages **modèles avancés**, **budgets autonomes**, **relais après quota** et **plafonds** ne sont plus gérés par le Studio : leur carte a été retirée de l’écran **Configurer**, et le Studio ne les utilise plus pour ses propres fonctions. Les valeurs déjà enregistrées restent dans `settings.json`, où le moteur peut encore en appliquer certaines, par exemple le modèle auxiliaire pour les résumés ou le niveau de service. Une image envoyée à un modèle qui ne lit que le texte est toujours refusée, même si un modèle pour les images est enregistré.
 
-Le **modèle de résumés et d’affinage** (`auxiliaryModel`) sert à l’affinage et aux résumés de compaction et de branche. Le moteur utilise le modèle de session si ce choix est absent, inutilisable ou trop petit pour un résumé de branche. Ce routage natif ne constitue pas une garantie de coût mesurée dans Studio. Le même `auxiliaryModel` contrôle aussi les suggestions de message de commit Git du Studio. Sans valeur, ces suggestions utilisent le modèle global par défaut, pas celui de la conversation. Si un modèle auxiliaire explicitement choisi est indisponible, la suggestion Git échoue clairement, sans choisir un autre modèle. Aucun remplacement par projet n’est ajouté.
+Quand de telles valeurs existent, une carte **Anciens réglages détectés** apparaît à leur place, liste ce qui a été trouvé en toutes lettres et propose un seul bouton **Réinitialiser**. Ce bouton supprime d’un coup les clés concernées de `settings.json` (`auxiliaryModel`, `imageModel`, `providerBackupModel`, `subagentDefaultModel`, `defaultServiceTier`, `autonomous`) ainsi que les fichiers de données du relais après quota et des budgets, sans toucher aux autres clés. Rien n’est modifié sans ce clic explicite. Après la réinitialisation, la carte disparaît.
 
-Le **modèle pour les images** (`imageModel`) traite les tours avec images quand le modèle de session accepte seulement le texte. Il doit prendre en charge les images. Le laisser vide conserve le refus explicite du moteur pour les tours incompatibles. Il ne remplace pas le modèle de décision de Computer Use et n’active pas un agent distinct d’analyse de captures.
+Tant qu’un **modèle de secours** (`providerBackupModel`) reste configuré, le Studio refuse de lancer une exécution : la reprise native changerait de fournisseur et de facturation en silence en cas de quota ou de panne. Le message de refus indique le chemin **Préférences → Modèles et agents → Configurer les modèles → Anciens réglages détectés → Réinitialiser**.
 
-Le **modèle de secours natif** (`providerBackupModel`) est un ancien réglage du moteur qui peut changer de modèle dans la boucle active. Le Studio refuse désormais de lancer une exécution si ce champ est renseigné : videz-le explicitement et utilisez la liste de repli du Studio décrite ci-dessous. Le Studio ne supprime pas ce réglage en silence. Les sélecteurs partagent le catalogue authentifié (`/api/models`, modèles indisponibles exclus).
+Les suggestions de message de commit Git utilisent désormais toujours le modèle global par défaut, comme quand aucun modèle auxiliaire n’était configuré.
 
-Le **niveau de service par défaut** (`defaultServiceTier`) s’applique aux nouvelles sessions. **Standard** rétablit le défaut du moteur ; **Flex**, **Priority** et **Auto** dépendent du fournisseur et peuvent modifier le coût ou le délai. Enregistrer un défaut ne change ni ne redémarre une session active.
-
-Les quatre **budgets autonomes par défaut** (`autonomous.maxContinuations`, `maxTurns`, `maxTokens`, `timeoutMs`) acceptent un entier positif ou `Illimité`. Un champ vide supprime ce budget et rétablit le défaut natif (3 relances, 12 tours, 80 000 jetons, 30 minutes). Ces limites sont prêtes sans activer le mode autonome ; les options explicites de lancement restent prioritaires à chaque exécution.
-
-Le **sous-agent natif par défaut** (`subagentDefaultModel`) est un champ natif distinct, affiché sous ce nom pour ne pas le confondre avec les réglages Studio. L’enregistrement de ce champ ne modifie pas les préférences Studio dans `.local/subagent-defaults.json`. La priorité reste : choix explicite `model`/`thinking` > réglages Studio (globaux ou du projet) > défaut natif > modèle parent. Vider ce champ supprime le défaut natif ; les arguments explicites et les préférences Studio restent prioritaires.
-
-Les écritures passent par le verrou natif `FileSettingsStorage`, fusionnent les champs inconnus sans les effacer, valident strictement chaque valeur et conservent une sauvegarde `settings.json.prime-studio.bak`. Une modification concurrente depuis un autre onglet renvoie un conflit 409 : rechargez les réglages avant d’enregistrer. Les routes `GET`/`POST /api/engine-settings` sont disponibles sur le PC et via la passerelle distante authentifiée en contrôle complet. Le mode consultation ne permet ni de lire ni de modifier ces réglages.
-
-### Repli après quota et budgets Studio
-
-Dans **Préférences → Modèles et agents**, la liste ordonnée de repli reste vide par défaut. Après une limite d’usage ou un quota, le message indique la date de réinitialisation lorsqu’elle est fournie. **Relancer avec <modèle>** démarre une nouvelle exécution dans la même conversation avec la demande d’origine. Les outils déjà exécutés ne sont pas annulés ; relancer peut répéter leur effet. Aucun modèle ne change dans une boucle active.
-
-La relance automatique est désactivée par défaut. Même activée, elle exige une preuve locale du même fournisseur, du même compte et du même identifiant d’accès. Seuls les accès OAuth natifs Codex et Muse conservés localement et sans redéfinition personnalisée du fournisseur peuvent actuellement fournir cette preuve. Les clés API, variables d’environnement, comptes inconnus et changements d’abonnement vers une API facturée à l’usage ne déclenchent jamais de relance automatique. L’autorisation est revérifiée au lancement ; une chaîne ne revisite pas un modèle. Les exécutions de l’API publique ne sont pas relancées automatiquement. Une sélection explicite reste votre décision et peut modifier le coût. Si le même compte et le même mode de facturation ne peuvent pas être prouvés, une confirmation distincte vous avertit du changement possible, notamment vers une API facturée à l’usage.
-
-Les **budgets Studio** sont facultatifs et désactivés par défaut. Définissez un plafond par exécution et/ou un plafond de projet par **jour UTC**, en jetons et/ou en coût estimé USD. Le plafond de projet compte les exécutions lancées pendant que le suivi des budgets est actif ; il ne reconstruit pas les dépenses antérieures à son activation. Les jetons comprennent entrée, sortie et cache. Le coût estimé n’est pas une facture. Pour les abonnements sans coût connu, utilisez les jetons ; un plafond de coût impossible à mesurer arrête l’exécution au prochain point sûr au lieu de supposer un coût nul.
-
-À 80 %, le statut et le panneau **Performance** affichent un avertissement non bloquant. À 100 %, avant le prochain appel de modèle ou outil, une question native propose **Continuer +50 %**, **Sans limite pour cette exécution**, ou **Arrêter**. L’exception ne concerne que cette exécution. Si les questions sont interdites, ou si l’exécution vient de l’API publique, le Studio arrête au point sûr sans continuer silencieusement. Un appel déjà en cours peut dépasser le plafond ; ce n’est pas une limite de facturation côté fournisseur. Une réponse finale qui ne demande aucun nouvel appel peut terminer normalement après avoir atteint le plafond.
-
-Le journal partagé inclut les sous-agents natifs qui héritent de l’environnement Studio. Un sous-agent qui atteint le plafond arrête son propre travail ; si les questions sont autorisées, l’agent parent pose la question au prochain point sûr. Les exécutables personnalisés sans ces points sûrs natifs sont refusés lorsqu’un budget est actif. Les appels indépendants du Studio et les suggestions Git ne sont pas inclus. Les plafonds sont lus au début d’une exécution ; modifier les préférences ne change pas une exécution active. Les fichiers `.local/quota-fallback.json`, `.local/budget-settings.json` et `.local/budget-usage/` restent locaux. Ils ne contiennent pas de clés fournisseur. Les écritures de préférences refusent une révision périmée.
+La réinitialisation passe par le verrou natif `FileSettingsStorage`, conserve les autres clés et une sauvegarde `settings.json.prime-studio.bak`. Une révision périmée renvoie un conflit 409 : rechargez avant de réinitialiser. La détection comme la réinitialisation exigent le contrôle complet, comme l’ancienne écriture ; en consultation, toute la section **Configurer les modèles** reste masquée.
 
 ## Données et configuration
 

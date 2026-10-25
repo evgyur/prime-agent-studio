@@ -1,5 +1,5 @@
 import { t as tr, bindText, bindAttribute, translateKnown } from './i18n.js';
-import { composerText, setComposerText } from './composer.js';
+import { composerText, setComposerText, setComposerSending } from './composer.js';
 import { queuedAgentMessage } from './agent-messages.js';
 const icons = {
   edit: 'M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L9 17l-4 1 1-4Z',
@@ -198,6 +198,7 @@ export function createLiveMessages({
     queueSignature = '',
     mode = 'steer';
   let sending = false,
+    locked = false,
     mutating = false,
     edit = null,
     destroyed = false,
@@ -433,6 +434,7 @@ export function createLiveMessages({
     const fingerprint = `${contextKey}\n${selectedMode}\n${message}\n${JSON.stringify([images, files])}`;
     if (!retry || retry.fingerprint !== fingerprint) retry = { fingerprint, requestId: requestId() };
     sending = true;
+    lock(true);
     update();
     try {
       const result = await api(`${path(current)}/messages`, {
@@ -467,9 +469,17 @@ export function createLiveMessages({
     } finally {
       if (token === generation && !destroyed) {
         sending = false;
+        lock(false);
         update();
       }
     }
+  }
+  // Same immediate feedback as a first message: the text stays visible but
+  // locked while the server takes it. Only this module releases its own lock.
+  function lock(value) {
+    if (locked === value) return;
+    locked = value;
+    setComposerSending(form, composer, value);
   }
   function update() {
     if (destroyed) return;
@@ -485,6 +495,7 @@ export function createLiveMessages({
       snapshotError = '';
       queueSignature = '';
       sending = false;
+      lock(false);
       mutating = false;
       edit = null;
       retry = null;
@@ -523,13 +534,15 @@ export function createLiveMessages({
     }
     actions.classList.toggle('has-two-actions', active && hasDraft);
     form.classList.toggle('has-live-draft', active && hasDraft);
-    const showStatus = active && hasDraft && !sending && snapshot?.available !== true;
+    const showStatus = active && hasDraft && (sending || snapshot?.available !== true);
     status.hidden = !showStatus;
     bindText(status, () =>
-      showStatus
-        ? snapshotError ||
-          (current.sessionId ? tr('ui.connexion_a_la_session') : tr('ui.preparation_de_la_session'))
-        : '',
+      !showStatus
+        ? ''
+        : sending
+          ? tr('ui.envoi_du_message')
+          : snapshotError ||
+            (current.sessionId ? tr('ui.connexion_a_la_session') : tr('ui.preparation_de_la_session')),
     );
     renderQueue();
     if (!pollTimer && !inFlight) schedulePoll();
@@ -561,6 +574,7 @@ export function createLiveMessages({
     refresh,
     destroy() {
       destroyed = true;
+      lock(false);
       controller?.abort();
       clearTimeout(pollTimer);
       composer.removeEventListener('input', onInput);

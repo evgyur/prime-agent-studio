@@ -54,13 +54,13 @@ try {
     await page.goto(fixture.url);
     await expect(page.locator('#open-roadmap')).toBeEnabled();
     await page.keyboard.press('Control+n');
+    // A new conversation shows the setup steps instead of the warning banner.
     const warning = page.locator('#configuration-warning');
-    await expect(warning).toBeVisible();
-    await expect(warning).toContainText(
-      locale === 'fr-FR'
-        ? 'Aucun fournisseur configuré et aucun modèle sélectionné.'
-        : 'No provider configured and no model selected.',
-    );
+    const gate = page.locator('#welcome .setup-gate');
+    const current = gate.locator('[aria-current="step"]');
+    await expect(gate).toBeVisible();
+    await expect(warning).toBeHidden();
+    await expect(current).toHaveAttribute('data-setup-step', 'provider');
     await expect(page.locator('#roadmap-panel')).toBeHidden();
     const doc = await fixture.app.roadmap.read(fixture.cwd);
     await expect(page.locator('#roadmap-progress')).toHaveText(`${doc.progress.percent} %`);
@@ -70,19 +70,18 @@ try {
     await page.reload();
     await expect(page.locator('#open-roadmap')).toBeEnabled();
     await page.keyboard.press('Control+n');
-    await expect(warning).toContainText(
-      locale === 'fr-FR' ? 'Aucun modèle sélectionné.' : 'No model selected.',
-    );
+    await expect(current).toHaveAttribute('data-setup-step', 'main');
+    await expect(warning).toBeHidden();
     selected = 'test/roadmap';
     await page.reload();
     await expect(page.locator('#open-roadmap')).toBeEnabled();
     await page.keyboard.press('Control+n');
+    await expect(current).toHaveAttribute('data-setup-step', 'subagent');
     await expect(warning).toBeHidden();
     providers = [];
     await page.reload();
-    await expect(warning).toContainText(
-      locale === 'fr-FR' ? 'Aucun fournisseur configuré.' : 'No provider configured.',
-    );
+    await expect(current).toHaveAttribute('data-setup-step', 'provider');
+    await expect(warning).toBeHidden();
     if (locale === 'fr-FR') {
       const updated = await fixture.app.roadmap.mutate(fixture.cwd, {
         action: 'step.check',
@@ -107,7 +106,7 @@ try {
   expect(errors).toEqual([]);
   expect(fixture.calls).toEqual([]);
   console.log(
-    'Configuration warnings, native defaults, closed roadmap progress and project changes verified in French and English; no model calls.',
+    'Setup steps in new conversations, native defaults, closed roadmap progress and project changes verified in French and English; no model calls.',
   );
 } finally {
   await browser.close();

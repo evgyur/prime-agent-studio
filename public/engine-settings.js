@@ -1,51 +1,31 @@
-import { t as tr, bindText, bindAttribute, translateKnown, onLanguageChange } from './i18n.js';
-import { createRoutingSettings } from './routing-settings.js';
+import { t as tr, bindText, translateKnown, onLanguageChange } from './i18n.js';
 
-const AUTONOMOUS_FIELDS = ['maxContinuations', 'maxTurns', 'maxTokens', 'timeoutMs'];
-const MODEL_FIELDS = ['auxiliaryModel', 'imageModel', 'providerBackupModel', 'nativeSubagentDefaultModel'];
+// Legacy settings card ("Anciens réglages détectés" / "Legacy settings
+// detected"). Advanced models and quota/budget management were removed:
+// Studio no longer edits or reads these values. Values already saved keep
+// acting in the native engine, which reads settings.json itself. This card
+// only appears when leftover values exist and offers a single Reset that
+// deletes them all (settings.json keys plus the Studio quota fallback and
+// budget data files). Nothing is changed without the explicit click.
+const LEGACY_ITEMS = [
+  'auxiliaryModel',
+  'imageModel',
+  'providerBackupModel',
+  'subagentDefaultModel',
+  'defaultServiceTier',
+  'autonomous',
+  'quotaFallback',
+  'budgets',
+];
 
-function fieldLabel(field) {
-  if (field === 'auxiliaryModel') return 'engine.auxiliary_label';
-  if (field === 'imageModel') return 'engine.image_label';
-  if (field === 'providerBackupModel') return 'engine.backup_label';
-  return 'engine.native_subagent_label';
-}
-
-function fieldNote(field) {
-  if (field === 'auxiliaryModel') return 'engine.auxiliary_note';
-  if (field === 'imageModel') return 'engine.image_note';
-  if (field === 'providerBackupModel') return 'engine.backup_note';
-  return 'engine.native_subagent_note';
-}
-
-function budgetLabel(field) {
-  if (field === 'maxContinuations') return 'engine.max_continuations';
-  if (field === 'maxTurns') return 'engine.max_turns';
-  if (field === 'maxTokens') return 'engine.max_tokens';
-  return 'engine.timeout_ms';
-}
-
-// Advanced engine models use the shared Studio model picker (#model-dialog
-// with search, providers and model info), exactly like the subagent and
-// main-model selectors. There is no native <select> fallback: the host
-// (app.js via settings.js) always wires getModels/openModelPicker/icon.
-// Empty ("Défaut du moteur") means native engine default and is sent as
-// null on save; drafts are never auto-filled and no autonomous mode is
-// implied.
 export function createEngineSettings({
   api,
   getContext = () => ({}),
-  getModels,
-  openModelPicker,
-  icon,
   onChanged = () => {},
   getElement = null,
   domId = null,
-  instanceId = '',
   isPrimary = true,
 } = {}) {
-  void instanceId;
-  void isPrimary;
   const scopedId = (logical) => (typeof domId === 'function' ? domId(logical) : logical);
   const root =
     typeof getElement === 'function'
@@ -53,253 +33,42 @@ export function createEngineSettings({
       : document.getElementById('engine-settings');
   if (!root) return { open: async () => {}, update: () => {}, root: null, dispose: () => {} };
   let data = null;
-  let catalog = [];
   let busy = false;
   let generation = 0;
   let needsLoad = true;
-  // Unsaved model choices. '' stays '' (clear = native engine default).
-  const drafts = {
-    auxiliaryModel: '',
-    imageModel: '',
-    providerBackupModel: '',
-    nativeSubagentDefaultModel: '',
+
+  // Built with createElement (no innerHTML): owned ids stay unique per
+  // Preferences instance and the dual-instance stub can observe them.
+  const el = (tag, className, i18n) => {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (i18n) node.dataset.i18n = i18n;
+    return node;
   };
-
-  root.innerHTML = `
-    <div class="model-defaults-heading">
-      <div>
-        <h3 id="engine-settings-heading" data-i18n="engine.advanced_models">Modèles avancés (Prime Agent 0.9.8)</h3>
-      </div>
-      <button id="save-engine-settings" class="primary-button" type="button" data-i18n="engine.save_engine">Enregistrer les réglages moteur</button>
-    </div>
-    <p class="model-defaults-note" data-i18n="engine.advanced_models_note"></p>
-    <div class="engine-model-grid"></div>
-    <div class="model-config-section-heading"><div><h3 data-i18n="engine.autonomous_title"></h3></div></div>
-    <p class="model-defaults-note" data-i18n="engine.autonomous_note"></p>
-    <div class="engine-budget-grid"></div>
-    <p class="engine-status subagent-status" role="status"></p>
-    <p class="engine-error form-error" role="alert" hidden></p>
-    <div class="engine-actions">
-      <button id="reload-engine-settings" class="secondary-button inspector-refresh" type="button" data-i18n="engine.reload_engine"></button>
-    </div>`;
-
-  const $ = (selector) => root.querySelector(selector);
-  const saveButton = $('#save-engine-settings');
-  const reloadButton = $('#reload-engine-settings');
-  const modelGrid = $('.engine-model-grid');
-  const budgetGrid = $('.engine-budget-grid');
-
-  const pickerButtons = new Map();
-  const budgetInputs = new Map();
-  const budgetChecks = new Map();
-  const routingRoot = document.createElement('div');
-  root.append(routingRoot);
-  const routing = createRoutingSettings({ api, root: routingRoot, getContext, getModels, openModelPicker });
-
-  function liveModels() {
-    try {
-      const next = typeof getModels === 'function' ? getModels() : null;
-      if (Array.isArray(next) && next.length) return next;
-    } catch {}
-    return catalog.length ? catalog : [];
-  }
-
-  function pickerDisplay(field, models) {
-    const draft = drafts[field] || '';
-    const model = models.find((entry) => entry?.id === draft);
-    const name =
-      model?.name || (draft ? tr('common.unavailable', { value1: draft }) : tr('ui.defaut_du_moteur'));
-    const provider =
-      model?.provider || (draft ? tr('ui.modele_indisponible') : tr('engine.advanced_models_note'));
-    return { draft, model, name, provider };
-  }
-
-  function renderPickerModels() {
-    const models = liveModels();
-    for (const field of MODEL_FIELDS) {
-      const entry = pickerButtons.get(field);
-      if (!entry) continue;
-      const { draft, model, name, provider } = pickerDisplay(field, models);
-      entry.button.value = draft;
-      bindText(entry.nameEl, () => pickerDisplay(field, liveModels()).name);
-      bindText(entry.providerEl, () => pickerDisplay(field, liveModels()).provider);
-      // Immediate text for the current language (bindText refreshes later
-      // language changes without touching drafts).
-      entry.nameEl.textContent = name;
-      entry.providerEl.textContent = provider;
-      bindAttribute(entry.button, 'title', () => draft || tr(fieldNote(field)));
-      bindAttribute(
-        entry.button,
-        'aria-label',
-        () =>
-          `${tr(fieldLabel(field))}: ${pickerDisplay(field, liveModels()).name}${
-            pickerDisplay(field, liveModels()).model ? `, ${draft}` : ''
-          }`,
-      );
-      entry.button.setAttribute('title', draft || tr(fieldNote(field)));
-      entry.button.setAttribute(
-        'aria-label',
-        `${tr(fieldLabel(field))}: ${name}${model ? `, ${draft}` : ''}`,
-      );
-    }
-  }
-
-  function openPicker(field) {
-    if (busy || !data || readOnly()) return;
-    if (typeof openModelPicker !== 'function') return;
-    renderPickerModels();
-    const turn = generation;
-    const entry = pickerButtons.get(field);
-    if (!entry) return;
-    openModelPicker({
-      button: entry.button,
-      value: drafts[field] || '',
-      get title() {
-        return tr(fieldLabel(field));
-      },
-      get defaultLabel() {
-        return tr('ui.defaut_du_moteur');
-      },
-      get defaultDetail() {
-        return tr('engine.advanced_models_note');
-      },
-      onSelect(model) {
-        if (turn !== generation || busy || !data) return;
-        drafts[field] = model || '';
-        renderPickerModels();
-        refreshBillingWarning();
-        refreshSave();
-      },
-    });
-  }
-
-  for (const field of MODEL_FIELDS) {
-    const wrap = document.createElement('div');
-    wrap.className = 'engine-field';
-    const label = document.createElement('label');
-    label.htmlFor = scopedId(`engine-${field}`);
-    label.dataset.i18n = fieldLabel(field);
-    label.textContent = tr(fieldLabel(field));
-    const button = document.createElement('button');
-    button.id = scopedId(`engine-${field}`);
-    button.type = 'button';
-    button.className = 'model-picker-button';
-    button.dataset.engineModel = field;
-    button.setAttribute('aria-haspopup', 'dialog');
-    button.setAttribute('aria-controls', 'model-dialog');
-    button.setAttribute('aria-expanded', 'false');
-    const iconWrap = document.createElement('span');
-    iconWrap.className = 'subagent-model-icon';
-    iconWrap.setAttribute('aria-hidden', 'true');
-    if (typeof icon === 'function') {
-      try {
-        iconWrap.append(icon('model'));
-      } catch {}
-    }
-    const selection = document.createElement('span');
-    selection.className = 'model-picker-selection';
-    const nameEl = document.createElement('span');
-    nameEl.className = 'model-picker-name';
-    const providerEl = document.createElement('span');
-    providerEl.className = 'model-picker-provider';
-    selection.append(nameEl, providerEl);
-    const chevron = document.createElement('span');
-    chevron.className = 'model-picker-chevron';
-    chevron.setAttribute('aria-hidden', 'true');
-    if (typeof icon === 'function') {
-      try {
-        chevron.append(icon('chevron'));
-      } catch {}
-    } else {
-      chevron.textContent = '›';
-    }
-    button.append(iconWrap, selection, chevron);
-    const note = document.createElement('p');
-    note.className = 'model-defaults-note';
-    note.dataset.i18n = fieldNote(field);
-    note.textContent = tr(fieldNote(field));
-    wrap.append(label, button, note);
-    modelGrid.append(wrap);
-    pickerButtons.set(field, { button, nameEl, providerEl });
-    button.onclick = () => openPicker(field);
-  }
-
-  const tierField = document.createElement('div');
-  tierField.className = 'engine-field';
-  tierField.innerHTML = `<label for="${scopedId('engine-defaultServiceTier')}" data-i18n="engine.service_tier_label"></label>
-    <select id="${scopedId('engine-defaultServiceTier')}">
-      <option value="default" data-i18n="engine.tier_default"></option>
-      <option value="flex">Flex</option>
-      <option value="priority">Priority</option>
-      <option value="auto">Auto</option>
-    </select>
-    <p class="model-defaults-note" data-i18n="engine.service_tier_note"></p>`;
-  modelGrid.append(tierField);
-  const tierSelect = $(`#${CSS.escape(scopedId('engine-defaultServiceTier'))}`);
-  tierSelect.onchange = refreshSave;
-  const tierDirty = () => tierSelect.value !== (data?.defaultServiceTier || 'default');
-
-  // Cross billing warning for the fallback field. The native backup switch is
-  // automatic on quota or outage once the configured model is authenticated,
-  // so pairing Muse subscription with paid Meta API billing must stay an
-  // explicit informed choice. Shown whenever the backup draft selects either
-  // side, since the session primary may be the other one.
-  const billingWarning = document.createElement('p');
-  billingWarning.className = 'model-defaults-note engine-billing-warning';
-  billingWarning.dataset.i18n = 'engine.backup_billing_warning';
-  billingWarning.hidden = true;
-  pickerButtons.get('providerBackupModel')?.button.closest('.engine-field')?.append(billingWarning);
-  function backupProviderOf(ref) {
-    if (typeof ref !== 'string') return '';
-    const slash = ref.trim().indexOf('/');
-    if (slash <= 0) return '';
-    return ref.trim().slice(0, slash).trim();
-  }
-  function refreshBillingWarning() {
-    const provider = backupProviderOf(drafts.providerBackupModel || '');
-    const show = provider === 'muse-code' || provider === 'meta';
-    billingWarning.hidden = !show;
-    if (show) bindText(billingWarning, () => tr('engine.backup_billing_warning'));
-  }
-
-  for (const field of AUTONOMOUS_FIELDS) {
-    const wrap = document.createElement('div');
-    wrap.className = 'engine-budget';
-    const label = document.createElement('label');
-    label.htmlFor = scopedId(`engine-${field}`);
-    label.dataset.i18n = budgetLabel(field);
-    const row = document.createElement('div');
-    row.className = 'engine-budget-row';
-    const input = document.createElement('input');
-    input.id = scopedId(`engine-${field}`);
-    input.type = 'number';
-    input.min = '1';
-    input.step = '1';
-    input.inputMode = 'numeric';
-    input.placeholder = '';
-    const checkWrap = document.createElement('label');
-    checkWrap.className = 'engine-unlimited';
-    const check = document.createElement('input');
-    check.type = 'checkbox';
-    check.dataset.engineUnlimited = field;
-    const checkText = document.createElement('span');
-    checkText.dataset.i18n = 'engine.unlimited';
-    checkWrap.append(check, checkText);
-    row.append(input, checkWrap);
-    const hint = document.createElement('p');
-    hint.className = 'model-defaults-note engine-default-hint';
-    hint.dataset.engineDefault = field;
-    wrap.append(label, row, hint);
-    budgetGrid.append(wrap);
-    budgetInputs.set(field, input);
-    budgetChecks.set(field, check);
-    const sync = () => {
-      input.disabled = check.checked || busy || !data;
-      refreshSave();
-    };
-    input.oninput = sync;
-    check.onchange = sync;
-  }
+  root.replaceChildren();
+  const headingWrap = el('div', 'model-defaults-heading');
+  const headingText = el('div');
+  const heading = el('h3', null, 'engine.legacy_title');
+  // The dialog labels this card by heading id; clones skip the id so the
+  // document never carries duplicates.
+  if (isPrimary) heading.id = 'engine-settings-heading';
+  heading.textContent = tr('engine.legacy_title');
+  headingText.append(heading);
+  const resetButton = document.createElement('button');
+  resetButton.type = 'button';
+  resetButton.className = 'primary-button';
+  resetButton.id = scopedId('reset-legacy-settings');
+  resetButton.dataset.i18n = 'engine.legacy_reset';
+  resetButton.textContent = tr('engine.legacy_reset');
+  headingWrap.append(headingText, resetButton);
+  const note = el('p', 'model-defaults-note', 'engine.legacy_note');
+  const list = el('ul', 'engine-legacy-list');
+  const statusLine = el('p', 'engine-status subagent-status');
+  statusLine.setAttribute('role', 'status');
+  const errorBox = el('p', 'engine-error form-error');
+  errorBox.setAttribute('role', 'alert');
+  errorBox.hidden = true;
+  root.append(headingWrap, note, list, statusLine, errorBox);
 
   function translateStatic() {
     for (const element of root.querySelectorAll('[data-i18n]')) {
@@ -311,227 +80,106 @@ export function createEngineSettings({
   translateStatic();
 
   function error(message = '') {
-    const box = $('.engine-error');
-    bindText(box, () => (message ? translateKnown(message) : ''));
-    box.hidden = !message;
+    bindText(errorBox, () => (message ? translateKnown(message) : ''));
+    errorBox.hidden = !message;
   }
 
   function status(messageKey) {
-    bindText($('.engine-status'), () => (messageKey ? tr(messageKey) : ''));
+    bindText(statusLine, () => (messageKey ? tr(messageKey) : ''));
   }
 
   function readOnly() {
-    // Full control may edit engine settings via the gateway; consultation stays locked.
+    // Reset is a local write action: consultation stays locked, same gating
+    // as the former engine-settings write route, so read-only remote clients
+    // never see the button.
     const context = getContext();
     return !!context.readOnly;
   }
 
-  // Dirty tracking: the server treats absent fields as unchanged, so save()
-  // only sends modified fields. A stale catalog entry (stored model missing
-  // or unavailable) is therefore preserved untouched when the user only
-  // edits budgets.
-  function storedModel(field) {
-    return data?.[field] || '';
-  }
-  function modelDirty(field) {
-    return (drafts[field] || '') !== storedModel(field);
-  }
-  function budgetDraft(field) {
-    if (budgetChecks.get(field).checked) return 'unlimited';
-    const raw = budgetInputs.get(field).value.trim();
-    return raw ? Number(raw) : null;
-  }
-  function budgetStored(field) {
-    return data?.autonomous?.[field] ?? null;
-  }
-  function budgetDirty(field) {
-    return budgetDraft(field) !== budgetStored(field);
-  }
-  function isDirty() {
-    return !!data && (MODEL_FIELDS.some(modelDirty) || tierDirty() || AUTONOMOUS_FIELDS.some(budgetDirty));
-  }
-  function refreshSave() {
-    saveButton.disabled = busy || !data || readOnly() || !isDirty();
-  }
-
-  function applyReadOnly() {
-    const locked = readOnly() || busy || !data;
-    for (const entry of pickerButtons.values()) entry.button.disabled = locked;
-    tierSelect.disabled = locked;
-    for (const field of AUTONOMOUS_FIELDS) {
-      budgetInputs.get(field).disabled = locked || budgetChecks.get(field).checked;
-      budgetChecks.get(field).disabled = locked;
-    }
-    refreshSave();
-    saveButton.hidden = readOnly();
-    if (readOnly() && data) status('engine.disabled_remote');
-  }
-
-  function syncDraftsFromData() {
-    for (const field of MODEL_FIELDS) drafts[field] = data?.[field] || '';
-    tierSelect.value = data?.defaultServiceTier || 'default';
-  }
-
-  function fillBudgets() {
-    for (const field of AUTONOMOUS_FIELDS) {
-      const stored = data?.autonomous?.[field] ?? null;
-      const input = budgetInputs.get(field);
-      const check = budgetChecks.get(field);
-      if (stored === 'unlimited') {
-        check.checked = true;
-        input.value = '';
-      } else if (typeof stored === 'number') {
-        check.checked = false;
-        input.value = String(stored);
-      } else {
-        check.checked = false;
-        input.value = '';
-      }
-      const hint = root.querySelector(`[data-engine-default="${field}"]`);
-      const fallback = data?.defaults?.autonomous?.[field];
-      bindText(hint, () =>
-        tr('engine.default_value', { value1: fallback === undefined ? '—' : String(fallback) }),
-      );
-      // Show native default as placeholder for empty (revert-to-default) fields.
-      input.placeholder = fallback === undefined ? '' : String(fallback);
-    }
-  }
-
   function render() {
-    if (!data) return;
-    renderPickerModels();
-    refreshBillingWarning();
-    fillBudgets();
-    applyReadOnly();
+    const items = Array.isArray(data?.items) ? data.items.filter((key) => LEGACY_ITEMS.includes(key)) : [];
+    root.hidden = !data || items.length === 0;
+    if (root.hidden) return;
+    list.replaceChildren();
+    for (const key of items) {
+      const entry = document.createElement('li');
+      entry.dataset.i18n = `engine.legacy_${key}`;
+      list.append(entry);
+    }
+    for (const entry of list.querySelectorAll('[data-i18n]')) bindText(entry, () => tr(entry.dataset.i18n));
+    resetButton.hidden = readOnly() || busy;
+    resetButton.disabled = busy || !data;
+    if (readOnly()) status('engine.disabled_remote');
+    else status('');
   }
 
   async function load() {
-    void routing.open();
     const turn = ++generation;
     busy = true;
     needsLoad = false;
     error();
-    status('engine.loading_engine');
-    applyReadOnly();
+    status('engine.legacy_loading');
+    resetButton.hidden = true;
     try {
-      // Shared catalog lives in the host (app.js state.models, refreshed
-      // when the picker dialog opens). Only engine settings are fetched
-      // here so a down catalog never blocks budgets; buttons fall back to
-      // automatic + stored stale value with an "unavailable" label.
-      const settings = await api('/api/engine-settings');
+      const state = await api('/api/engine-settings');
       if (turn !== generation) return;
-      data = settings;
-      try {
-        const shared = typeof getModels === 'function' ? getModels() : null;
-        catalog = Array.isArray(shared) ? shared : [];
-      } catch {
-        catalog = [];
-      }
-      status(catalog.length ? '' : 'engine.models_unavailable');
+      data = state;
+      busy = false;
       error();
-      syncDraftsFromData();
+      if (!state?.hasLegacy) status('');
       render();
-      if (readOnly()) status('engine.disabled_remote');
     } catch (e) {
       if (turn !== generation) return;
       data = null;
-      catalog = [];
+      busy = false;
+      root.hidden = false;
+      list.replaceChildren();
+      resetButton.hidden = true;
       status('engine.unavailable_engine');
       error(
         e.status === 404
           ? tr('ui.rechargez_le_studio_apres_sa_mise_a_jour_pour_acceder_a_ces_regla')
           : translateKnown(e.message),
       );
-    } finally {
-      if (turn === generation) {
-        busy = false;
-        applyReadOnly();
-      }
     }
   }
 
-  async function save() {
+  async function reset() {
     if (busy || !data || readOnly()) return;
     const turn = ++generation;
     busy = true;
-    applyReadOnly();
+    resetButton.disabled = true;
     error();
     status('common.saving');
-    if (!isDirty()) {
-      busy = false;
-      applyReadOnly();
-      return;
-    }
-    const body = { revision: data.revision };
-    if (tierDirty()) body.defaultServiceTier = tierSelect.value === 'default' ? null : tierSelect.value;
-    for (const field of MODEL_FIELDS) if (modelDirty(field)) body[field] = drafts[field] || null;
-    const autonomous = {};
     try {
-      for (const field of AUTONOMOUS_FIELDS) {
-        if (!budgetDirty(field)) continue;
-        const check = budgetChecks.get(field);
-        const input = budgetInputs.get(field);
-        if (check.checked) {
-          autonomous[field] = 'unlimited';
-          continue;
-        }
-        const raw = input.value.trim();
-        if (!raw) {
-          autonomous[field] = null;
-          continue;
-        }
-        if (!/^\d+$/.test(raw)) throw new Error(tr('server.budget_autonome_invalide'));
-        const parsed = Number(raw);
-        if (!Number.isSafeInteger(parsed) || parsed < 1)
-          throw new Error(tr('server.budget_autonome_invalide'));
-        autonomous[field] = parsed;
-      }
-    } catch (e) {
-      busy = false;
-      applyReadOnly();
-      status('engine.unsaved_engine');
-      error(translateKnown(e.message));
-      return;
-    }
-    if (Object.keys(autonomous).length) body.autonomous = autonomous;
-    try {
-      const saved = await api('/api/engine-settings', { method: 'POST', body });
+      const state = await api('/api/engine-settings', { method: 'POST', body: { revision: data.revision } });
       if (turn !== generation) return;
-      data = saved;
-      syncDraftsFromData();
-      render();
-      status('engine.saved_engine');
+      data = state;
+      busy = false;
       error();
+      status('engine.legacy_reset_done');
+      render();
       try {
         await onChanged();
       } catch {}
     } catch (e) {
       if (turn !== generation) return;
+      busy = false;
       status('engine.unsaved_engine');
       error(translateKnown(e.message));
+      render();
       if (e.status === 409) {
-        // Advise CAS retry: reload before the next deliberate save.
+        // Advise CAS retry: reload before the next deliberate reset.
         needsLoad = true;
-      }
-    } finally {
-      if (turn === generation) {
-        busy = false;
-        applyReadOnly();
       }
     }
   }
 
-  saveButton.onclick = () => void save();
-  reloadButton.onclick = () => void load();
+  resetButton.onclick = () => void reset();
 
-  // The model-config dialog is owned by app.js.
-  // Strategy: closing abandons the unsaved draft; every opening reloads
-  // fresh settings (also picking up other tabs' saves). In-flight loads are
-  // never cancelled on close: cancelling would skip the busy reset and wedge
-  // the form disabled. A stale completion is discarded by the generation
-  // guard and simply leaves needsLoad=true for the next opening.
-  // Global singleton dialogs stay global: per-instance handlers only touch the
-  // owned root, so siblings never repaint each other. All are removable.
+  // The model-config dialog is owned by app.js: closing abandons nothing
+  // (reset is a single deliberate click), every opening reloads fresh state
+  // so the card disappears right after a reset from another tab.
   const modelConfigDialog = document.getElementById('model-config-dialog');
   let modelConfigObserver = null;
   if (modelConfigDialog) {
@@ -546,37 +194,15 @@ export function createEngineSettings({
     if (modelConfigDialog.open && needsLoad) void load();
   }
 
-  // Shared catalog can refresh while the picker dialog is open (app.js
-  // refreshModelCatalog). Re-render button labels on dialog close so a stale
-  // draft that just became available shows its real name; drafts are kept.
-  // Engine drafts never touch the conversation model: picking only edits the
-  // local draft; only an explicit engine save POSTs.
-  const modelDialog = document.getElementById('model-dialog');
-  const onModelDialogClose = () => {
-    if (data && !busy) {
-      try {
-        const shared = typeof getModels === 'function' ? getModels() : null;
-        catalog = Array.isArray(shared) ? shared : catalog;
-      } catch {}
-      renderPickerModels();
-      refreshSave();
-    }
-  };
-  if (modelDialog) modelDialog.addEventListener('close', onModelDialogClose);
-
   const offLanguage = onLanguageChange(() => {
     translateStatic();
-    // Draft-preserving: bound texts refresh through bindText automatically;
-    // control values are never refilled here so unsaved budgets and picker
-    // drafts survive FR<->EN. Picker labels re-render from drafts.
-    if (data) renderPickerModels();
+    if (data && !root.hidden) render();
   });
 
   return {
     open: load,
     root,
     dispose: () => {
-      routing.dispose();
       generation++;
       needsLoad = true;
       try {
@@ -584,22 +210,11 @@ export function createEngineSettings({
       } catch {}
       modelConfigObserver = null;
       try {
-        modelDialog?.removeEventListener('close', onModelDialogClose);
-      } catch {}
-      try {
         offLanguage?.();
       } catch {}
     },
     update: () => {
-      routing.update();
-      if (data) {
-        try {
-          const shared = typeof getModels === 'function' ? getModels() : null;
-          if (Array.isArray(shared)) catalog = shared;
-        } catch {}
-        renderPickerModels();
-      }
-      applyReadOnly();
+      render();
     },
   };
 }

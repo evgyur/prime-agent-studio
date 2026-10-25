@@ -4,6 +4,33 @@
 
 Changes by version. See [GitHub releases](https://github.com/zerr0o/prime-agent-studio/releases) for installers and source archives.
 
+## 4.4.4
+
+- **Code highlighting**: file previews and code blocks in conversations are colored like in VS Code (dark and light themes), with line numbers. highlight.js is served by Studio itself and loaded only when code is shown; very large files stay plain text. The **Syntax highlighting in conversations** option, in Preferences → Appearance, turns it off in conversations.
+- **Open with the Windows app**: **Open** uses the default Windows application for documents, web pages and code (the browser for an `.html` file, your editor for a `.ts` or `.json` file). Scripts that Windows would run (`.js`, `.ps1`, `.bat`, `.py`…) still open in Notepad, and programs are still refused.
+- **Run a script**: the new **Run** button starts the script, after a confirmation, in a visible console opened in its folder, which stays open at the end. It is available on the PC and in remote full-control access, never in read-only access.
+- **Reliable file links**: in messages, only references to an existing file become links. Bare names and path endings are looked up in the project files, honoring `.gitignore`, and line ranges (`app.js:62-63`) are understood. A link to a missing file appears struck through; version numbers and branch names stay plain text. Agents are also told to write paths from the project folder.
+
+## 4.4.3
+
+- **Reliable message sending**: as soon as you send, the input turns grey and locks with “Sending message…”, then empties when the message appears in the conversation. Text edited during the wait can no longer stay in the field after it was sent. On failure, the text becomes editable again. Same behavior during a run (Steer, Follow up).
+- **Setup before the first message**: while no provider is connected, or the main agent or subagent model is missing, a new conversation shows three steps instead of the suggestions, and sending waits until setup is done. Without a connection, the engine default model failed (401 error). If only the subagent model is missing, **Use the same** is enough.
+- **Simpler models**: the “Advanced models” block and all quota management (quota fallback, caps, autonomous budgets) are removed. Codex usage stays visible. If old values exist, a “Legacy settings detected” card removes them in one click; an old fallback model blocks runs until this reset.
+- **Clearer component setup**: the welcome screen says whether this is a first-time setup or a repair. During setup, a step list shows the current step, its elapsed time, the downloaded size and an explanation for long steps. On a first install, Studio opens by itself at the end.
+- **More robust start**: the app no longer depends on how Node reads long Windows paths (`\\?\C:\…`), and the build refuses an incompatible Node. A start error shows a plain explanation, with the technical details folded.
+- **Interface**: “Studio preferences” from the notification area no longer freezes the window. Subagent history groups tool calls between two messages and opens at the latest message. The top bar “…” button is removed: the menu stays on each conversation in the list (right-click or “…”). Dot icons stay visible on very high-density screens, and “Refresh” is aligned with the search field in the Providers window.
+
+## 4.4.3-beta.1
+
+- **“Studio preferences” menu fixed**: from the notification area icon, Preferences open in front again, on the Updates tab. Before, an invisible window could block every click.
+- **Clearer component setup**: the welcome screen says whether this is a first-time setup or a repair, and explains what each component is for. During setup, a step list shows the current step, its elapsed time, the downloaded size and an explanation for long steps (npm dependencies, Python). On failure, the failed step is marked with Try again and Open logs. On a first install, Studio opens by itself at the end.
+- **More robust start**: the app no longer depends on how Node reads long Windows paths (`\\?\C:\…`), and the build refuses an incompatible Node. A start error shows a plain explanation, with the technical details folded.
+- **Easier-to-read subagent history**: in the Agents panel, tool calls between two messages are grouped in a collapsible “Agent activity” block, like in the main conversation, and the window opens at the latest message.
+
+## 4.4.2
+
+- **Questions stay in order**: answered or skipped questions now remain beside the assistant message that preceded them, instead of staying at the bottom after newer messages arrive. This also covers question batches and windowed history, including when the conversation view is recreated. Pending questions remain near the composer; questions already linked to a tool keep their existing position. Contributed by [@evgyur](https://github.com/evgyur) in [#12](https://github.com/zerr0o/prime-agent-studio/pull/12).
+
 ## 4.4.1
 
 - **Simpler subagent settings**: the Explore / Implement / Review role selectors have been removed. Choose the default model and thinking level globally or per project; explicit choices when launching a subagent still take priority.

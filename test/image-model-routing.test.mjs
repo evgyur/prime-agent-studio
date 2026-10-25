@@ -51,6 +51,9 @@ test('image extension retains inline-image guidance and registers completion han
   const prompt = await f.handlers.get('before_agent_start')({ systemPrompt: 'Original' });
   assert.ok(prompt.systemPrompt.startsWith('Original\n\n'));
   assert.match(prompt.systemPrompt, /project-relative\/path\.png/);
+  // File references: path from the project folder, never a bare name.
+  assert.match(prompt.systemPrompt, /\[app\.js\]\(src\/app\.js\)/);
+  assert.match(prompt.systemPrompt, /bare file name/);
   assert.equal(typeof f.handlers.get('agent_end'), 'function');
 });
 

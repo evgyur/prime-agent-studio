@@ -1,5 +1,4 @@
 import { t, bindText, getLanguage, onLanguageChange } from './i18n.js';
-import { renderBudgetStatus } from './run-guards.js';
 
 const node = (tag, className = '', text = '') => {
   const value = document.createElement(tag);
@@ -51,13 +50,9 @@ export function createPerformance({ api, getContext }) {
   bindText(retry, () => t('performance.retry'));
   retry.hidden = true;
   const body = node('div', 'performance-body');
-  const budgetStatus = node('aside');
-  budgetStatus.setAttribute('role', 'status');
-  budgetStatus.hidden = true;
-  root.append(heading, subtitle, toolbar, budgetStatus, status, retry, body);
+  root.append(heading, subtitle, toolbar, status, retry, body);
   let visible = false, key = '', generation = 0, controller = null, timer = null;
   let data = null, state = '', sort = 'cost', chart = 'cost';
-  let budgetSnapshot = null;
   const number = (n) => new Intl.NumberFormat(getLanguage(), { maximumFractionDigits: 1 }).format(n);
   const money = (row) => row.costKnown ? new Intl.NumberFormat(getLanguage(), {
     style: 'currency', currency: 'USD', maximumFractionDigits: 4,
@@ -74,7 +69,6 @@ export function createPerformance({ api, getContext }) {
     root.setAttribute('aria-busy', String(state === 'loading'));
   };
   function render() {
-    renderBudgetStatus(budgetStatus, getContext()?.run?.budget || budgetSnapshot);
     subtitle.textContent = scope.value === 'all' ? t('performance.all') : getContext()?.project?.name || t('performance.project');
     statusText();
     body.replaceChildren();
@@ -251,12 +245,6 @@ export function createPerformance({ api, getContext }) {
     const query = new URLSearchParams({ from, to });
     if (scope.value === 'project') query.set('project', context.project.metricsId);
     try {
-      // One snapshot per refresh, never a second budget polling loop.
-      const active = await api('/api/runs', { signal: controller.signal }).catch(() => ({ runs: [] }));
-      if (token !== generation || !visible) return;
-      const candidates = (active.runs || []).filter((run) => scope.value === 'all' || run.cwd === (context.cwd || context.project?.cwd));
-      budgetSnapshot = candidates.find((run) => ['paused', 'stopped'].includes(run.budget?.status))?.budget
-        || candidates.find((run) => run.budget?.status === 'warning')?.budget || null;
       const groups = scope.value === 'all' ? ['day', 'model', 'project'] : ['day', 'model'];
       const values = await Promise.all(groups.map((groupBy) => api(`/api/metrics/summary?${query}&groupBy=${groupBy}`, { signal: controller.signal })));
       if (token !== generation || !visible) return;
@@ -269,17 +257,8 @@ export function createPerformance({ api, getContext }) {
     }
   }
   function update() {
-    if (visible) renderBudgetStatus(budgetStatus, getContext()?.run?.budget || budgetSnapshot);
-    if (visible && key !== contextKey()) { budgetSnapshot = null; void refresh(); }
+    if (visible && key !== contextKey()) void refresh();
   }
-  const onBudget = (event) => {
-    const context = getContext();
-    if (visible && (scope.value === 'all' || event.detail.run.cwd === (context?.cwd || context?.project?.cwd))) {
-      budgetSnapshot = event.detail.run.budget;
-      renderBudgetStatus(budgetStatus, budgetSnapshot);
-    }
-  };
-  document.addEventListener('studio-budget-update', onBudget);
   scope.onchange = period.onchange = refreshButton.onclick = retry.onclick = () => void refresh();
   const stopLanguage = onLanguageChange(render);
   const onVisible = () => { if (visible && !document.hidden) void refresh(); };
@@ -301,8 +280,7 @@ export function createPerformance({ api, getContext }) {
     },
     destroy() {
       generation++; controller?.abort(); clearTimeout(timer);
-      stopLanguage(); document.removeEventListener('visibilitychange', onVisible);
-      document.removeEventListener('studio-budget-update', onBudget); root.remove();
+      stopLanguage(); document.removeEventListener('visibilitychange', onVisible); root.remove();
     },
   };
 }

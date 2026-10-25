@@ -147,7 +147,9 @@ try {
   await page.locator('#toggle-sidebar').click();
   await page.locator('#project-list .project-row').filter({ hasText: 'Atelier' }).click();
   await page.locator('#project-session-list').getByText('Préparer le projet', { exact: true }).click();
-  await page.locator('#session-menu-button').tap();
+  // The conversation menu lives on its row in the sidebar (no header button).
+  await page.locator('#toggle-sidebar').click();
+  await page.getByRole('button', { name: 'Options : Préparer le projet', exact: true }).tap();
   await expect(page.locator('#session-menu')).toBeVisible();
   await page.evaluate(() => {
     window.dispatchEvent(new Event('resize'));
@@ -159,7 +161,9 @@ try {
   await expect(page.locator('#rename-dialog')).toBeVisible();
   await page.locator('#rename-dialog [data-close-dialog]').first().click();
   checks.push('Menu de session mobile tactile, stable au redimensionnement et utilisable');
-  await page.locator('#toggle-sidebar').click();
+  // The sidebar may still be open from the conversation menu.
+  if (!(await page.locator('#sidebar').evaluate((node) => node.classList.contains('mobile-open'))))
+    await page.locator('#toggle-sidebar').click();
   const projectMore = page.getByRole('button', { name: 'Options du projet Atelier', exact: true });
   await projectMore.tap();
   await expect(page.locator('#project-menu')).toBeVisible();

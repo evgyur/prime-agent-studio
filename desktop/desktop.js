@@ -1,5 +1,64 @@
 const messages = {
   fr: {
+    optionsHeading: 'Options',
+    setupFreshEyebrow: 'Première configuration',
+    setupFreshTitle: 'Préparons votre Studio',
+    setupFreshNote:
+      'Le Studio a besoin de quelques composants pour exécuter vos agents. Ils sont téléchargés depuis leurs sources officielles, vérifiés, puis installés pour votre compte Windows. Comptez quelques minutes.',
+    setupRepairEyebrow: 'Réparation',
+    setupRepairTitle: 'Quelques composants sont à remettre en état',
+    setupRepairNote:
+      'Certains composants manquent ou ne correspondent pas à cette version du Studio. La réparation télécharge uniquement ce qui est nécessaire. Vos projets et conversations ne sont pas modifiés.',
+    setupRunningEyebrow: 'Installation en cours',
+    setupRunningTitle: 'Installation des composants',
+    setupRunningNote:
+      'Vous pouvez laisser cette fenêtre ouverte. Le Studio s’ouvrira automatiquement à la fin.',
+    setupRunningNoteManual: 'Vous pouvez laisser cette fenêtre ouverte pendant l’installation.',
+    setupFailedEyebrow: 'Installation interrompue',
+    setupFailedTitle: 'L’installation s’est arrêtée',
+    setupFailedNote:
+      'Les éléments déjà vérifiés sont conservés. Corrigez le problème indiqué ci-dessous, puis réessayez : seule la suite sera téléchargée.',
+    setupStartingEyebrow: 'Presque terminé',
+    setupStartingTitle: 'Ouverture du Studio',
+    setupStartingNote: 'Les composants sont prêts. Le Studio démarre pour la première fois.',
+    setupInstall: 'Installer les composants',
+    setupRetry: 'Réessayer',
+    setupStepsHeading: 'Progression',
+    setupStep: 'Étape {n} sur {total}',
+    setupDone: 'Terminé',
+    setupSkipped: 'Déjà prêt',
+    setupFailed: 'Échec',
+    setupSteps: {
+      download: 'Télécharger Prime Agent',
+      engine: 'Installer le moteur et ses dépendances',
+      uv: 'Télécharger uv',
+      python: 'Préparer Python et les skills',
+      check: 'Vérifier l’installation',
+      start: 'Démarrer le Studio',
+    },
+    setupHints: {
+      download: 'Archives officielles, empreinte vérifiée avant installation.',
+      engine: 'Installation des paquets npm. Étape la plus longue : souvent plusieurs minutes.',
+      uv: 'Gestionnaire d’environnements Python.',
+      python: 'Création de l’environnement Python et installation des skills. Peut prendre plusieurs minutes.',
+      check: 'Tests rapides du moteur, de Python et du shell.',
+      start: 'Première ouverture : copie des fichiers du Studio puis démarrage du serveur.',
+    },
+    componentRoles: {
+      engine: 'Moteur des agents',
+      npm: 'Gestionnaire de paquets privé',
+      uv: 'Gestionnaire Python',
+      python: 'Exécution des skills',
+      bash: 'Commandes shell · installé séparément',
+      node: 'Exécution du Studio',
+    },
+    componentTodo: {
+      missing: 'À installer',
+      pending: 'Installé avec le moteur',
+      error: 'À réparer',
+      ready: 'Prêt',
+      not_required: 'Non nécessaire',
+    },
     componentsHeading: 'Composants du Studio',
     componentsDetails: 'Détails',
     componentsHideDetails: 'Masquer les détails',
@@ -52,6 +111,7 @@ const messages = {
       download: 'Téléchargement',
       verify: 'Vérification de l’empreinte',
       install: 'Installation',
+      dependencies: 'Installation des dépendances',
       python: 'Préparation de Python et des skills',
       validation: 'Validation des intégrations',
       opening: 'Mise en route dans le serveur',
@@ -108,6 +168,9 @@ const messages = {
     startingServer: 'Démarrage du serveur…',
     checkingComponents: 'Vérification des composants…',
     failure: 'Le Studio n’a pas pu démarrer.',
+    failureTechnical:
+      'Le serveur local du Studio ne s’est pas lancé. Vos projets et conversations ne sont pas touchés. Réessayez ; si l’erreur revient, ouvrez les journaux ou réinstallez la dernière version publiée.',
+    failureDetails: 'Détails techniques',
     noBridge: 'Ouvrez cette page dans l’application Prime Agent Studio.',
     selected: 'Installation sélectionnée : ',
     autostartError: 'Le démarrage avec Windows n’a pas pu être modifié.',
@@ -131,6 +194,64 @@ const messages = {
     updateInstallFailed: 'L’installation n’a pas pu démarrer. Vous pouvez réessayer.',
   },
   en: {
+    optionsHeading: 'Options',
+    setupFreshEyebrow: 'First-time setup',
+    setupFreshTitle: 'Let’s set up your Studio',
+    setupFreshNote:
+      'Studio needs a few components to run your agents. They are downloaded from their official sources, verified, then installed for your Windows account. It takes a few minutes.',
+    setupRepairEyebrow: 'Repair',
+    setupRepairTitle: 'Some components need a repair',
+    setupRepairNote:
+      'Some components are missing or do not match this Studio version. Repair downloads only what is needed. Your projects and conversations are not changed.',
+    setupRunningEyebrow: 'Setup in progress',
+    setupRunningTitle: 'Installing components',
+    setupRunningNote: 'You can leave this window open. Studio opens automatically when setup is done.',
+    setupRunningNoteManual: 'You can leave this window open during setup.',
+    setupFailedEyebrow: 'Setup interrupted',
+    setupFailedTitle: 'Setup stopped',
+    setupFailedNote:
+      'Components already verified are kept. Fix the problem shown below, then try again: only the remaining steps are downloaded.',
+    setupStartingEyebrow: 'Almost done',
+    setupStartingTitle: 'Opening Studio',
+    setupStartingNote: 'Components are ready. Studio is starting for the first time.',
+    setupInstall: 'Install components',
+    setupRetry: 'Try again',
+    setupStepsHeading: 'Progress',
+    setupStep: 'Step {n} of {total}',
+    setupDone: 'Done',
+    setupSkipped: 'Already ready',
+    setupFailed: 'Failed',
+    setupSteps: {
+      download: 'Download Prime Agent',
+      engine: 'Install the engine and its dependencies',
+      uv: 'Download uv',
+      python: 'Set up Python and skills',
+      check: 'Check the installation',
+      start: 'Start Studio',
+    },
+    setupHints: {
+      download: 'Official archives, checksum verified before install.',
+      engine: 'Installing npm packages. Longest step: often several minutes.',
+      uv: 'Python environment manager.',
+      python: 'Creating the Python environment and installing skills. May take several minutes.',
+      check: 'Quick checks of the engine, Python and the shell.',
+      start: 'First launch: copying Studio files, then starting the server.',
+    },
+    componentRoles: {
+      engine: 'Agent engine',
+      npm: 'Private package manager',
+      uv: 'Python manager',
+      python: 'Runs skills',
+      bash: 'Shell commands · installed separately',
+      node: 'Runs Studio',
+    },
+    componentTodo: {
+      missing: 'To install',
+      pending: 'Installed with the engine',
+      error: 'Needs repair',
+      ready: 'Ready',
+      not_required: 'Not required',
+    },
     componentsHeading: 'Studio components',
     componentsDetails: 'Details',
     componentsHideDetails: 'Hide details',
@@ -180,6 +301,7 @@ const messages = {
       download: 'Downloading',
       verify: 'Verifying checksum',
       install: 'Installing',
+      dependencies: 'Installing dependencies',
       python: 'Preparing Python and skills',
       validation: 'Validating integrations',
       opening: 'Starting in the server',
@@ -234,6 +356,9 @@ const messages = {
     startingServer: 'Starting server…',
     checkingComponents: 'Checking components…',
     failure: 'Studio could not start.',
+    failureTechnical:
+      'The local Studio server did not start. Your projects and conversations are not affected. Try again; if the error comes back, open the logs or reinstall the latest published version.',
+    failureDetails: 'Technical details',
     noBridge: 'Open this page in the Prime Agent Studio application.',
     selected: 'Selected installation: ',
     autostartError: 'Could not change the start with Windows setting.',
@@ -282,6 +407,7 @@ for (const [id, key] of Object.entries({
   description: settings ? 'settingsNote' : 'description',
   'startup-label': 'startup',
   'components-heading': 'componentsHeading',
+  'options-heading': 'optionsHeading',
   'components-note': 'componentsNote',
   'components-install': 'componentsInstall',
   'components-diagnose': 'componentsDiagnose',
@@ -320,7 +446,8 @@ function isComponentsRequired(error) {
   return String(error || '').includes('components_required');
 }
 function setPhase(text) {
-  if (text) {
+  // The guided setup has its own status line.
+  if (text && !setup) {
     $('progress').hidden = false;
     $('progress-text').textContent = text;
   }
@@ -390,17 +517,9 @@ function renderComponents(result) {
     return;
   }
   latestComponents = result;
-  $('components-list').replaceChildren();
+  if (!setup) renderComponentRows(result);
   $('components-detail-list').replaceChildren();
   for (const [key, info] of Object.entries(result.components || {})) {
-    const stateLabel = t.componentStates[info.status] || info.status;
-    const chip = document.createElement('li');
-    chip.className = 'component-chip';
-    chip.dataset.state = info.status;
-    chip.textContent = `${componentNames[key] || key}${info.version ? ` ${info.version}` : ''}${info.status !== 'ready' ? ` · ${stateLabel}` : ''}`;
-    chip.title = stateLabel;
-    chip.setAttribute('aria-label', `${chip.textContent}, ${stateLabel}`);
-    $('components-list').append(chip);
     const row = document.createElement('li');
     row.textContent = `${componentNames[key] || key}, ${t.componentStates[info.status] || info.status}${info.version ? ` · ${info.version}` : ''}`;
     if (info.path) {
@@ -443,6 +562,9 @@ function renderComponents(result) {
   // one server Restart now below. Hide apply to avoid double activation.
   $('components-actions').hidden = result.ready;
   $('start').textContent = updatePending || !result.ready ? t.componentsLater : t.start;
+  // One obvious primary action: "Later" stays a quiet text link while setup is due.
+  $('start').className = updatePending || !result.ready ? 'text-button' : 'primary';
+  $('components-install').textContent = isFreshInstall(result) ? t.setupInstall : t.componentsInstall;
   if (result.activation === 'failed') $('logs').hidden = false;
 }
 $('components-toggle').textContent = t.componentsDetails;
@@ -455,21 +577,47 @@ $('components-toggle').onclick = () => {
 async function componentsAction(action, component) {
   if (componentsBusy) return;
   componentsBusy = true;
+  const installing = ['install', 'prepare'].includes(action);
+  // First launch with a stopped server: the Studio can open itself right
+  // after setup. A running server is never restarted implicitly.
+  const autoOpen =
+    installing && !settings && !updatePending && latestComponents?.server?.running === false;
+  const before = latestComponents;
   // Concrete phase immediately, never silent frozen window.
   $('components').hidden = false;
   document.body.classList.remove('boot-connecting');
   document.body.classList.add('boot-ready');
   document.body.classList.remove('boot');
-  setPhase(t.checkingComponents);
-  $('components-status').textContent = t.checkingComponents;
+  if (installing) {
+    setupBegin(autoOpen);
+    $('components-install').hidden = true;
+  } else setPhase(t.checkingComponents);
+  $('components-status').textContent = installing ? '' : t.checkingComponents;
   for (const el of $('components').querySelectorAll('button')) el.disabled = true;
-  $('components-cancel').hidden = !['install', 'prepare'].includes(action);
+  $('components-cancel').hidden = !installing;
   $('components-cancel').disabled = false;
   $('start').disabled = true;
   let result;
   try {
     result = await invoke('desktop_components', { action, component: component || null });
     renderComponents(result);
+    if (installing) {
+      if (result?.ready) {
+        setupAdvance('check');
+        setup.states.check = 'done';
+        if (autoOpen && !result.needsRestart) {
+          setupAdvance('start');
+          $('components-actions').hidden = true;
+          return result;
+        }
+        setupEnd(true);
+      } else {
+        // A failed run keeps the last diagnose, so "Later" still opens Studio.
+        if (!result?.ready && !latestComponents) latestComponents = before;
+        if (result?.cancelled || result?.failure?.error === 'cancelled') setupEnd(true);
+        else setupFail();
+      }
+    }
     // Never auto restart an active agent. Prepare only installs/validates;
     // the user triggers one explicit Restart now when idle (with force confirm).
     return result;
@@ -477,12 +625,239 @@ async function componentsAction(action, component) {
     latestComponents = undefined;
     const message = isComponentsRequired(error) ? t.checkingComponents : componentError(String(error));
     $('components-status').textContent = message;
-    setPhase(message);
+    if (installing) setupFail();
+    else setPhase(message);
   } finally {
     componentsBusy = false;
     for (const el of $('components').querySelectorAll('button')) el.disabled = false;
     $('components-cancel').hidden = true;
     $('start').disabled = false;
+    if (installing && setup?.states.start === 'active') {
+      // Hand over to the normal start path; the step list stays visible
+      // until the native shell navigates to Studio.
+      // start() reports its own failure (title, error, Retry); only mark the step.
+      void start({ rethrow: true }).catch(() => {
+        if (!setup) return;
+        setup.states.start = 'failed';
+        clearInterval(setup.timer);
+        setup.timer = null;
+        $('start').hidden = false;
+        $('logs').hidden = false;
+        renderSetup();
+      });
+    }
+  }
+}
+
+// Guided setup: one ordered step list instead of a single status line.
+// Progress events only move forward, so the final diagnose (which re-emits
+// earlier component stages) never sends the view back. Each active step shows
+// a live timer and a hint, so long silent work (npm install, Python) still
+// reads as progress.
+const SETUP_STEPS = ['download', 'engine', 'uv', 'python', 'check', 'start'];
+let setup = null;
+function setupPhase(payload) {
+  const { component, stage } = payload || {};
+  if (stage === 'opening') return 'start';
+  if (component === 'uv' && ['download', 'verify', 'install'].includes(stage)) return 'uv';
+  if (['npm', 'engine'].includes(component) && ['download', 'verify'].includes(stage)) return 'download';
+  if (component === 'npm' && stage === 'install') return 'download';
+  if (component === 'engine' && ['install', 'dependencies'].includes(stage)) return 'engine';
+  if (stage === 'python') return 'python';
+  // Only the final engine check of an install; diagnose-only checks
+  // (node, uv, bash) never move the setup forward.
+  if (stage === 'validation' && component === 'engine') return 'check';
+  return null;
+}
+function formatStepTime(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(s / 60);
+  return m ? `${m} min ${String(s % 60).padStart(2, '0')} s` : `${s} s`;
+}
+const formatSize = (bytes) =>
+  bytes < 1048576
+    ? `${Math.max(1, Math.round(bytes / 1024)).toLocaleString(language)} ${language === 'fr' ? 'Ko' : 'KB'}`
+    : `${(bytes / 1048576).toLocaleString(language, { maximumFractionDigits: 1, minimumFractionDigits: 1 })} ${language === 'fr' ? 'Mo' : 'MB'}`;
+function setIntro(kind) {
+  const prefix = { fresh: 'setupFresh', repair: 'setupRepair', running: 'setupRunning', failed: 'setupFailed', starting: 'setupStarting' }[kind];
+  if (!prefix) return;
+  $('eyebrow').textContent = t[prefix + 'Eyebrow'];
+  $('title').textContent = t[prefix + 'Title'];
+  $('description').textContent = t[prefix + 'Note'];
+}
+function isFreshInstall(result) {
+  if (!result || result.installedEngine) return false;
+  return !Object.entries(result.components || {}).some(
+    ([key, info]) => !['bash', 'node'].includes(key) && info.status === 'ready',
+  );
+}
+function setupBegin(autoOpen) {
+  clearInterval(setup?.timer);
+  const intro = setup?.intro || {
+    eyebrow: $('eyebrow').textContent,
+    title: $('title').textContent,
+    description: $('description').textContent,
+  };
+  setup = {
+    index: -1,
+    intro,
+    autoOpen,
+    touched: {},
+    states: Object.fromEntries(SETUP_STEPS.map((id) => [id, 'pending'])),
+    stepStartedAt: Date.now(),
+    received: undefined,
+    total: undefined,
+    timer: setInterval(renderSetup, 1000),
+  };
+  if (!autoOpen) setup.states.start = 'hidden';
+  $('components-status').classList.remove('failed');
+  setIntro('running');
+  if (!autoOpen) $('description').textContent = t.setupRunningNoteManual;
+  $('components-heading').textContent = t.setupStepsHeading;
+  $('choices').hidden = true;
+  $('start').hidden = true;
+  $('logs').hidden = true;
+  $('progress').hidden = true;
+  showError('');
+  setupAdvance('download');
+}
+function setupAdvance(id, payload = {}) {
+  if (!setup) return;
+  const next = SETUP_STEPS.indexOf(id);
+  if (next < setup.index) return;
+  if (next > setup.index) {
+    for (let i = Math.max(setup.index, 0); i < next; i++) {
+      const step = SETUP_STEPS[i];
+      // A step that never received an event was already in place.
+      if (setup.states[step] === 'active') setup.states[step] = setup.touched?.[step] ? 'done' : 'skipped';
+      else if (setup.states[step] === 'pending') setup.states[step] = 'skipped';
+      // 'hidden' (no auto open) stays hidden.
+    }
+    setup.index = next;
+    setup.states[id] = 'active';
+    if (id === 'start') setIntro('starting');
+    setup.stepStartedAt = Date.now();
+    setup.received = setup.total = undefined;
+  }
+  if (payload.component) (setup.touched ||= {})[id] = true;
+  if (payload.received !== undefined) {
+    setup.received = payload.received;
+    setup.total = payload.total;
+  } else if (payload.stage && payload.stage !== 'download') setup.received = setup.total = undefined;
+  renderSetup();
+}
+function setupFail() {
+  if (!setup) return;
+  const step = SETUP_STEPS[Math.max(setup.index, 0)];
+  setup.states[step] = 'failed';
+  clearInterval(setup.timer);
+  setup.timer = null;
+  setIntro('failed');
+  $('components-status').classList.add('failed');
+  $('components-install').textContent = t.setupRetry;
+  $('components-actions').hidden = false;
+  $('components-install').hidden = false;
+  $('start').hidden = false;
+  $('logs').hidden = false;
+  renderSetup();
+}
+// restore: put back the intro shown before setup (update guide, settings…).
+function setupEnd(restore) {
+  if (!setup) return;
+  clearInterval(setup.timer);
+  const intro = setup.intro;
+  setup = null;
+  $('setup-meter').hidden = true;
+  $('start').hidden = false;
+  $('components-heading').textContent = t.componentsHeading;
+  if (restore && intro) {
+    $('eyebrow').textContent = intro.eyebrow;
+    $('title').textContent = intro.title;
+    $('description').textContent = intro.description;
+  }
+  if (latestComponents) renderComponentRows(latestComponents);
+  $('components-install').hidden = Boolean(latestComponents?.ready);
+}
+function renderSetup() {
+  if (!setup) return;
+  const list = $('components-list');
+  list.className = 'setup-list steps';
+  list.replaceChildren();
+  const active = SETUP_STEPS[setup.index];
+  const visible = SETUP_STEPS.filter((id) => setup.states[id] !== 'hidden');
+  for (const id of visible) {
+    const state = setup.states[id];
+    const row = document.createElement('li');
+    row.className = 'setup-row';
+    row.dataset.state = state;
+    if (state === 'active') row.setAttribute('aria-current', 'step');
+    const icon = document.createElement('span');
+    icon.className = 'setup-icon';
+    icon.setAttribute('aria-hidden', 'true');
+    const body = document.createElement('span');
+    body.className = 'setup-body';
+    const label = document.createElement('strong');
+    label.textContent = t.setupSteps[id];
+    body.append(label);
+    if (state === 'active' || state === 'failed') {
+      const hint = document.createElement('small');
+      hint.textContent =
+        state === 'active' && setup.received !== undefined
+          ? `${formatSize(setup.received)}${setup.total ? ` / ${formatSize(setup.total)}` : ''}`
+          : t.setupHints[id];
+      body.append(hint);
+    }
+    const meta = document.createElement('span');
+    meta.className = 'setup-meta';
+    meta.textContent =
+      state === 'active'
+        ? formatStepTime(Date.now() - setup.stepStartedAt)
+        : { done: t.setupDone, skipped: t.setupSkipped, failed: t.setupFailed, pending: '' }[state];
+    row.append(icon, body, meta);
+    list.append(row);
+  }
+  const meter = $('setup-meter');
+  meter.hidden = !active || setup.states[active] !== 'active';
+  const determinate = setup.received !== undefined && setup.total > 0;
+  meter.classList.toggle('indeterminate', !determinate);
+  $('setup-meter-fill').style.width = determinate
+    ? `${Math.min(100, Math.round((setup.received / setup.total) * 100))}%`
+    : '';
+  // Status line changes only with the step (no per-second screen reader noise).
+  const label = active
+    ? `${t.setupStep.replace('{n}', visible.indexOf(active) + 1).replace('{total}', visible.length)} · ${t.setupSteps[active]}`
+    : '';
+  if ($('setup-meter-label').textContent !== label) $('setup-meter-label').textContent = label;
+}
+function renderComponentRows(result) {
+  const list = $('components-list');
+  list.className = 'setup-list';
+  list.replaceChildren();
+  for (const [key, info] of Object.entries(result.components || {})) {
+    const row = document.createElement('li');
+    row.className = 'setup-row';
+    // A missing engine is reported as status "error" with error "missing":
+    // that is something to install, not something broken.
+    const status = info.status === 'error' && info.error === 'missing' ? 'missing' : info.status;
+    row.dataset.state = status === 'ready' ? 'done' : status === 'error' ? 'failed' : 'todo';
+    const icon = document.createElement('span');
+    icon.className = 'setup-icon';
+    icon.setAttribute('aria-hidden', 'true');
+    const body = document.createElement('span');
+    body.className = 'setup-body';
+    const label = document.createElement('strong');
+    label.textContent = `${componentNames[key] || key}${info.version ? ` ${info.version}` : ''}`;
+    body.append(label);
+    if (t.componentRoles[key]) {
+      const role = document.createElement('small');
+      role.textContent = t.componentRoles[key];
+      body.append(role);
+    }
+    const meta = document.createElement('span');
+    meta.className = 'setup-meta';
+    meta.textContent = t.componentTodo[status] || t.componentStates[status] || status;
+    row.append(icon, body, meta);
+    list.append(row);
   }
 }
 $('components-install').onclick = () => componentsAction('prepare');
@@ -505,6 +880,12 @@ void window.__TAURI__?.event?.listen('components-progress', ({ payload }) => {
     payload.received === undefined
       ? ''
       : ` · ${payload.received.toLocaleString(language)} ${language === 'fr' ? 'octets reçus' : 'bytes received'}${payload.total ? ` / ${payload.total.toLocaleString(language)}` : ''}`;
+  // Install: the ordered step list carries progress (bytes, timer, hint).
+  if (setup) {
+    const phase = setupPhase(payload);
+    if (phase) setupAdvance(phase, payload);
+    return;
+  }
   // Detailed diagnose steps (engine/python/shell/uv) plus download progress.
   const text = `${componentNames[payload.component] || payload.component || ''}, ${t.componentStages[payload.stage] || payload.stage || ''}${received}`;
   $('components-status').textContent = text;
@@ -911,10 +1292,24 @@ $('server-restart').onclick = async () => {
   }
 };
 let busy = false;
+// Raw process output (stack traces) is folded under a plain explanation.
 function showError(value) {
-  $('error').textContent = value;
-  $('error').hidden = !value;
-  $('logs').hidden = !value;
+  const text = String(value || '');
+  const technical = text.includes('\n') || text.length > 240;
+  $('error').replaceChildren();
+  if (technical) {
+    const summary = document.createElement('p');
+    summary.textContent = t.failureTechnical;
+    const details = document.createElement('details');
+    const label = document.createElement('summary');
+    label.textContent = t.failureDetails;
+    const pre = document.createElement('pre');
+    pre.textContent = text.trim();
+    details.append(label, pre);
+    $('error').append(summary, details);
+  } else $('error').textContent = text;
+  $('error').hidden = !text;
+  $('logs').hidden = !text;
 }
 async function start(options = {}) {
   if (busy) return;
@@ -933,6 +1328,7 @@ async function start(options = {}) {
     setPhase(t.startingServer);
     const started = await invoke('desktop_start', { allowUnconfigured, background });
     if (started?.showUpdates && !allowUnconfigured && !background) {
+      setupEnd(false);
       updatePending = true;
       showLauncher();
       $('title').textContent = t.updateGuideTitle;
@@ -960,6 +1356,8 @@ async function start(options = {}) {
     $('progress').hidden = true;
     showLauncher();
     $('title').textContent = t.failure;
+    // The connecting note ("we find or start the server") no longer applies.
+    $('description').textContent = '';
     showError(String(error));
     $('start').textContent = t.retry;
     $('start').disabled = false;
@@ -1108,6 +1506,8 @@ $('import').onclick = async () => {
         }
       } else {
         $('components').hidden = false;
+        $('progress').hidden = true;
+        setIntro(isFreshInstall(latestComponents) ? 'fresh' : 'repair');
         // Cold foreground with a known older engine receipt and no running
         // server: explain the 0.9.8 step. Empty fresh installs carry no
         // legacy evidence, so the predicate stays silent there.

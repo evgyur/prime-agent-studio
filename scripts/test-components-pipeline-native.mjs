@@ -222,23 +222,16 @@ try {
   await expect(page.locator('#settings-dialog')).toBeVisible();
   await expect(page.locator('#settings-tab-updates')).toHaveAttribute('aria-selected', 'true');
   assert.equal(browser.contexts()[0].pages().length, 1, 'normal settings never opens a duplicate window');
-  // The advanced model controls must use the common stacked dialog in WebView2,
-  // not only in the Chromium mock. Escape changes no model or setting.
+  // The removed advanced-model pickers are gone; with no legacy values the
+  // legacy card stays hidden and Escape changes nothing.
   await page.locator('#settings-tab-models').click();
   await page.locator('#open-model-config').click();
   await expect(page.locator('#model-config-loading')).toBeHidden({ timeout: 45000 });
   await expect(page.locator('#model-config-content')).toBeVisible({ timeout: 45000 });
-  const picker = page.locator('#engine-providerBackupModel');
-  await expect(picker).toBeEnabled({ timeout: 45000 });
-  const draft = await picker.locator('.model-picker-name').textContent();
-  assert.ok(draft?.trim(), 'model draft label is populated');
-  await picker.click();
-  await expect(page.locator('#model-dialog')).toBeVisible();
-  await expect(page.locator('#model-search')).toBeFocused();
+  await expect(page.locator('#engine-settings')).toBeHidden({ timeout: 45000 });
+  assert.equal(await page.locator('[data-engine-model]').count(), 0);
+  assert.equal(await page.locator('#reset-legacy-settings').count(), 0);
   await page.keyboard.press('Escape');
-  await expect(page.locator('#model-dialog')).toBeHidden();
-  await expect(page.locator('#model-config-dialog')).toBeVisible();
-  assert.equal(await picker.locator('.model-picker-name').textContent(), draft);
   await page.evaluate(() => document.querySelector('#model-config-dialog').close());
   await page.locator('#settings-tab-updates').click();
   await mkdir('test-results', { recursive: true });

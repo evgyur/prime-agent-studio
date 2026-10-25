@@ -58,6 +58,7 @@ export function createConversationRenderer({
   renderInteractions = () => [],
   windowed = false,
   window: windowOpts = {},
+  codeHighlight = () => true,
 }) {
   const turns = new Map();
   // Open-state carryover across same-turn prepend merges (new activity key
@@ -65,6 +66,7 @@ export function createConversationRenderer({
   // interior visible step stays mounted for exact <3px anchoring).
   let carryOpenMsgIds = null;
   let reasoningPreference = reasoningMode();
+  let highlightPreference = codeHighlight();
   let resetReasoning = false;
   let previewFrame;
   const followReasoningTail = () => {
@@ -112,7 +114,7 @@ export function createConversationRenderer({
             icon('chevron', 'chevron'),
           );
           const content = el('div', 'thinking-content reasoning-markdown');
-          content.append(markdown(m.thinking));
+          content.append(markdown(m.thinking, { streaming: m.streaming }));
           thinking.append(summary, content);
           node.append(thinking);
         }
@@ -228,7 +230,7 @@ export function createConversationRenderer({
     if (!part || part.signature !== signature) {
       const node = el('div', 'assistant-text');
       node.dataset.messageId = m.id;
-      if (m.text) node.append(markdown(m.text, { imageRoot: part?.node }));
+      if (m.text) node.append(markdown(m.text, { imageRoot: part?.node, streaming: m.streaming }));
       if (translateKnown(m.error)) node.append(el('div', 'message-error', () => translateKnown(m.error)));
       if (m.attachments?.length)
         node.append(
@@ -338,6 +340,10 @@ export function createConversationRenderer({
     if (reasoningPreference !== reasoningMode()) {
       reasoningPreference = reasoningMode();
       resetReasoning = true;
+      turns.clear();
+    }
+    if (highlightPreference !== codeHighlight()) {
+      highlightPreference = codeHighlight();
       turns.clear();
     }
     const nodes = [],
@@ -824,6 +830,10 @@ export function createConversationRenderer({
       const entry = heightsFor(state.bindingKey);
       entry.heights.clear();
       entry.avg = 0;
+    }
+    if (highlightPreference !== codeHighlight()) {
+      highlightPreference = codeHighlight();
+      turns.clear();
     }
     const { filtered, blocks } = buildBlocks(messages, {
       isEmpty: isEmptyCompletedAssistant,

@@ -26,7 +26,7 @@ Selecting an engine does not enable control. Changing it needs the desktop off w
 
 **Preferences > Tools > Computer Use decision model** selects the model for runs with desktop authorized. The default **Same as conversation** keeps the conversation model. A named model replaces it at run start, only for turns with Computer Use authorized.
 
-The list comes from the same catalog as the main picker, in the same menu as the conversation model picker. Models that read images are required: a model without images is refused both at save time and at run start, with no silent switch. An unavailable model is refused too. The extension gives desktop tools to the authorized run’s agent. The native `imageModel` setting handles image turns on text-only models, not a separate screenshot-analysis agent. This setting stays a run-level override, not a separate vision subsystem.
+The list comes from the same catalog as the main picker, in the same menu as the conversation model picker. Models that read images are required: a model without images is refused both at save time and at run start, with no silent switch. An unavailable model is refused too. The extension gives desktop tools to the authorized run’s agent, with no separate screenshot-analysis agent.
 
 The **Reasoning** selector next to the model offers the same levels as the conversation selector (**Same as conversation** by default). When set, that level applies to runs with desktop authorized exactly like the conversation level, even when the model stays the conversation model. Otherwise the conversation level is kept.
 

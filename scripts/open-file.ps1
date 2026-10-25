@@ -19,7 +19,10 @@ public static class StudioFileShell {
     } else {
         # SW_SHOWNORMAL: the document app is visible even when the helper is hidden.
         $studioResult = [StudioFileShell]::ShellExecuteW([IntPtr]::Zero, 'open', $studioFile, $null, $studioFolder, 1)
-        if ($studioResult.ToInt64() -eq 31 -and [IO.Path]::GetExtension($studioFile) -match '^\.(txt|md|markdown|mdown|mkd|json|jsonl|log|csv|tsv)$') {
+        # SE_ERR_NOASSOC (31): no associated application. Node classifies every
+        # text-like type in PRIME_STUDIO_FILE_TEXT, so the helper needs no
+        # extension list and never decides what counts as text.
+        if ($studioResult.ToInt64() -eq 31 -and $env:PRIME_STUDIO_FILE_TEXT -eq '1') {
             $studioEditor = Join-Path $env:SystemRoot 'System32\notepad.exe'
             $studioResult = [StudioFileShell]::ShellExecuteW([IntPtr]::Zero, 'open', $studioEditor, ('"' + $studioFile + '"'), $studioFolder, 1)
         }

@@ -4,6 +4,33 @@
 
 Les changements par version. Retrouvez les installateurs et les archives du code source dans les [releases GitHub](https://github.com/zerr0o/prime-agent-studio/releases).
 
+## 4.4.4
+
+- **Coloration du code** : l’aperçu des fichiers et les blocs de code des conversations sont colorés comme dans VS Code (thèmes sombre et clair), avec des numéros de ligne. highlight.js est servi par le Studio lui-même et chargé seulement quand un code s’affiche ; les très gros fichiers restent en texte simple. L’option **Coloration du code dans les conversations**, dans Préférences → Apparence, la désactive dans les conversations.
+- **Ouvrir avec l’application de Windows** : **Ouvrir** utilise l’application par défaut de Windows pour les documents, les pages web et le code (le navigateur pour un fichier `.html`, votre éditeur pour un `.ts` ou un `.json`). Les scripts que Windows exécuterait (`.js`, `.ps1`, `.bat`, `.py`…) s’ouvrent toujours dans le Bloc-notes, et les programmes restent refusés.
+- **Exécuter un script** : le nouveau bouton **Exécuter** lance le script, après confirmation, dans une console visible ouverte dans son dossier, qui reste ouverte à la fin. Il est disponible sur le PC et en accès distant en contrôle complet, jamais en consultation.
+- **Liens de fichiers fiables** : dans les messages, seules les références vers un fichier existant deviennent des liens. Les noms seuls et les fins de chemin sont cherchés dans les fichiers du projet, en respectant `.gitignore`, et les plages de lignes (`app.js:62-63`) sont comprises. Un lien vers un fichier absent apparaît barré ; les numéros de version et les noms de branche restent du texte simple. Les agents reçoivent aussi une consigne pour écrire les chemins depuis le dossier du projet.
+
+## 4.4.3
+
+- **Envoi des messages fiable** : dès l’envoi, le champ de saisie se grise et se verrouille avec « Envoi du message… », puis se vide quand le message apparaît dans la conversation. Un texte modifié pendant l’attente ne peut plus rester dans le champ après avoir été envoyé. En cas d’échec, le texte redevient modifiable. Même comportement pendant une exécution (Réorienter, À la suite).
+- **Configuration avant le premier message** : tant qu’aucun fournisseur n’est connecté ou qu’il manque le modèle de l’agent principal ou des sous-agents, une nouvelle conversation affiche trois étapes à la place des suggestions, et l’envoi attend la fin de la configuration. Sans connexion, le modèle par défaut du moteur échouait (erreur 401). S’il ne manque que le modèle des sous-agents, **Utiliser le même** suffit.
+- **Modèles simplifiés** : le bloc « Modèles avancés » et toute la gestion des quotas (relais après quota, plafonds, budgets autonomes) sont retirés. L’usage Codex reste affiché. Si d’anciennes valeurs existent, une carte « Anciens réglages détectés » les supprime en un clic ; un ancien modèle de secours bloque les exécutions jusqu’à cette réinitialisation.
+- **Installation des composants plus claire** : l’accueil indique s’il s’agit d’une première configuration ou d’une réparation. Pendant l’installation, une liste d’étapes affiche l’étape en cours, son temps écoulé, la taille téléchargée et une explication pour les étapes longues. Lors d’une première installation, le Studio s’ouvre tout seul à la fin.
+- **Démarrage plus robuste** : l’application ne dépend plus de la façon dont Node lit les chemins Windows longs (`\\?\C:\…`), et le build refuse un Node incompatible. Une erreur de démarrage affiche une explication simple, avec les détails techniques repliés.
+- **Interface** : « Préférences du Studio » depuis la zone de notification ne bloque plus la fenêtre. L’historique des sous-agents regroupe les appels d’outils entre deux messages et s’ouvre sur le dernier message. Le bouton « … » de la barre du haut est retiré : le menu reste sur chaque conversation de la liste (clic droit ou « … »). Les icônes à points restent visibles sur les écrans à très forte densité, et « Actualiser » est aligné avec la recherche dans la fenêtre Fournisseurs.
+
+## 4.4.3-beta.1
+
+- **Menu « Préférences du Studio » corrigé** : depuis l’icône de la zone de notification, les Préférences s’ouvrent de nouveau au premier plan, sur l’onglet Mise à jour. Avant, une fenêtre invisible pouvait bloquer tous les clics.
+- **Installation des composants plus claire** : l’accueil indique s’il s’agit d’une première configuration ou d’une réparation, et décrit le rôle de chaque composant. Pendant l’installation, une liste d’étapes affiche l’étape en cours, son temps écoulé, la taille téléchargée et une explication pour les étapes longues (dépendances npm, Python). En cas d’échec, l’étape concernée est signalée avec Réessayer et Ouvrir les journaux. Lors d’une première installation, le Studio s’ouvre tout seul à la fin.
+- **Démarrage plus robuste** : l’application ne dépend plus de la façon dont Node lit les chemins Windows longs (`\\?\C:\…`), et le build refuse un Node incompatible. Une erreur de démarrage affiche une explication simple, avec les détails techniques repliés.
+- **Historique des sous-agents plus lisible** : dans le panneau Agents, les appels d’outils entre deux messages sont regroupés dans un bloc « Activité de l’agent » repliable, comme dans la conversation principale, et la fenêtre s’ouvre sur le dernier message.
+
+## 4.4.2
+
+- **Questions dans le bon ordre** : les questions répondues ou ignorées restent désormais auprès du message assistant qui les précédait, au lieu de rester en bas après l’arrivée de nouveaux messages. Cela couvre aussi les groupes de questions et l’historique fenêtré, y compris lorsque la vue de conversation est recréée. Les questions en attente restent près du compositeur ; celles déjà liées à un outil conservent leur position. Contribution de [@evgyur](https://github.com/evgyur) dans la [#12](https://github.com/zerr0o/prime-agent-studio/pull/12).
+
 ## 4.4.1
 
 - **Réglages des sous-agents simplifiés** : les sélecteurs de rôles Explorer / Implémenter / Réviser sont supprimés. Choisissez le modèle et le niveau de réflexion par défaut globalement ou par projet ; les choix explicites au lancement d’un sous-agent restent prioritaires.

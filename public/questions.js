@@ -1,5 +1,27 @@
 import { t as tr, bindText, bindAttribute } from './i18n.js';
 
+// Bridge questions have no native tool id. Keep their resolved form beside
+// the assistant message that was current when the question was asked.
+export function questionAnchorMessageId(run, request) {
+  const messages = run?.messages;
+  if (!Array.isArray(messages) || !request) return null;
+  if (request.toolId) {
+    const owner = messages.findLast((message) => message.tools?.some((tool) => tool.id === request.toolId));
+    return owner?.id || null;
+  }
+  if (request.status === 'pending') return null;
+  const askedAt = typeof request.createdAt === 'number' ? request.createdAt : Date.parse(request.createdAt);
+  if (!Number.isFinite(askedAt)) return null;
+  let anchor = null;
+  for (const message of messages) {
+    if (message.role !== 'assistant' || !message.id) continue;
+    const messageAt =
+      typeof message.timestamp === 'number' ? message.timestamp : Date.parse(message.timestamp);
+    if (Number.isFinite(messageAt) && messageAt <= askedAt) anchor = message.id;
+  }
+  return anchor;
+}
+
 export function createQuestions({ root, api, getContext, icon }) {
   const nodes = new Map();
   const prefix = `question-${Math.random().toString(36).slice(2)}`;
@@ -20,9 +42,6 @@ export function createQuestions({ root, api, getContext, icon }) {
       currentRun = run?.id;
     }
     for (const request of run?.interactions || []) {
-      const budgetChoices = { 'Continue +50%': 'routing.extend', 'Unlimited this run': 'routing.unlimited', Stop: 'routing.stop' };
-      const isBudget = request.title === 'Budget reached' && request.options?.length === 3 && request.options.every((value) => budgetChoices[value]);
-      const budgetText = (value) => isBudget && budgetChoices[value] ? tr(budgetChoices[value]) : value;
       let entry = nodes.get(request.id);
       if (!entry) {
         const form = node('form', 'agent-question');
@@ -35,7 +54,6 @@ export function createQuestions({ root, api, getContext, icon }) {
             .map((value, index) => ({ value, ...request.optionDetails?.[index] })),
         }];
         const title = node('h3', '', request.title);
-        if (isBudget) bindText(title, () => tr('routing.question'));
         title.id = `${prefix}-${request.id}`;
         form.setAttribute('aria-labelledby', title.id);
         const fields = node('fieldset', 'question-fields');
@@ -126,7 +144,6 @@ export function createQuestions({ root, api, getContext, icon }) {
               refresh();
             };
             const choiceLabel = node('span', '', option.label || option.value);
-            if (isBudget) bindText(choiceLabel, () => budgetText(option.value));
             row.append(radio, choiceLabel);
             choice.append(row);
             if (option.description) {
@@ -250,6 +267,7 @@ export function createQuestions({ root, api, getContext, icon }) {
         nodes.set(request.id, entry);
       }
       const pending = request.status === 'pending' && run.status === 'running';
+      entry.anchorMessageId = questionAnchorMessageId(run, request);
       entry.form.hidden = !!hidden;
       entry.statusKey = pending ? 'pending' : request.status;
       entry.form.classList.toggle('question-resolved', !pending);
@@ -272,15 +290,24 @@ export function createQuestions({ root, api, getContext, icon }) {
             ? request.answers.map((answer) =>
                 `${answer.question} — ${answer.skipped ? tr('questions.skipped') : answer.answer}`).join('\n')
             : request.status === 'answered'
-              ? `${tr('questions.answered')} ${typeof request.answer === 'boolean' ? tr(request.answer ? 'questions.yes' : 'questions.no') : budgetText(request.answer) || ''}`
+              ? `${tr('questions.answered')} ${typeof request.answer === 'boolean' ? tr(request.answer ? 'questions.yes' : 'questions.no') : request.answer || ''}`
               : tr('questions.closed'),
         );
+      // The transcript may be windowed, with this message offscreen.
+      // Remove a resolved question from the live bottom until it mounts there.
+      if (!pending && entry.form.parentNode === root && entry.anchorMessageId) entry.form.remove();
     }
   }
   function partsFor(message) {
+    const run = getContext().run;
     const toolIds = new Set((message.tools || []).map((tool) => tool.id));
-    return (getContext().run?.interactions || [])
-      .filter((request) => request.toolId && toolIds.has(request.toolId) && nodes.has(request.id))
+    return (run?.interactions || [])
+      .filter(
+        (request) =>
+          nodes.has(request.id) &&
+          ((request.toolId && toolIds.has(request.toolId)) ||
+            (request.status !== 'pending' && nodes.get(request.id).anchorMessageId === message.id)),
+      )
       .map((request) => ({ key: `question:${request.id}`, node: nodes.get(request.id).form }));
   }
   return { update, partsFor };

@@ -32,6 +32,8 @@ await writeFile(
   '# Guide\n\nContenu du guide. [Dossier externe relatif](../../External%20folder/).\n',
 );
 await writeFile(join(cwd, 'docs', 'mes notes.md'), '# Notes\n');
+await mkdir(join(cwd, 'web', 'src'), { recursive: true });
+await writeFile(join(cwd, 'web', 'src', 'app.js'), 'export const ready = true;\n');
 await writeFile(join(cwd, 'builds', 'app.exe'), Buffer.from([0x4d, 0x5a, 0x00, 0xff]));
 await writeFile(
   join(setupDir, 'Prime-Agent-Studio_4.0.2_x64-setup.exe'),
@@ -61,7 +63,7 @@ await writeFile(
         content: [
           {
             type: 'text',
-            text: `Voici les fichiers : [Guide](docs/guide.md), [Installeur](builds/app.exe), [Dossier docs](docs/), [Notes espace](docs/mes%20notes.md), [Setup 4.0.2](${setupReference}), [Git](.git/config), [Racine](${pathToFileURL(cwd).href}), [Dossier externe](<${externalDir.replaceAll('\\', '/')}>), [Fichier externe](<${externalFile.replaceAll('\\', '/')}>), [URL externe](${pathToFileURL(externalFile).href}).`,
+            text: `Voici les fichiers : [Guide](docs/guide.md), [Installeur](builds/app.exe), [Dossier docs](docs/), [Notes espace](docs/mes%20notes.md), [Setup 4.0.2](${setupReference}), [Git](.git/config), [Racine](${pathToFileURL(cwd).href}), [Dossier externe](<${externalDir.replaceAll('\\', '/')}>), [Fichier externe](<${externalFile.replaceAll('\\', '/')}>), [URL externe](${pathToFileURL(externalFile).href}), [Manquant](docs/absent.md).\n\nRéférences : \`app.js\`, \`src/app.js:62-63\`, \`v4.4.3\`, \`absent.md\`.`,
           },
         ],
         stopReason: 'stop',
@@ -120,18 +122,34 @@ try {
   const message = page.locator('.message.assistant').first();
   await expect(message).toBeVisible();
   const links = message.locator('a.document-link');
+  // Only references that open something become links: a file name or a path
+  // ending found in the project, ranges included; versions, missing files and
+  // version control internals stay plain text.
   await expect(links).toHaveText([
     'Guide',
     'Installeur',
     'Dossier docs',
     'Notes espace',
     'Setup 4.0.2',
-    'Git',
     'Racine',
     'Dossier externe',
     'Fichier externe',
     'URL externe',
+    'app.js',
+    'src/app.js:62-63',
   ]);
+  const unavailable = message.locator('a.document-link-missing');
+  await expect(unavailable).toHaveText(['Git', 'Manquant']);
+  await expect(unavailable.first()).not.toHaveAttribute('href');
+  await expect(unavailable.last()).toHaveAttribute('title', /introuvable.*docs\/absent\.md/);
+  for (const plain of ['v4.4.3', 'absent.md'])
+    await expect(message.locator('code', { hasText: plain })).not.toHaveAttribute('class', /document-link/);
+  assert.equal(await message.locator('a:has(code:text-is("v4.4.3")), a:has(code:text-is("absent.md"))').count(), 0);
+  await page.screenshot({ path: resolve('test-results/file-links/message-links.png'), animations: 'disabled' });
+  // A bare file name opens the project file directly.
+  await links.filter({ hasText: 'src/app.js:62-63' }).click();
+  await expect(page.locator('.inspector-viewer[open] .inspector-view-body')).toContainText('export const ready');
+  await page.keyboard.press('Escape');
   const menu = page.locator('.file-link-menu');
   const viewer = page.locator('.inspector-viewer[open]');
   const setup = links.filter({ hasText: 'Setup 4.0.2' });
@@ -174,15 +192,7 @@ try {
   assert.equal(opened.pop(), await realpath(cwd));
   await page.keyboard.press('Escape');
 
-  // Version control internals stay refused, but the link is still clickable.
-  await links.filter({ hasText: 'Git' }).click();
-  await expect(viewer).toBeVisible();
-  await expect(viewer.locator('.inspector-view-body')).toContainText('pas accessible');
-  await page.screenshot({
-    path: resolve('test-results/file-links/viewer-refused.png'),
-    animations: 'disabled',
-  });
-  await page.keyboard.press('Escape');
+  // Version control internals are never offered as links (checked above).
 
   // Right click menu offers open, reveal and copy actions on the .local file.
   await setup.click({ button: 'right' });
@@ -257,13 +267,21 @@ try {
   await expect(menu).toBeHidden();
   await expect(setup).toBeFocused();
 
-  // The reveal menu stays inside a phone viewport.
-  await page.setViewportSize({ width: 390, height: 844 });
-  await setup.click({ button: 'right' });
-  const box = await menu.boundingBox();
+  // The reveal menu stays inside a phone viewport (own phone page: resizing a
+  // docked desktop page is a separate layout concern).
+  const phone = await context.newPage();
+  await phone.setViewportSize({ width: 390, height: 844 });
+  phone.on('pageerror', (error) => errors.push(error.message));
+  await phone.goto(url);
+  await phone.locator('#toggle-sidebar').click();
+  await phone.locator('#session-list').getByText('Montrer les fichiers du projet.', { exact: true }).click();
+  const phoneSetup = phone.locator('.message.assistant').first().locator('a.document-link', { hasText: 'Setup 4.0.2' });
+  await phoneSetup.click({ button: 'right' });
+  const box = await phone.locator('.file-link-menu').boundingBox();
   assert.ok(box.x >= 0 && box.x + box.width <= 390, JSON.stringify(box));
   assert.ok(box.y + box.height <= 844, JSON.stringify(box));
-  await page.keyboard.press('Escape');
+  await phone.keyboard.press('Escape');
+  await phone.close();
   // Exercise menu gates and one-time context capture without launching an OS
   // app. The integration cases above cover the real app callback and server.
   const gates = await page.evaluate(async () => {

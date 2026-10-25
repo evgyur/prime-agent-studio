@@ -18,18 +18,7 @@
         <h1 id="title"></h1>
         <p class="description" id="description"></p>
       </section>
-      <section id="choices" hidden>
-        <label class="preference"
-          ><span><strong id="startup-label"></strong><small id="startup-note"></small></span
-          ><input id="autostart" type="checkbox" role="switch"
-        /></label>
-        <div class="import">
-          <button id="import" class="text-button"></button>
-          <p id="import-note"></p>
-          <p id="source" hidden></p>
-        </div>
-      </section>
-      <section id="components" class="updates" aria-labelledby="components-heading" hidden>
+      <section id="components" class="setup" aria-labelledby="components-heading" hidden>
         <div class="component-heading">
           <h2 id="components-heading"></h2>
           <button
@@ -39,7 +28,11 @@
             aria-controls="components-details"
           ></button>
         </div>
-        <ul id="components-list"></ul>
+        <ol id="components-list" class="setup-list"></ol>
+        <div id="setup-meter" class="setup-meter" hidden>
+          <div class="meter" aria-hidden="true"><span id="setup-meter-fill"></span></div>
+          <p id="setup-meter-label"></p>
+        </div>
         <p id="components-status" role="status" aria-live="polite"></p>
         <div id="components-actions" class="update-actions">
           <button id="components-install" class="primary"></button>
@@ -93,6 +86,18 @@
         ><button id="back-studio" class="text-button" hidden></button
         ><button id="logs" class="text-button" hidden></button>
       </div>
+      <section id="choices" class="options" aria-labelledby="options-heading" hidden>
+        <h2 id="options-heading"></h2>
+        <label class="preference"
+          ><span><strong id="startup-label"></strong><small id="startup-note"></small></span
+          ><input id="autostart" type="checkbox" role="switch"
+        /></label>
+        <div class="import">
+          <button id="import" class="text-button"></button>
+          <p id="import-note"></p>
+          <p id="source" hidden></p>
+        </div>
+      </section>
       <footer>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
           <path d="M4 12h3l3-7 4 14 3-7h3" /></svg

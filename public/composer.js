@@ -290,3 +290,13 @@ export function createCommandChip() {
 export function createComposer(getTextarea) {
   return createComposerScope(getTextarea);
 }
+// While a message is handed to the server, its text stays visible but read-only:
+// what the user sees is exactly what was sent, and no edit can be lost or
+// duplicated. Acceptance empties the field; a failure makes it editable again.
+export function setComposerSending(form, textarea, sending) {
+  if (!form || !textarea) return;
+  form.classList.toggle('is-sending', sending);
+  if (sending) form.setAttribute('aria-busy', 'true');
+  else form.removeAttribute('aria-busy');
+  textarea.readOnly = sending;
+}

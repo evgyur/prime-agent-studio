@@ -129,8 +129,25 @@ try {
     await expect(page.locator('#start')).toContainText(fr ? 'Plus tard' : 'Later');
     // Repair shows byte progress (translated, no percent yet for this event).
     await page.locator('#components-install').click();
-    await expect(page.locator('#components-status')).toContainText(
-      fr ? 'octets re\u00e7us' : 'bytes received',
+    // Guided setup: ordered step list, bytes on the active step, no silent wait.
+    await expect(page.locator('#components-list [aria-current="step"]')).toContainText(
+      fr ? 'T\u00e9l\u00e9charger Prime Agent' : 'Download Prime Agent',
+    );
+    await expect(page.locator('#components-list [aria-current="step"]')).toContainText(
+      fr ? '16 Ko / 32 Ko' : '16 KB / 32 KB',
+    );
+    await expect(page.locator('#setup-meter')).toBeVisible();
+    await expect(page.locator('#components-install')).toBeHidden();
+    // The long npm install gets its own step instead of a frozen line.
+    await page.evaluate(() => window.componentProgress({ payload: { component: 'engine', stage: 'dependencies' } }));
+    await expect(page.locator('#components-list [aria-current="step"]')).toContainText(
+      fr ? 'Installer le moteur' : 'Install the engine',
+    );
+    await expect(page.locator('#components-list [data-state="done"]')).toHaveCount(1);
+    // A late re-emitted earlier stage never moves the view backwards.
+    await page.evaluate(() => window.componentProgress({ payload: { component: 'engine', stage: 'download' } }));
+    await expect(page.locator('#components-list [aria-current="step"]')).toContainText(
+      fr ? 'Installer le moteur' : 'Install the engine',
     );
     // Cancel interrupts and preserves retry.
     await page.locator('#components-cancel').click();

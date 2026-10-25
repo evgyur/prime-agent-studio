@@ -41,6 +41,7 @@
     <link rel="stylesheet" href="/public/worktrees.css" />
     <link rel="stylesheet" href="/public/computer-use.css" />
     <link rel="stylesheet" href="/public/git-panel.css" />
+    <link rel="stylesheet" href="/public/code-highlight.css" />
   </head>
   <body>
     <a class="skip-link" href="#composer" data-i18n="ui.aller_au_message">Aller au message</a>
@@ -226,17 +227,6 @@
               data-icon="layout"
             ></button>
             <button
-              id="session-menu-button"
-              class="icon-button"
-              aria-label="Options de la session"
-              data-i18n-aria-label="ui.options_de_la_session"
-              title="Options de la session"
-              data-i18n-title="ui.options_de_la_session"
-              aria-haspopup="menu"
-              data-icon="more"
-              disabled
-            ></button
-            ><button
               id="toggle-details"
               class="icon-button"
               aria-label="Masquer le contexte"
@@ -513,6 +503,59 @@
                     ><span class="starter-arrow" data-icon="arrow-up-right"></span>
                   </button>
                 </div>
+                <section class="setup-gate" hidden>
+                  <div class="welcome-eyebrow">
+                    <span class="eyebrow-line"></span
+                    ><span data-i18n="setup.eyebrow">CONFIGURATION REQUISE</span>
+                  </div>
+                  <h2 class="setup-gate-title" data-i18n="setup.title">Avant votre premier message</h2>
+                  <p class="setup-gate-note" data-i18n="setup.note">
+                    Connectez un fournisseur, puis choisissez les modèles de l’agent principal et des
+                    sous-agents.
+                  </p>
+                  <ol class="setup-gate-steps">
+                    <li class="setup-gate-step" data-setup-step="provider">
+                      <span class="setup-gate-marker" aria-hidden="true"
+                        ><span class="setup-gate-number">1</span
+                        ><span class="setup-gate-check" data-icon="check"></span
+                      ></span>
+                      <span class="setup-gate-body"
+                        ><strong data-i18n="setup.provider_title">Connecter un fournisseur</strong
+                        ><span class="setup-gate-detail"></span
+                      ></span>
+                      <span class="setup-gate-actions"
+                        ><button type="button" data-setup-action="provider"></button
+                      ></span>
+                    </li>
+                    <li class="setup-gate-step" data-setup-step="main">
+                      <span class="setup-gate-marker" aria-hidden="true"
+                        ><span class="setup-gate-number">2</span
+                        ><span class="setup-gate-check" data-icon="check"></span
+                      ></span>
+                      <span class="setup-gate-body"
+                        ><strong data-i18n="setup.main_title">Modèle de l’agent principal</strong
+                        ><span class="setup-gate-detail"></span
+                      ></span>
+                      <span class="setup-gate-actions"
+                        ><button type="button" data-setup-action="main"></button
+                      ></span>
+                    </li>
+                    <li class="setup-gate-step" data-setup-step="subagent">
+                      <span class="setup-gate-marker" aria-hidden="true"
+                        ><span class="setup-gate-number">3</span
+                        ><span class="setup-gate-check" data-icon="check"></span
+                      ></span>
+                      <span class="setup-gate-body"
+                        ><strong data-i18n="setup.subagent_title">Modèle des sous-agents</strong
+                        ><span class="setup-gate-detail"></span
+                      ></span>
+                      <span class="setup-gate-actions"
+                        ><button type="button" data-setup-action="subagent-same"></button
+                        ><button type="button" data-setup-action="subagent"></button
+                      ></span>
+                    </li>
+                  </ol>
+                </section>
               </div>
               <div
                 id="messages"
@@ -1560,6 +1603,18 @@
                 <p data-i18n="ui.sinon_utilisez_ctrl_entree">Sinon, utilisez Ctrl + Entrée.</p>
               </div>
               <input id="enter-to-send" class="switch" type="checkbox" role="switch" checked />
+            </div>
+            <div class="settings-row">
+              <div>
+                <label for="code-highlight" data-i18n="settings.code_highlight"
+                  >Coloration du code dans les conversations</label
+                >
+                <p data-i18n="settings.code_highlight_note">
+                  Les blocs de code sont colorés après l’affichage, sans ralentir la frappe ni le
+                  streaming.
+                </p>
+              </div>
+              <input id="code-highlight" class="switch" type="checkbox" role="switch" checked />
             </div>
             <div class="settings-row reasoning-settings">
               <div>

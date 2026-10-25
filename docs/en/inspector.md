@@ -8,7 +8,7 @@ The panel button at the top right of the chat opens the workspace. It stays besi
 
 Find the project, session status, active runs and conversation export. Tracking distinguishes response generation, tool execution, context compaction and waiting for subagents.
 
-Chat status also distinguishes a usage-limit wait, an unavailable provider and use of the backup model selected in preferences. These indicators follow engine events; they change neither the selected model nor recovery limits.
+Chat status also distinguishes quota and provider errors. These indicators follow engine events; they change neither the selected model nor recovery limits.
 
 Usage adds up Prime Agent’s recorded data on the conversation’s current branch: uncached input, output, cache read and cache write tokens. The **cache rate** is the share of input tokens served from the cache: read ÷ (input + read + write), excluding output tokens. Estimated cost appears only when the engine provides it; otherwise it stays **unknown**, not zero. It does not represent your subscription bill.
 
@@ -50,14 +50,18 @@ Tracking uses Prime Agent **0.9.7**’s protocol. Viewing a card does not resume
 
 **Markdown** files (`.md`, `.markdown`, `.mdown`, `.mkd`) display headings, lists, tables, quotations and code blocks. JSON previews are indented while preserving original values. **Preview / Source** switches to the file’s exact text without reloading it. Other text files preserve indentation, and HTML files remain text without execution.
 
+Code previews are highlighted locally with highlight.js (BSD-3-Clause license), with no CDN: JavaScript, Python, HTML, PowerShell, Dockerfile and other languages follow the Studio theme (VS Code Dark+ / Light+), with line numbers that are never selected or copied. The **Source** tab always keeps the raw text. Above about 512 KiB, 5,000 lines, or a line longer than 4,000 characters, the preview stays plain text. The displayed text stays identical to the file: highlighting changes nothing.
+
 The diff compares current contents with the latest commit, including staged and working-tree changes. It covers **the entire project**: several sessions or manual edits may contribute to the same files. Changes are not automatically attributed to an agent. File browsing remains available without Git.
 
-Markdown links to project documents and file references written as code in messages are clickable. They open a preview with the same **Open** button, without switching sessions or losing the draft. Relative, absolute and `file://` paths are recognized, including line references. A bare filename is searched for within the project; if several files share that name, Studio lets you choose.
+Markdown links to project documents and file references written as code in messages become clickable when the file exists. They open a preview with the same **Open** button, without switching sessions or losing the draft. Relative, absolute and `file://` paths are recognized, including line and line-range references (`app.js:12`, `app.js:62-63`, `app.js#L4-L9`).
+
+A bare filename or a path ending (`src/app.js` for `web/src/app.js`) is searched for in the project file list. In a Git repository, this list honors `.gitignore`: build folders never hide the real file. If several files match, Studio lets you choose. Before showing a message, Studio checks its references in a single request: a version number, a branch name or a missing file stays plain text, and a Markdown link to a missing file appears struck through, with a tooltip. Agents also receive an instruction to write paths from the project folder.
 
 Links are not limited to selected extensions: a binary file such as an `.exe` or `.zip` can open the panel without being executed. A link’s context menu offers **Open**, **Open folder**, and **Copy path**. The panel also includes **Open folder**, next to **Open**, to open the containing folder on the host PC.
 
 **Open folder** is not limited to the project: an absolute path, a `file://` link or a relative path can identify any existing folder accessible to the PC. A file opens its parent folder; a folder opens directly. No project registration is required. This explicit action opens the host PC's file manager without transferring its contents to the browser. It remains unavailable in read-only mode and to public API tokens.
 
-Previews accept UTF-8 text up to 512 KiB and PNG, JPEG, GIF or WebP images up to 8 MiB. Formatting affects display only: it does not modify project files. Deleted files have a diff but can no longer be opened. On Windows, scripts and code open as text in Notepad; this command does not launch executables or shortcuts. If a text file has no associated application, Studio uses Notepad.
+Previews accept UTF-8 text up to 512 KiB and PNG, JPEG, GIF or WebP images up to 8 MiB. Formatting affects display only: it does not modify project files. Deleted files have a diff but can no longer be opened. On Windows, scripts that would execute on open (`.js`, `.ps1`, `.bat`, `.py`, …) open as text in Notepad, while web pages and non-executable code open with the associated application; this command does not launch executables or shortcuts. If a text file has no associated application, Studio uses Notepad. For runnable scripts (except `.reg`/`.inf`), a **Run** button asks for confirmation — name, relative path and a warning that the script runs on the PC with your Windows rights — then opens a new console window that stays open in the script folder.
 
 Content browsing, previews and downloads remain restricted to registered projects and the usual remote access code. Technical folders (`.git`, `node_modules`, caches), private engine and Studio data, and links leaving the project are excluded. An explicit link into `.local` is accessible only when that folder is not Studio’s private data directory. Remote read-only mode allows these views without allowing agent commands.

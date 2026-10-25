@@ -2,6 +2,7 @@ import { t as tr, bindText, bindAttribute, translateKnown, getLanguage, onLangua
 import { filePresentation, defaultFileView, parentFolder } from './file-presentation.js';
 import { placeViewportMenu } from './file-links.js';
 import { thinkingLabel } from './reasoning.js';
+import { languageForPath, enhanceFileBlock } from './code-highlight.js';
 import { createSubagentSettings } from './subagent-settings.js';
 
 const $ = (id) => document.getElementById(id);
@@ -68,6 +69,14 @@ const busy = new Set([
 ]);
 
 const INSPECTOR_UNIT_IDS = Object.freeze(['session', 'agents', 'files']);
+// Mirror of lib/run-file.mjs RUNNABLE_SCRIPT_EXTENSIONS (button visibility
+// only; the server re-checks). Parity is unit-tested in test/run-file.test.mjs.
+const RUNNABLE_SCRIPT_EXTENSIONS = new Set(
+  'bat cmd ps1 py pyw js mjs cjs sh bash vbs vbe wsf jse rb pl php lua'.split(' '),
+);
+function isRunnableScriptPath(path) {
+  return RUNNABLE_SCRIPT_EXTENSIONS.has(String(path).split('.').at(-1)?.toLowerCase() || '');
+}
 
 /**
  * Visible-datasets-only fetch matrix (pure, unit-tested).
@@ -181,6 +190,7 @@ export function createInspector({
   unit,
   instanceId,
   root,
+  renderTool,
 }) {
   // Multi-instance scope (parent clonePanelScope). Primary legacy omits all
   // three and keeps original IDs/behavior. Clones pass unit + scoped
@@ -219,6 +229,7 @@ export function createInspector({
         openModelPicker,
         icon,
         toast,
+        renderTool,
         getElement: childGet,
         domId: childDomId,
         unit: key,
@@ -2117,14 +2128,19 @@ export function createInspector({
         document.classList.add('inspector-document');
         body.append(document);
       } else {
-        const pre = node('pre', 'inspector-code inspector-file-source', () =>
-          source ? text : presentation.text,
-        );
+        const shown = source ? text : presentation.text;
+        const pre = node('pre', 'inspector-code inspector-file-source', () => shown);
         pre.tabIndex = 0;
         bindAttribute(pre, 'aria-label', () =>
           source ? tr('ui.source_du_fichier') : tr('ui.contenu_du_fichier'),
         );
         body.append(pre);
+        // Plain text first (tests compare textContent), then paint numbered
+        // highlighted lines in place when the file maps to a known language.
+        enhanceFileBlock(pre, {
+          language: languageForPath(file.path),
+          text: shown,
+        });
       }
       body.scrollTop = 0;
     }
@@ -2145,6 +2161,65 @@ export function createInspector({
       controls.insertBefore(options, controls.querySelector('.inspector-open'));
     }
     render();
+  }
+  function confirmScriptRun(file, cwd) {
+    document.querySelector('.script-run-dialog')?.remove();
+    const name = file.path.split(/[\\/]/).at(-1);
+    const dialog = node('dialog', 'modal script-run-dialog');
+    dialog.setAttribute('aria-labelledby', 'script-run-title');
+    const heading = node('div', 'modal-heading');
+    const title = node('h2', '', () => tr('ui.executer_ce_script'));
+    title.id = 'script-run-title';
+    heading.append(title);
+    const fileName = node('p', 'script-run-file', name);
+    // The folder matters only when the script is not at the project root.
+    const filePath = node('p', 'script-run-path');
+    const code = document.createElement('code');
+    code.textContent = file.path;
+    filePath.append(code);
+    filePath.hidden = file.path === name;
+    const warning = node('p', 'script-run-warning', () =>
+      tr('ui.le_script_va_s_executer_sur_votre_pc_dans_une_fenetre_visible'),
+    );
+    const feedback = node('p', 'inspector-note script-run-feedback');
+    feedback.setAttribute('role', 'status');
+    feedback.hidden = true;
+    const actions = node('div', 'script-run-actions');
+    const cancel = node('button', 'secondary-button', () => tr('ui.annuler'));
+    cancel.type = 'button';
+    cancel.autofocus = true;
+    const confirm = node('button', 'primary-button', () =>
+      current.remote ? tr('ui.executer_sur_le_pc') : tr('ui.executer'),
+    );
+    confirm.type = 'button';
+    actions.append(cancel, confirm);
+    dialog.append(heading, fileName, filePath, warning, feedback, actions);
+    dialog.addEventListener('close', () => dialog.remove());
+    cancel.onclick = () => dialog.close();
+    confirm.onclick = async () => {
+      confirm.disabled = true;
+      cancel.disabled = true;
+      feedback.hidden = false;
+      bindText(feedback, () => tr('ui.execution_sur_le_pc'));
+      try {
+        await api('/api/project-files/run', { method: 'POST', body: { cwd, path: file.path } });
+        dialog.close();
+        const done =
+          controls.querySelector('.inspector-open-feedback') ||
+          node('span', 'inspector-note inspector-open-feedback');
+        done.setAttribute('role', 'status');
+        bindText(done, () => tr('ui.execution_demandee_sur_le_pc'));
+        controls.append(done);
+      } catch (error) {
+        bindText(feedback, () => translateKnown(error.message));
+        confirm.disabled = false;
+        cancel.disabled = false;
+        cancel.focus();
+      }
+    };
+    document.body.append(dialog);
+    dialog.showModal();
+    cancel.focus();
   }
   async function openFile(file, mode, explicitCwd) {
     const viewCwd = explicitCwd || current.cwd;
@@ -2191,6 +2266,15 @@ export function createInspector({
           }
         };
         controls.append(open);
+        if (isRunnableScriptPath(file.path)) {
+          const run = node('button', 'inspector-run', () =>
+            current.remote ? tr('ui.executer_sur_le_pc') : tr('ui.executer'),
+          );
+          run.type = 'button';
+          bindAttribute(run, 'title', () => tr('ui.executer_dans_une_console_du_pc'));
+          run.onclick = () => confirmScriptRun(file, cwd);
+          controls.append(run);
+        }
       }
       const folder = node('button', 'inspector-open-folder', () =>
         current.remote ? tr('ui.ouvrir_le_dossier_sur_le_pc') : tr('ui.ouvrir_le_dossier'),
@@ -2292,6 +2376,109 @@ export function createInspector({
       if (error.name !== 'AbortError') empty(body, translateKnown(error.message));
     }
   }
+  // Same reading model as the main conversation: messages stay visible, and
+  // the tool calls and reasoning between two messages fold into one
+  // "Agent activity" block. Block bodies build only when opened.
+  function agentToolBlock(tool, messageId) {
+    if (typeof renderTool === 'function') return renderTool(tool, messageId);
+    const details = node('details', 'inspector-tool');
+    details.append(
+      node(
+        'summary',
+        '',
+        () =>
+          `${tool.name || tr('common.tool')} · ${tool.status === 'done' ? tr('ui.termine') : tool.status === 'error' ? tr('common.error') : tr('ui.appel_enregistre')}`,
+      ),
+    );
+    details.append(
+      node('pre', 'inspector-code', () =>
+        typeof tool.result === 'string' ? tool.result : JSON.stringify(tool.args || {}, null, 2),
+      ),
+    );
+    return details;
+  }
+  function agentActivity(messages) {
+    const tools = messages.flatMap((m) => m.tools || []);
+    const reasoning = messages.filter((m) => m.thinking?.trim()).length;
+    const errors = tools.filter((t) => t.isError || t.status === 'error').length;
+    const block = node('details', 'activity-stack inspector-activity');
+    block.classList.toggle('has-errors', errors > 0);
+    const summary = node('summary');
+    const symbol = node('span', 'activity-symbol');
+    symbol.dataset.state = errors ? 'error' : 'done';
+    if (typeof icon === 'function') symbol.append(icon(errors ? 'alert' : 'terminal'));
+    const titles = node('span', 'activity-titles');
+    titles.append(
+      node('span', 'activity-label', () => tr('ui.activite_de_l_agent')),
+      node('span', 'activity-count', () =>
+        [
+          tools.length ? tr('count.tools', { count: tools.length }) : '',
+          reasoning ? tr('count.reflections', { count: reasoning }) : '',
+        ]
+          .filter(Boolean)
+          .join(' · '),
+      ),
+    );
+    summary.append(
+      symbol,
+      titles,
+      node('span', 'activity-state', () => (errors ? tr('count.errors', { count: errors }) : tr('ui.termine'))),
+    );
+    if (typeof icon === 'function') summary.append(icon('chevron', 'activity-chevron'));
+    const content = node('div', 'activity-content');
+    block.append(summary, content);
+    block.addEventListener('toggle', () => {
+      if (!block.open || content.childElementCount) return;
+      for (const m of messages) {
+        const step = node('div', 'activity-step');
+        if (m.thinking?.trim()) {
+          const thinking = node('details', 'thinking-block');
+          const label = node('summary');
+          if (typeof icon === 'function') label.append(icon('brain'));
+          label.append(node('span', '', () => tr('ui.raisonnement')));
+          if (typeof icon === 'function') label.append(icon('chevron', 'chevron'));
+          const text = node('div', 'thinking-content reasoning-markdown');
+          text.append(markdown(m.thinking));
+          thinking.append(label, text);
+          step.append(thinking);
+        }
+        for (const tool of m.tools || []) step.append(agentToolBlock(tool, m.id));
+        if (step.childElementCount) content.append(step);
+      }
+    });
+    return block;
+  }
+  function renderAgentHistory(messages) {
+    let activity = [];
+    const flush = () => {
+      if (activity.length) body.append(agentActivity(activity));
+      activity = [];
+    };
+    for (const message of messages) {
+      const work = message.role === 'assistant' && (message.tools?.length || message.thinking?.trim());
+      const error = translateKnown(message.error);
+      if (!message.text && !error) {
+        if (work) activity.push(message);
+        continue;
+      }
+      flush();
+      const article = node('article', `inspector-message is-${message.role}`);
+      article.append(
+        node('strong', '', () =>
+          message.role === 'user'
+            ? tr('agents.instruction')
+            : message.role === 'assistant'
+              ? tr('ui.agent')
+              : tr('ui.contexte'),
+        ),
+      );
+      if (message.text) article.append(markdown(message.text));
+      if (error) article.append(node('div', 'message-error', () => error));
+      body.append(article);
+      if (work) activity.push(message);
+    }
+    flush();
+  }
   async function openAgent(agent) {
     beginView(agent.name);
     controls.append(statusNode(agent.status));
@@ -2318,39 +2505,18 @@ export function createInspector({
       body.replaceChildren();
       if (data.truncated)
         body.append(node('p', 'inspector-note', () => tr('ui.les_150_derniers_messages_sont_affiches')));
-      for (const message of data.messages) {
-        if (!message.text && !message.tools?.length) continue;
-        const article = node('article', 'inspector-message');
-        article.append(
-          node('strong', '', () =>
-            message.role === 'user'
-              ? tr('agents.instruction')
-              : message.role === 'assistant'
-                ? tr('ui.agent')
-                : tr('ui.contexte'),
-          ),
-        );
-        if (message.text) article.append(markdown(message.text));
-        for (const tool of message.tools || []) {
-          const details = node('details', 'inspector-tool');
-          details.append(
-            node(
-              'summary',
-              '',
-              () =>
-                `${tool.name || tr('common.tool')} · ${tool.status === 'done' ? tr('ui.termine') : tool.status === 'error' ? tr('common.error') : tr('ui.appel_enregistre')}`,
-            ),
-          );
-          details.append(
-            node('pre', 'inspector-code', () =>
-              typeof tool.result === 'string' ? tool.result : JSON.stringify(tool.args || {}, null, 2),
-            ),
-          );
-          article.append(details);
-        }
-        body.append(article);
+      renderAgentHistory(data.messages);
+      if (!body.querySelector('.inspector-message, .inspector-activity')) {
+        empty(body, () => tr('ui.aucun_message_enregistre_pour_le_moment'));
+        return;
       }
-      if (!body.childElementCount) empty(body, () => tr('ui.aucun_message_enregistre_pour_le_moment'));
+      // Like a chat: open on the latest messages. Once more after layout
+      // (markdown images, fonts) so the view really lands at the end.
+      const toEnd = () => {
+        body.scrollTop = body.scrollHeight;
+      };
+      toEnd();
+      requestAnimationFrame(toEnd);
     } catch (error) {
       if (error.name !== 'AbortError') empty(body, translateKnown(error.message));
     }

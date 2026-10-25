@@ -346,6 +346,11 @@ async function buildFixture(S) {
       },
     }),
   );
+  // Complete first-message setup so captures show the normal welcome.
+  await writeFile(
+    join(dataDir, 'subagent-defaults.json'),
+    JSON.stringify({ version: 1, revision: 'fixture', global: { model: MODEL, thinking: '' }, projects: {} }),
+  );
   return { tmp, agentHome, sessionDir, dataDir, cwd, otherCwd };
 }
 

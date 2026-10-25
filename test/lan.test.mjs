@@ -468,6 +468,15 @@ test('LAN access requires login and never exposes health metadata or access cred
   assert.equal('instanceId' in health.json, false);
 });
 
+test('full-control LAN bootstrap carries the global subagent default for the setup steps', async (t) => {
+  const f = await fixture(t, { readOnly: false });
+  const bootstrap = await f.api('/api/bootstrap', { headers: { Cookie: await f.authenticate() } });
+  assert.equal(bootstrap.status, 200);
+  assert.equal(bootstrap.json.preferences.readOnly, false);
+  // Empty default (no Studio subagent model yet): known, not missing.
+  assert.equal(bootstrap.json.subagentModel, '');
+});
+
 test('successful LAN login issues an opaque HttpOnly cookie and enables read-only history', async (t) => {
   const { api, login } = await fixture(t);
   assert.equal((await login('00000000')).status, 401);
@@ -484,6 +493,15 @@ test('successful LAN login issues an opaque HttpOnly cookie and enables read-onl
   assert.equal(bootstrap.status, 200);
   assert.equal(bootstrap.json.preferences.readOnly, true);
   assert.equal(bootstrap.json.preferences.remote, true);
+  // Consultation never sees settings readable only in full control.
+  assert.equal('subagentModel' in bootstrap.json, false);
+  // Read-only clients check file references like the preview they can open.
+  const check = await api(
+    '/api/project-files/check?' + new URLSearchParams({ cwd: bootstrap.json.projects[0].cwd, reference: 'missing.md' }),
+    { headers },
+  );
+  assert.equal(check.status, 200, check.text);
+  assert.deepEqual(check.json.results, [{ reference: 'missing.md', status: 'missing' }]);
   const history = await api('/api/history?id=native-session', { headers });
   assert.equal(history.status, 200);
   assert.match(history.text, /Existing conversation/);
@@ -1028,17 +1046,32 @@ test('LAN full control reaches former local-only routes, consultation stays bloc
   assert.equal((await full.api('/api/health', { headers: fullHeaders })).status, 404);
 });
 
-test('routing and budget preferences require authenticated full control over LAN', async (t) => {
+test('legacy engine settings require authenticated full control over LAN; retired quota routes stay gone', async (t) => {
   for (const readOnly of [false, true]) {
     const f = await fixture(t, { readOnly });
     const Cookie = await f.authenticate();
-    for (const path of ['/api/quota-fallback', '/api/budgets']) {
-      assert.equal((await f.api(path)).status, 401);
-      const state = await f.api(path, { headers: { Cookie } });
-      assert.equal(state.status, readOnly ? 404 : 200, state.text);
-      const write = await f.api(path, { method: 'PUT', body: JSON.stringify(state.json),
-        headers: { Cookie, 'Content-Type': 'application/json' } });
-      assert.equal(write.status, readOnly ? 405 : 200, write.text);
+    // Removed settings are never visible over LAN, whatever the access level.
+    for (const [path, method, body] of [
+      ['/api/quota-fallback', 'GET', undefined],
+      ['/api/quota-fallback', 'PUT', '{}'],
+      ['/api/budgets', 'GET', undefined],
+      ['/api/budgets', 'PUT', '{}'],
+    ]) {
+      assert.equal((await f.api(path, { method })).status, 401);
+      const response = await f.api(path, { method, headers: { Cookie }, ...(body !== undefined ? { body } : {}) });
+      assert.ok([404, 405].includes(response.status), `${method} ${path} got ${response.status}`);
+    }
+    // Legacy detection and reset keep the former engine-settings gating.
+    assert.equal((await f.api('/api/engine-settings')).status, 401);
+    const detected = await f.api('/api/engine-settings', { headers: { Cookie } });
+    assert.equal(detected.status, readOnly ? 404 : 200, detected.text);
+    const reset = await f.api('/api/engine-settings', {
+      method: 'POST', body: '{}', headers: { Cookie, 'Content-Type': 'application/json' },
+    });
+    if (readOnly) assert.ok([404, 405].includes(reset.status), `reset got ${reset.status}`);
+    else {
+      assert.equal(reset.status, 200, reset.text);
+      assert.equal(reset.json.hasLegacy, false);
     }
     const retry = await f.api('/api/runs/00000000-0000-0000-0000-000000000000/quota-retry', {
       method: 'POST', body: JSON.stringify({ model: 'test/model' }),

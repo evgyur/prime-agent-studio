@@ -5,7 +5,7 @@ import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
-async function worker(t, auxiliary) {
+async function worker(t) {
   const root = await mkdtemp(join(tmpdir(), 'studio-suggest-worker-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const files = {
@@ -30,21 +30,12 @@ async function worker(t, auxiliary) {
       { timeout: 10000, windowsHide: true }, (error, stdout) => {
         if (error) reject(error); else resolveResult(JSON.parse(stdout));
       });
-    child.stdin.end(JSON.stringify({ packageDir: root, agentHome: root, auxiliary,
+    child.stdin.end(JSON.stringify({ packageDir: root, agentHome: root,
       defaultModel: 'fixture/session', system: 'fixture', user: 'fixture' }));
   });
 }
-test('commit helper uses configured auxiliary instead of the default model', async (t) => {
-  const result = await worker(t, 'fixture/helper');
+test('commit helper uses the default model path; removed auxiliary input is ignored', async (t) => {
+  const result = await worker(t);
   assert.equal(result.ok, true);
-  assert.equal(result.model, 'fixture/helper');
-});
-test('commit helper fails explicitly when configured auxiliary is unavailable', async (t) => {
-  const result = await worker(t, 'fixture/missing');
-  assert.equal(result.ok, false);
-  assert.equal(result.code, 'NO_AUXILIARY_MODEL');
-  assert.match(result.error, /auxiliary/i);
-});
-test('commit helper retains default routing when auxiliary is empty', async (t) => {
-  assert.equal((await worker(t, '')).model, 'fixture/session');
+  assert.equal(result.model, 'fixture/session');
 });

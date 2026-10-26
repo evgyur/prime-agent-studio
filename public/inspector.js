@@ -1,9 +1,17 @@
 import { t as tr, bindText, bindAttribute, translateKnown, getLanguage, onLanguageChange } from './i18n.js';
 import { filePresentation, defaultFileView, parentFolder } from './file-presentation.js';
+import { getAllowOutsidePreview } from './file-preview-settings.js';
 import { placeViewportMenu } from './file-links.js';
 import { thinkingLabel } from './reasoning.js';
 import { languageForPath, enhanceFileBlock } from './code-highlight.js';
 import { createSubagentSettings } from './subagent-settings.js';
+
+export function shouldAttemptExternalPreview(error, { readOnly = false, allowOutside = true } = {}) {
+  if (readOnly) return false;
+  if (allowOutside !== true) return false;
+  if (!error || error.name === 'AbortError') return false;
+  return error?.status === 403 || error?.outside === true || error?.code === 'outside';
+}
 
 const $ = (id) => document.getElementById(id);
 const node = (tag, className = '', text = '') => {
@@ -2351,6 +2359,60 @@ export function createInspector({
       if (error.name !== 'AbortError' && token === viewVersion) empty(body, translateKnown(error.message));
     }
   }
+  function allowsOutsidePreview() {
+    try {
+      if (current.readOnly) return false;
+      return getAllowOutsidePreview() === true;
+    } catch {
+      return false;
+    }
+  }
+  function renderOutsideBadge(absolutePath) {
+    const badge = node('span', 'inspector-note inspector-outside-badge', () =>
+      tr('files.outside_project'),
+    );
+    badge.setAttribute('data-outside', 'true');
+    controls.append(badge);
+    if (absolutePath) {
+      const pathNote = node('span', 'inspector-note inspector-outside-path', () => String(absolutePath));
+      pathNote.setAttribute('data-outside-path', 'true');
+      bindAttribute(pathNote, 'title', () => String(absolutePath));
+      controls.append(pathNote);
+    }
+  }
+  async function openExternalDocument(reference, { cwd, basePath = '' } = {}) {
+    const docCwd = cwd || current.cwd;
+    const token = viewVersion;
+    try {
+      const data = await request(
+        'viewer',
+        `/api/file-previews/external?${queryFor(docCwd, { reference, basePath })}`,
+      );
+      if (token !== viewVersion) return;
+      const absolutePath = typeof data?.absolutePath === 'string' && data.absolutePath
+        ? data.absolutePath
+        : typeof data?.path === 'string' && data.path
+          ? data.path
+          : String(reference);
+      beginView(String(absolutePath).split(/[\\/]/).at(-1) || String(reference).split(/[\\/]/).at(-1));
+      renderOutsideBadge(absolutePath);
+      if (data?.image) {
+        const image = node('img', 'inspector-preview-image');
+        image.src = data.image;
+        bindAttribute(image, 'alt', () => absolutePath);
+        body.append(image);
+        return;
+      }
+      if (typeof data?.text === 'string' && data.text) {
+        renderFileText({ path: typeof data?.path === 'string' && data.path ? data.path : absolutePath }, data.text);
+        return;
+      }
+      empty(body, () => data?.message || tr('ui.fichier_vide'));
+    } catch (error) {
+      if (error.name !== 'AbortError' && token === viewVersion)
+        empty(body, translateKnown(error.message));
+    }
+  }
   async function openDocument(reference, { cwd, basePath = '' } = {}) {
     const docCwd = cwd || current.cwd;
     if (!docCwd) return;
@@ -2373,7 +2435,15 @@ export function createInspector({
         body.append(button);
       }
     } catch (error) {
-      if (error.name !== 'AbortError') empty(body, translateKnown(error.message));
+      if (error.name === 'AbortError') return;
+      // Outside-project references resolve with 403: on explicit click, open
+      // the read-only external preview when the global preference allows it
+      // (never in read-only). Blocked/private paths stay on the project error.
+      if (shouldAttemptExternalPreview(error, { readOnly: current.readOnly, allowOutside: getAllowOutsidePreview() })) {
+        await openExternalDocument(reference, { cwd: docCwd, basePath });
+        return;
+      }
+      empty(body, translateKnown(error.message));
     }
   }
   // Same reading model as the main conversation: messages stay visible, and

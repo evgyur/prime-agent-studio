@@ -48,6 +48,7 @@ import { createPushService } from './lib/push.mjs';
 import { validateImages, imageBodyLimit } from './lib/images.mjs';
 import { createFileStore, validateFiles, appendFileMessage, splitFileMessage } from './lib/files.mjs';
 import { createProjectFiles } from './lib/project-files.mjs';
+import { createFilePreviewSettings } from './lib/file-preview-settings.mjs';
 import { openFile as openLocalFile, fileLaunchMode } from './lib/open-file.mjs';
 import { runFile as runLocalFile } from './lib/run-file.mjs';
 import { createSessionInspector } from './lib/session-inspector.mjs';
@@ -443,6 +444,8 @@ export function createApp(options = {}) {
       onChanged: () => invalidateModels(),
     });
   const projectFiles = createProjectFiles({ store, protectedRoots: [agentHome, sessionDir, dataDir] });
+  const filePreviewSettings =
+    options.filePreviewSettings || createFilePreviewSettings({ dataDir });
   const isTaskFilesCwd = (value) => {
     try {
       if (typeof value !== 'string' || !value || !worktrees?.managedRoot) return false;
@@ -619,23 +622,63 @@ export function createApp(options = {}) {
   let statusCache,
     modelCache,
     modelRefreshing = false,
+    modelPending = false,
+    statusPending = false,
     statusAt = 0,
     modelsAt = 0;
+  // Short-lived overview single-flight: concurrent bootstrap/overview hits
+  // share one in-flight scan instead of multiplying them. Cleared on
+  // settle, so later reads still see fresh data (store.mjs untouched).
+  let overviewFlight = null;
+  async function overviewSingleFlight() {
+    if (!overviewFlight) overviewFlight = store.overview().finally(() => { overviewFlight = null; });
+    return overviewFlight;
+  }
+  // Trace only slow/stalled runtime discovery. No user data or error payloads.
+  // A small throttle prevents retrying clients from filling server.log.
+  const discoveryLogged = new Map();
+  async function traceDiscovery(stage, work) {
+    const started = Date.now();
+    const log = (outcome) => {
+      const key = `${stage}:${outcome}`;
+      if (Date.now() - (discoveryLogged.get(key) || 0) < 30000) return;
+      discoveryLogged.set(key, Date.now());
+      console.log(`[startup] ${new Date().toISOString()} stage=${stage} outcome=${outcome} durationMs=${Date.now() - started}`);
+    };
+    const watchdog = setTimeout(() => log('waiting'), 8000);
+    watchdog.unref?.();
+    try {
+      const value = await work();
+      if (Date.now() - started >= 1000) log('ok');
+      return value;
+    } catch (error) {
+      log('error');
+      throw error;
+    } finally {
+      clearTimeout(watchdog);
+    }
+  }
   async function status() {
-    if (!statusCache || Date.now() - statusAt > 60000) {
-      statusCache = Promise.resolve(runtime.getStatus());
+    if (!statusCache || (!statusPending && Date.now() - statusAt > 60000)) {
+      statusPending = true;
+      statusCache = traceDiscovery('status', () => runtime.getStatus())
+        .finally(() => { statusPending = false; });
       statusAt = Date.now();
     }
     return statusCache;
   }
   async function models({ refresh = false } = {}) {
-    if (refresh || !modelCache || Date.now() - modelsAt > (modelRefreshing ? 1000 : 5000)) {
-      const request = Promise.resolve(runtime.getModels({ refresh }));
+    if (refresh || !modelCache || (!modelPending && Date.now() - modelsAt > (modelRefreshing ? 1000 : 5000))) {
+      modelPending = true;
+      const request = traceDiscovery('models', () => runtime.getModels({ refresh }));
       modelCache = request;
       modelsAt = Date.now();
       request.then(
         (catalog) => {
-          if (modelCache === request) modelRefreshing = !!catalog.refreshing;
+          if (modelCache === request) {
+            modelPending = false;
+            modelRefreshing = !!catalog.refreshing;
+          }
         },
         () => {
           if (modelCache === request) invalidateModels();
@@ -645,6 +688,7 @@ export function createApp(options = {}) {
     return modelCache;
   }
   function invalidateModels() {
+    modelPending = false;
     modelCache = undefined;
     modelsAt = 0;
   }
@@ -1463,31 +1507,110 @@ export function createApp(options = {}) {
           instanceId: process.env.PRIME_AGENT_GUI_INSTANCE || null,
         });
       if (method === 'GET' && path === '/api/bootstrap') {
-        const [overview, version, catalog, subagentPolicy] = await Promise.all([
-          store.overview(),
-          status(),
-          models(),
-          subagentDefaults.get().catch(() => null),
-        ]);
-        return json(res, 200, {
+        // Bounded per-stage startup timing. Slow-only lines, no
+        // paths/prompts/tokens (data privacy: stage names, durations and
+        // outcome only). Hung stages surface via a one-shot watchdog or on
+        // client abort, not only when the hang finally resolves.
+        const bootMode = url.searchParams.get('light') === '1' ? 'light' : 'full';
+        const bootStarted = Date.now();
+        const bootStages = {};
+        let bootFinished = false;
+        const bootLine = (outcome) =>
+          `[startup] ${new Date().toISOString()} bootstrap mode=${bootMode} outcome=${outcome} total=${Date.now() - bootStarted}ms ` +
+          Object.entries(bootStages)
+            .map(([name, duration]) => `${name}=${duration}ms`)
+            .join(' ');
+        const timed = async (name, work) => {
+          const stageStarted = Date.now();
+          try {
+            const value = await work();
+            bootStages[name] = Date.now() - stageStarted;
+            return value;
+          } catch (error) {
+            bootStages[name] = Date.now() - stageStarted;
+            throw error;
+          }
+        };
+        const logBoot = (outcome) => {
+          if (bootFinished) return;
+          bootFinished = true;
+          clearTimeout(bootWatchdog);
+          const total = Date.now() - bootStarted;
+          const slow = total > 1500 || Object.values(bootStages).some((d) => parseInt(d, 10) > 1000);
+          if (slow || outcome !== 'ok') console.log(bootLine(outcome));
+        };
+        const bootWatchdog = setTimeout(() => {
+          if (bootFinished) return;
+          const pending = (bootMode === 'light' ? ['overview', 'subagent', 'prefs'] : ['overview', 'status', 'models', 'subagent', 'prefs']).filter(
+            (name) => !(name in bootStages),
+          );
+          console.log(`${bootLine('waiting')} pending=${pending.join(',') || 'none'}`);
+        }, 8000);
+        // Client timeout/abort while stages hang: capture the outstanding
+        // stages now instead of staying silent. One line per hung request.
+        res.on('close', () => logBoot('aborted'));
+        const withMetricsId = (overview) => ({
           ...overview,
           projects: overview.projects.map((project) => ({ ...project, metricsId: metricsProjectId(project.cwd) })),
-          version,
-          models: catalog,
-          // Global subagent default for the first-message setup steps, known
-          // before the first render (null when the settings are unreadable).
-          subagentModel: subagentPolicy?.global?.model ?? null,
-          studioPreferences: await studioPreferences(),
-          runs: activeRuns(),
-          preferences: {
-            attachments: true,
-            inspector: true,
-            nativeFileOpen: true,
-            providers: true,
-            directoryPicker: process.platform === 'win32',
-            openTerminal: process.platform === 'win32',
-          },
         });
+        const basePreferences = {
+          attachments: true,
+          inspector: true,
+          nativeFileOpen: true,
+          providers: true,
+          directoryPicker: process.platform === 'win32',
+          openTerminal: process.platform === 'win32',
+        };
+        // Light bootstrap for the app shell: conversation list without
+        // waiting for runtime --version or the cold model catalog. The app
+        // hydrates version/models separately. No arbitrary telemetry.
+        if (bootMode === 'light') {
+          try {
+            const [overview, subagentPolicy] = await Promise.all([
+              timed('overview', () => overviewSingleFlight()),
+              timed('subagent', () => subagentDefaults.get().catch(() => null)),
+            ]);
+            const prefs = await timed('prefs', () => studioPreferences());
+            logBoot('ok');
+            return json(res, 200, {
+              ...withMetricsId(overview),
+              // Global subagent default for the first-message setup steps, known
+              // before the first render (null when the settings are unreadable).
+              subagentModel: subagentPolicy?.global?.model ?? null,
+              studioPreferences: prefs,
+              runs: activeRuns(),
+              preferences: basePreferences,
+              light: true,
+            });
+          } catch (error) {
+            logBoot('error');
+            throw error;
+          }
+        }
+        try {
+          const [overview, version, catalog, subagentPolicy] = await Promise.all([
+            timed('overview', () => overviewSingleFlight()),
+            timed('status', () => status()),
+            timed('models', () => models()),
+            timed('subagent', () => subagentDefaults.get().catch(() => null)),
+          ]);
+          const prefs = await timed('prefs', () => studioPreferences());
+          logBoot('ok');
+          return json(res, 200, {
+            ...withMetricsId(overview),
+            version,
+            models: catalog,
+            // Global subagent default for the first-message setup steps, known
+            // before the first render (null when the settings are unreadable).
+            subagentModel: subagentPolicy?.global?.model ?? null,
+            studioPreferences: prefs,
+            runs: activeRuns(),
+            preferences: basePreferences,
+          });
+        } catch (error) {
+          logBoot('error');
+          throw error;
+        }
       }
       if (method === 'GET' && path === '/api/version') return json(res, 200, await status());
       if (path === '/api/system' && method === 'GET')
@@ -1617,6 +1740,28 @@ export function createApp(options = {}) {
           });
           return res.end(result.data);
         }
+      }
+      // Conversation-linked files outside the project require the enabled
+      // preview setting (on by default). Existing project-files routes above stay confined; this
+      // companion route only serves exact explicit outside references.
+      if (method === 'GET' && path === '/api/file-preview-settings')
+        return json(res, 200, await filePreviewSettings.get());
+      if (method === 'POST' && path === '/api/file-preview-settings')
+        return json(res, 200, await filePreviewSettings.set(await readBody(req)));
+      if (method === 'GET' && path === '/api/file-previews/external') {
+        const settings = await filePreviewSettings.get();
+        if (!settings.allowOutsideProject)
+          throw new HttpError(403, tr('server.ce_lien_sort_du_projet'));
+        return json(
+          res,
+          200,
+          await filesFor(url.searchParams.get('cwd')).externalPreview(
+            url.searchParams.get('cwd'),
+            url.searchParams.get('reference'),
+            url.searchParams.get('basePath') || '',
+            settings,
+          ),
+        );
       }
       if (method === 'GET' && /^\/api\/files\/[a-f0-9-]+$/.test(path)) {
         const file = await fileStore.read(path.slice('/api/files/'.length));
@@ -1755,7 +1900,7 @@ export function createApp(options = {}) {
           }),
         );
       if (method === 'GET' && path === '/api/overview') {
-        const overview = await store.overview();
+        const overview = await overviewSingleFlight();
         return json(res, 200, {
           ...overview,
           projects: overview.projects.map((project) => ({ ...project, metricsId: metricsProjectId(project.cwd) })),

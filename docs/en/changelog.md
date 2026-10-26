@@ -4,6 +4,16 @@
 
 Changes by version. See [GitHub releases](https://github.com/zerr0o/prime-agent-studio/releases) for installers and source archives.
 
+## 4.4.5
+
+- **Windows reserved ports**: if the local port is unavailable, Studio selects another port and remembers it. You can also change it in **Preferences → System**, or from the launcher after a startup failure. The change confirms the server shutdown and restarts the application safely, with an extra confirmation if agents are working. `PRIME_STUDIO_DESKTOP_PORT` still takes priority.
+- **Startup and conversations**: a lightweight local index avoids rereading every history on each launch. Only changed files are parsed again, and opening a conversation loads only its history. The first index build can still take time. The list appears without waiting for the engine or models; stalled requests retry automatically, and slow stages are logged without conversation content.
+- **Outside-project previews**: **File previews outside the project**, in **Preferences → Appearance**, is enabled by default. Links to local files outside the project open a read-only preview with their full path. Disabling the option is enforced on the server. Protected directories, network paths and remote consultation access remain excluded; no extra edit or execution permissions are granted.
+- **Preferences**: fixed a translation error in the Windows autostart status.
+- **Security**: updated DOMPurify to 3.4.17.
+
+> Changing the port changes the Web origin: layouts and drafts saved for the previous address may no longer be visible. Projects and conversations are preserved.
+
 ## 4.4.4
 
 - **Code highlighting**: file previews and code blocks in conversations are colored like in VS Code (dark and light themes), with line numbers. highlight.js is served by Studio itself and loaded only when code is shown; very large files stay plain text. The **Syntax highlighting in conversations** option, in Preferences → Appearance, turns it off in conversations.

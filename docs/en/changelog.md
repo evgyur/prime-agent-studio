@@ -4,6 +4,10 @@
 
 Changes by version. See [GitHub releases](https://github.com/zerr0o/prime-agent-studio/releases) for installers and source archives.
 
+## 4.4.6-beta.2
+
+- **Input with an active skill**: fixed a CSS specificity conflict that collapsed the primary input to a few pixels and caused an unwanted scrollbar. The input now keeps its width with or without a skill on desktop, laptop, and mobile layouts.
+
 ## 4.4.6-beta.1
 
 - **Files**: four separate views — **Changes**, **History**, **Worktrees**, and **Browse**. Wide panels show the diff next to the list; narrow panels offer an enlarged view.

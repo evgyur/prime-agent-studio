@@ -4,6 +4,10 @@
 
 Les changements par version. Retrouvez les installateurs et les archives du code source dans les [releases GitHub](https://github.com/zerr0o/prime-agent-studio/releases).
 
+## 4.4.6-beta.2
+
+- **Saisie avec une skill active** : correction d’un conflit de priorité CSS qui réduisait le champ principal à quelques pixels et faisait apparaître une barre de défilement. La saisie conserve maintenant sa largeur avec ou sans skill, sur ordinateur, portable et mobile.
+
 ## 4.4.6-beta.1
 
 - **Fichiers** : quatre vues distinctes — **Modifications**, **Historique**, **Worktrees** et **Parcourir**. Les panneaux larges affichent le diff à côté de la liste ; les panneaux étroits proposent une ouverture agrandie.

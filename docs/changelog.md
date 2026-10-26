@@ -4,6 +4,16 @@
 
 Les changements par version. Retrouvez les installateurs et les archives du code source dans les [releases GitHub](https://github.com/zerr0o/prime-agent-studio/releases).
 
+## 4.4.5
+
+- **Ports réservés sous Windows** : si le port local est indisponible, Studio choisit un autre port et le mémorise. Le port peut aussi être changé dans **Préférences → Système** ou depuis le lanceur en cas d’échec. Le changement confirme l’arrêt du serveur puis relance proprement l’application, avec une confirmation supplémentaire si des agents travaillent. La variable `PRIME_STUDIO_DESKTOP_PORT` reste prioritaire.
+- **Démarrage et conversations** : un index local léger évite de relire tous les historiques à chaque lancement. Seuls les fichiers modifiés sont analysés à nouveau, et ouvrir une conversation ne charge que son historique. La première construction de l’index peut encore prendre du temps. La liste s’affiche sans attendre le moteur ou les modèles ; les requêtes bloquées sont retentées automatiquement et les étapes lentes sont journalisées sans contenu de conversation.
+- **Aperçus hors projet** : l’option **Aperçus des fichiers hors projet**, dans **Préférences → Apparence**, est activée par défaut. Les liens vers des fichiers locaux hors du projet ouvrent un aperçu en lecture seule avec leur chemin complet. La désactivation est appliquée côté serveur. Les dossiers protégés, les chemins réseau et l’accès distant en consultation restent exclus ; aucun droit supplémentaire de modification ou d’exécution n’est accordé.
+- **Préférences** : correction d’une erreur de traduction dans l’état du démarrage automatique sous Windows.
+- **Sécurité** : mise à jour de DOMPurify vers la version 3.4.17.
+
+> Un changement de port change l’origine Web : le layout et les brouillons enregistrés pour l’ancienne adresse peuvent ne plus être visibles. Les projets et conversations sont conservés.
+
 ## 4.4.4
 
 - **Coloration du code** : l’aperçu des fichiers et les blocs de code des conversations sont colorés comme dans VS Code (thèmes sombre et clair), avec des numéros de ligne. highlight.js est servi par le Studio lui-même et chargé seulement quand un code s’affiche ; les très gros fichiers restent en texte simple. L’option **Coloration du code dans les conversations**, dans Préférences → Apparence, la désactive dans les conversations.

@@ -20,6 +20,7 @@ import { createImageComposer, renderImages } from './images.js';
 import { createMcpSettings } from './mcp.js';
 import { createProviderSettings } from './providers.js';
 import { setupState, createSetupGate } from './setup-gate.js';
+import { createBootstrapGuard } from './bootstrap-sequence.js';
 import { createCommands } from './commands.js';
 import {
   composerText,
@@ -441,6 +442,10 @@ const state = {
   modelCatalogDefault: '',
   modelCatalogRefreshing: false,
   modelCatalogNotice: '',
+  // True until the first model catalog lands: the setup gate stays neutral
+  // and sending stays disabled so no run starts unconfigured (see hydrate).
+  modelsLoading: true,
+  versionLoading: true,
 };
 const selection = readStorage('selection', {});
 const sessionActivity = createSessionActivity({
@@ -684,8 +689,10 @@ function setSelectedModel(value, persist = false, render = true, view = null) {
 // First-message gate: a new conversation needs a connected provider plus main
 // and subagent default models from a connected provider (see setup-gate.js).
 function computeSetup() {
+  // While the catalog loads the gate stays neutral: an empty loading list
+  // must neither demand setup nor look configured.
   state.setup =
-    state.readOnly || state.subagentModel === undefined
+    state.modelsLoading || state.readOnly || state.subagentModel === undefined
       ? { complete: true, unknown: true }
       : setupState({
           configuredProviders: state.configuredProviders,
@@ -787,6 +794,7 @@ function renderConfigurationWarning() {
   const visible =
     state.initialized &&
     state.online &&
+    !state.modelsLoading &&
     state.version?.available !== false &&
     !gateShown &&
     (providerMissing || modelMissing);
@@ -961,19 +969,25 @@ function renderModelRefresh() {
   bindAttribute(button, 'aria-label', () => tr(busy ? 'model.refreshing' : 'model.refresh'));
   bindAttribute(button, 'title', () => tr(busy ? 'model.refreshing' : 'model.refresh'));
 }
-async function refreshModelCatalog({ force = false, manual = false, poll = false } = {}) {
+async function refreshModelCatalog({ force = false, manual = false, poll = false, timeoutMs = 15000, isCurrent = () => true } = {}) {
   if (modelCatalogRequest) return modelCatalogRequest;
   clearTimeout(modelCatalogPoll);
   if (!poll) {
     modelCatalogPollsRemaining = 10;
     state.modelCatalogNotice = '';
   }
+  const catalogAbort = timeoutMs > 0 ? new AbortController() : null;
+  const catalogTimer = catalogAbort ? setTimeout(() => catalogAbort.abort(), timeoutMs) : null;
   modelCatalogRequest = api(force ? '/api/models/refresh' : '/api/models', {
     method: force ? 'POST' : 'GET',
     ...(force ? { body: {} } : {}),
+    ...(catalogAbort ? { signal: catalogAbort.signal } : {}),
   })
     .then((catalog) => {
-      populateModels(catalog, { preserveSelection: true });
+      if (!isCurrent()) return;
+      const firstCatalog = state.modelsLoading;
+      populateModels(catalog, { preserveSelection: !firstCatalog });
+      updateComposer();
     })
     .catch((error) => {
       state.modelCatalogRefreshing = false;
@@ -983,6 +997,7 @@ async function refreshModelCatalog({ force = false, manual = false, poll = false
       if (manual) toast(() => tr('model.refreshFailed', { value1: translateKnown(error.message) }), true);
     })
     .finally(() => {
+      if (catalogTimer) clearTimeout(catalogTimer);
       modelCatalogRequest = null;
       if ($('model-dialog').open && state.modelCatalogRefreshing && modelCatalogPollsRemaining === 0) {
         state.modelCatalogRefreshing = false;
@@ -1207,6 +1222,22 @@ async function api(path, { method = 'GET', body, signal } = {}) {
   }
   return data;
 }
+async function apiWithTimeout(path, { timeoutMs = 8000, ...options } = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await api(path, { ...options, signal: controller.signal });
+  } catch (error) {
+    if (controller.signal.aborted) {
+      const timeout = new Error('bootstrap timeout');
+      timeout.code = 'bootstrap-timeout';
+      throw timeout;
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 function setConnection(online) {
   state.online = online;
   $('connection-dot').className = `status-dot${online ? '' : ' offline'}`;
@@ -1428,6 +1459,8 @@ function updateComposer(view = null) {
     viewLoading ||
     running ||
     !state.online ||
+    state.modelsLoading ||
+    state.versionLoading ||
     state.version?.available === false ||
     project()?.exists === false;
   const settingsDisabled =
@@ -4507,6 +4540,7 @@ async function deleteModelConfiguration(index) {
   }
 }
 function populateModels(catalog, { preserveSelection = false } = {}) {
+  state.modelsLoading = false;
   const selected = $('model-select').value,
     thinking = $('thinking-select').value;
   state.models = Array.isArray(catalog?.models) ? catalog.models : [];
@@ -4545,26 +4579,106 @@ function populateModels(catalog, { preserveSelection = false } = {}) {
 function selectNewConversationModel() {
   restoreGenerationSettings(null, null);
 }
+const bootGuard = createBootstrapGuard();
+const LIGHT_BOOTSTRAP_TIMEOUT_MS = 8000;
+const BOOTSTRAP_RETRY_DELAYS_MS = [1500, 3000, 5000];
+const HYDRATE_TIMEOUT_MS = 15000;
+function applyBootstrapCore(data) {
+  state.studioPreferences = data.studioPreferences;
+  state.attachmentsAvailable = data.preferences?.attachments === true;
+  state.inspectorAvailable = data.preferences?.inspector === true;
+  state.nativeFileOpen = data.preferences?.nativeFileOpen === true;
+  state.providersAvailable = data.preferences?.providers === true;
+  state.directoryPickerAvailable = data.preferences?.directoryPicker === true;
+  state.terminalAvailable = data.preferences?.openTerminal === true;
+  state.readOnly = data.preferences?.readOnly === true;
+  state.remote = data.preferences?.remote === true || state.readOnly;
+  applyAccessMode();
+  state.projects = data.projects || [];
+  sessionActivity.initialize(allSessions());
+  // Version and models hydrate separately (hydrateBootstrap): the engine
+  // version check and the cold model catalog must not block the list.
+  for (const run of data.runs || []) state.runs.set(run.id, run);
+  // Known before the first render: the setup steps never flash or lag.
+  state.subagentModel = typeof data.subagentModel === 'string' ? data.subagentModel : undefined;
+}
+function renderEngineState() {
+  bindText($('cli-version'), () => (state.version?.version ? `v${state.version.version}` : ''));
+  bindText($('settings-runtime'), () =>
+    state.version?.available === false
+      ? tr('ui.prime_agent_introuvable_sur_cet_ordinateur')
+      : tr('ui.prime_agent_sessions_natives_conservees', { value1: state.version?.version || '' }),
+  );
+  if (state.version?.available === false) {
+    banner(
+      () => tr('ui.prime_agent_est_introuvable_installez_ou_configurez_le_cli_puis_r'),
+      true,
+      'engine-setup',
+    );
+    $('global-banner').dataset.persistent = 'true';
+  }
+}
+async function hydrateBootstrap(id) {
+  const pause = (attempt) => new Promise((resolve) => setTimeout(resolve, Math.min(2000 * (attempt + 1), 10000)));
+  const version = async () => {
+    for (let attempt = 0; bootGuard.isCurrent(id); attempt += 1) {
+      try {
+        const value = await apiWithTimeout('/api/version', { timeoutMs: HYDRATE_TIMEOUT_MS });
+        if (!bootGuard.isCurrent(id)) return;
+        state.version = value || {};
+      state.versionLoading = false;
+        renderEngineState();
+        updateComposer();
+        return;
+      } catch {
+        if (!bootGuard.isCurrent(id)) return;
+        await pause(attempt);
+      }
+    }
+  };
+  const models = async () => {
+    for (let attempt = 0; bootGuard.isCurrent(id) && state.modelsLoading; attempt += 1) {
+      await refreshModelCatalog({ timeoutMs: HYDRATE_TIMEOUT_MS, isCurrent: () => bootGuard.isCurrent(id) });
+      if (!bootGuard.isCurrent(id) || !state.modelsLoading) return;
+      await pause(attempt);
+    }
+  };
+  await Promise.all([version(), models()]);
+}
 async function bootstrap() {
-  try {
-    const data = await api('/api/bootstrap');
-    state.studioPreferences = data.studioPreferences;
-    state.attachmentsAvailable = data.preferences?.attachments === true;
-    state.inspectorAvailable = data.preferences?.inspector === true;
-    state.nativeFileOpen = data.preferences?.nativeFileOpen === true;
-    state.providersAvailable = data.preferences?.providers === true;
-    state.directoryPickerAvailable = data.preferences?.directoryPicker === true;
-    state.terminalAvailable = data.preferences?.openTerminal === true;
-    state.readOnly = data.preferences?.readOnly === true;
-    state.remote = data.preferences?.remote === true || state.readOnly;
-    applyAccessMode();
-    state.projects = data.projects || [];
-    sessionActivity.initialize(allSessions());
-    state.version = data.version || {};
-    for (const run of data.runs || []) state.runs.set(run.id, run);
-    // Known before the first render: the setup steps never flash or lag.
-    state.subagentModel = typeof data.subagentModel === 'string' ? data.subagentModel : undefined;
-    populateModels(data.models);
+  // Single in-flight read with bounded backoff retries while pending: a
+  // cold first-run index migration may exceed one timeout, and stale runs
+  // drop their results instead of overwriting newer state.
+  const id = bootGuard.start();
+  setConnection(false);
+  let attempt = 0;
+  for (;;) {
+    if (!bootGuard.isCurrent(id)) return;
+    try {
+      const data = await apiWithTimeout('/api/bootstrap?light=1', { timeoutMs: LIGHT_BOOTSTRAP_TIMEOUT_MS });
+      if (!bootGuard.isCurrent(id)) return;
+      applyBootstrapCore(data);
+      const finishing = finishBootstrap();
+      void hydrateBootstrap(id);
+      await finishing;
+      return;
+    } catch (error) {
+      if (!bootGuard.isCurrent(id)) return;
+      setConnection(false);
+      banner(() => tr('ui.impossible_de_joindre_le_serveur', { value1: translateKnown(error.message) }), true);
+      projectNavigation?.invalidate();
+      $('session-list').replaceChildren(
+        el('div', 'sidebar-empty', () => tr('ui.le_serveur_local_est_indisponible_reconnexion_automatique')),
+      );
+      const delay = BOOTSTRAP_RETRY_DELAYS_MS[Math.min(attempt, BOOTSTRAP_RETRY_DELAYS_MS.length - 1)];
+      attempt += 1;
+      await new Promise((resolve) => {
+        if (!bootGuard.schedule(id, delay, resolve)) resolve();
+      });
+    }
+  }
+}
+async function finishBootstrap() {
     state.projectCwd =
       state.projects.find((p) => samePath(p.cwd, selection.cwd))?.cwd || state.projects[0]?.cwd || null;
     const initialView = convViews?.focused();
@@ -4580,20 +4694,7 @@ async function bootstrap() {
     // the enabled default; the settings form surfaces the error on open.
     void fetchFilePreviewSettings(api).catch(() => {});
     setConnection(true);
-    bindText($('cli-version'), () => (state.version.version ? `v${state.version.version}` : ''));
-    bindText($('settings-runtime'), () =>
-      state.version.available === false
-        ? tr('ui.prime_agent_introuvable_sur_cet_ordinateur')
-        : tr('ui.prime_agent_sessions_natives_conservees', { value1: state.version.version || '' }),
-    );
-    if (state.version.available === false) {
-      banner(
-        () => tr('ui.prime_agent_est_introuvable_installez_ou_configurez_le_cli_puis_r'),
-        true,
-        'engine-setup',
-      );
-      $('global-banner').dataset.persistent = 'true';
-    }
+    renderEngineState();
     renderNavigation();
     if (convViews) {
       // One-time legacy adoption: pre-multiview drafts/attachments stored under
@@ -4657,16 +4758,8 @@ async function bootstrap() {
     try {
       if (document.getElementById('settings-dialog')?.open) settingsUI?.updates?.refresh?.();
     } catch {}
-  } catch (e) {
-    setConnection(false);
-    banner(() => tr('ui.impossible_de_joindre_le_serveur', { value1: translateKnown(e.message) }), true);
-    projectNavigation?.invalidate();
-    $('session-list').replaceChildren(
-      el('div', 'sidebar-empty', () => tr('ui.le_serveur_local_est_indisponible_reconnexion_automatique')),
-    );
-    setTimeout(bootstrap, 5000);
-  }
 }
+
 function syncLinkContext() {
   const snapshot = getSyncSnapshot();
   if (!snapshot?.configured) return null;

@@ -48,6 +48,12 @@ Les projets et conversations sont conservés. Les préférences du navigateur et
 
 La variable d’environnement `PRIME_STUDIO_DESKTOP_PORT` reste prioritaire : elle impose un port et désactive ce réglage ainsi que le repli automatique. Si vous l’avez définie comme contournement de l’issue #15, supprimez-la dans **Modifier les variables d’environnement pour votre compte**, quittez complètement Studio puis relancez-le depuis le menu Démarrer pour retrouver la sélection automatique.
 
+## Chargement des conversations — 4.4.5
+
+Le premier chargement crée un index léger des conversations dans les données locales du Studio. Cette première construction peut encore prendre du temps avec de gros historiques. Aux lancements suivants, seuls les fichiers modifiés sont relus ; ouvrir une conversation charge son historique, sans relire ceux des autres conversations. Les historiques restent la source de référence : un index absent ou invalide est reconstruit.
+
+La liste des conversations s’affiche sans attendre la vérification du moteur ni le catalogue des modèles. L’envoi reste désactivé pendant leur chargement initial. Si la connexion initiale expire, Studio réessaie automatiquement, sans relancer l’application. Les étapes lentes ou bloquées sont datées dans `data/logs/server.log` sous le marqueur `[startup]`, avec leur durée, sans contenu de conversation ni identifiant secret.
+
 ## Fenêtre et arrière-plan
 
 - **Fermer la fenêtre** la masque et conserve l’icône près de l’horloge. Les agents, le serveur et les accès mobiles continuent.

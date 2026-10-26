@@ -1,6 +1,6 @@
 {
   "name": "prime-agent-studio",
-  "version": "4.4.4",
+  "version": "4.4.5",
   "private": true,
   "author": "zerr0o",
   "license": "MIT",
@@ -115,7 +115,7 @@
     "@highlightjs/cdn-assets": "11.12.0",
     "@simplewebauthn/browser": "^14.0.0",
     "@simplewebauthn/server": "^14.0.1",
-    "dompurify": "3.4.16",
+    "dompurify": "3.4.17",
     "jsqr": "1.4.0",
     "marked": "18.0.11",
     "qrcode": "1.5.4",

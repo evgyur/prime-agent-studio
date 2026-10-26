@@ -48,6 +48,12 @@ Projects and conversations are preserved. Browser preferences and drafts stored 
 
 The `PRIME_STUDIO_DESKTOP_PORT` environment variable still takes priority: it forces a port and disables this setting and automatic fallback. If you set it as a workaround for issue #15, remove it through **Edit environment variables for your account**, quit Studio completely, then relaunch it from the Start menu to restore automatic selection.
 
+## Loading conversations — 4.4.5
+
+The first load creates a lightweight conversation index in Studio’s local data. This first build can still take time with large histories. Later launches only reread changed files; opening a conversation loads its history without rereading other conversations. History files remain authoritative: a missing or invalid index is rebuilt.
+
+The conversation list appears without waiting for the engine check or model catalog. Sending stays disabled during their initial load. If the initial connection times out, Studio retries automatically without restarting the application. Slow or stalled stages are timestamped in `data/logs/server.log` under `[startup]`, with their duration, but no conversation content or secret identifiers.
+
 ## Window and background work
 
 - **Closing the window** hides it and keeps the icon near the clock. Agents, the server and mobile access continue.

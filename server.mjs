@@ -506,7 +506,17 @@ export function createApp(options = {}) {
     protectedRoots: [agentHome, sessionDir],
   });
   const filesFor = (cwd) => (isTaskFilesCwd(cwd) ? taskProjectFiles : projectFiles);
-  const projectGit = options.projectGit || createProjectGit({ store, filesFor, dataDir });
+  const projectGit =
+    options.projectGit ||
+    createProjectGit({
+      store,
+      filesFor,
+      dataDir,
+      // Files context can point at a verified managed task worktree: route
+      // every Git API through the same verified root, never ad-hoc paths.
+      resolveProject: async (cwd) => worktreeFileStore.findProject(cwd),
+      protectedRoots: [agentHome, sessionDir, dataDir],
+    });
   const execFileAsync = promisify(execFile);
   async function runSuggestModel({ system, user }) {
     const cli = discoverCli(process.env.PRIME_AGENT_CLI);
@@ -552,6 +562,8 @@ export function createApp(options = {}) {
     createProjectGitSuggest({
       store,
       filesFor,
+      // Same verified root as the other Git APIs (registered or task).
+      resolveProject: async (cwd) => worktreeFileStore.findProject(cwd),
     });
   const knowledge = options.knowledge || createKnowledge({ store, dataDir, agentHome, sessionDir });
   const liveClient = (endpoint) => (endpoint ? createLiveSessionClient({ ...endpoint }) : null);
@@ -2165,50 +2177,104 @@ export function createApp(options = {}) {
       // push stay allowed. Every mutation forgets the cached Git head.
       if (method === 'GET' && path === '/api/project-git')
         return json(res, 200, await projectGit.status(url.searchParams.get('cwd')));
+      if (method === 'GET' && path === '/api/project-git/history')
+        return json(
+          res,
+          200,
+          await projectGit.history(url.searchParams.get('cwd'), {
+            ref: url.searchParams.get('ref'),
+            offset: url.searchParams.get('offset'),
+            limit: url.searchParams.get('limit'),
+          }),
+        );
+      if (method === 'GET' && path === '/api/project-git/commit')
+        return json(
+          res,
+          200,
+          await projectGit.commitInfo(url.searchParams.get('cwd'), url.searchParams.get('hash')),
+        );
+      if (method === 'GET' && path === '/api/project-git/commit-diff')
+        return json(
+          res,
+          200,
+          await projectGit.commitDiff(
+            url.searchParams.get('cwd'),
+            url.searchParams.get('hash'),
+            url.searchParams.get('path'),
+          ),
+        );
+      if (method === 'GET' && path === '/api/project-git/worktrees') {
+        const managedService = worktrees;
+        const native = await projectGit.nativeWorktrees(url.searchParams.get('cwd'), {
+          isManaged: async (taskPath) =>
+            !!(await managedService.findByPath({ path: taskPath }).catch(() => null)),
+        });
+        // Read-only enrichment: mark entries owned by the managed registry.
+        const service = managedService;
+        const listed = [];
+        for (const entry of native.worktrees) {
+          let managed = false;
+          let id;
+          try {
+            const found =
+              service && typeof service.findByPath === 'function'
+                ? await service.findByPath({ path: entry.path }).catch(() => null)
+                : null;
+            if (found) {
+              managed = true;
+              id = found.id;
+            }
+          } catch {
+            managed = false;
+          }
+          listed.push({ ...entry, managed, ...(id ? { id } : {}) });
+        }
+        return json(res, 200, { worktrees: listed, currentPath: native.currentPath });
+      }
       if (method === 'POST' && path === '/api/project-git/fetch') {
         const body = await readBody(req);
-        const project = await store.findProject(body.cwd);
-        const result = await projectGit.fetch(project.cwd);
-        forgetGitHead(project.cwd);
+        const cwd = await projectGit.resolveCwd(body.cwd);
+        const result = await projectGit.fetch(cwd);
+        forgetGitHead(cwd);
         return json(res, 200, result);
       }
       if (method === 'POST' && path === '/api/project-git/switch') {
         const body = await readBody(req);
-        const project = await store.findProject(body.cwd);
-        if (activeRuns().some((run) => run.cwd && cwdKey(run.cwd) === cwdKey(project.cwd)))
+        const cwd = await projectGit.resolveCwd(body.cwd);
+        if (activeRuns().some((run) => run.cwd && cwdKey(run.cwd) === cwdKey(cwd)))
           throw new HttpError(409, tr('git.align_busy'));
-        const result = await projectGit.switchBranch(project.cwd, body);
-        forgetGitHead(project.cwd);
+        const result = await projectGit.switchBranch(cwd, body);
+        forgetGitHead(cwd);
         return json(res, 200, result);
       }
       if (method === 'POST' && path === '/api/project-git/commit') {
         const body = await readBody(req);
-        const project = await store.findProject(body.cwd);
-        const result = await projectGit.commit(project.cwd, body);
-        forgetGitHead(project.cwd);
+        const cwd = await projectGit.resolveCwd(body.cwd);
+        const result = await projectGit.commit(cwd, body);
+        forgetGitHead(cwd);
         return json(res, 200, result);
       }
       if (method === 'POST' && path === '/api/project-git/pull') {
         const body = await readBody(req);
-        const project = await store.findProject(body.cwd);
-        if (activeRuns().some((run) => run.cwd && cwdKey(run.cwd) === cwdKey(project.cwd)))
+        const cwd = await projectGit.resolveCwd(body.cwd);
+        if (activeRuns().some((run) => run.cwd && cwdKey(run.cwd) === cwdKey(cwd)))
           throw new HttpError(409, tr('git.align_busy'));
-        const result = await projectGit.pull(project.cwd);
-        forgetGitHead(project.cwd);
+        const result = await projectGit.pull(cwd);
+        forgetGitHead(cwd);
         return json(res, 200, result);
       }
       if (method === 'POST' && path === '/api/project-git/push') {
         const body = await readBody(req);
-        const project = await store.findProject(body.cwd);
-        const result = await projectGit.push(project.cwd);
-        forgetGitHead(project.cwd);
+        const cwd = await projectGit.resolveCwd(body.cwd);
+        const result = await projectGit.push(cwd);
+        forgetGitHead(cwd);
         return json(res, 200, result);
       }
       if (method === 'POST' && path === '/api/project-git/suggest-message') {
         const body = await readBody(req);
-        const project = await store.findProject(body.cwd);
+        const cwd = await projectGit.resolveCwd(body.cwd);
         const complete = options.suggestComplete || runSuggestModel;
-        return json(res, 200, await projectGitSuggest.suggestMessage(project.cwd, body, { complete }));
+        return json(res, 200, await projectGitSuggest.suggestMessage(cwd, body, { complete }));
       }
       if (method === 'POST' && path === '/api/projects/open-terminal') {
         const body = await readBody(req);

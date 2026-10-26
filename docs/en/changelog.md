@@ -4,6 +4,14 @@
 
 Changes by version. See [GitHub releases](https://github.com/zerr0o/prime-agent-studio/releases) for installers and source archives.
 
+## 4.4.6-beta.1
+
+- **Files**: four separate views — **Changes**, **History**, **Worktrees**, and **Browse**. Wide panels show the diff next to the list; narrow panels offer an enlarged view.
+- **Git history**: paginated commits, visible tags, commit files, and diffs against the first parent, including the repository’s first commit. Search and the tags filter cover loaded commits; **Load more** extends the list.
+- **Worktrees**: list repository worktrees and select Studio-managed worktrees for the Files panel without changing the conversation. External worktrees remain visible without granting access to an unregistered file context.
+- **Commits**: the existing **Suggest a message** button is preserved, including in managed worktrees. Commits include only selected files and leave unrelated staged files in the index. Names containing Git pathspec characters are treated literally. No automatic commit or push.
+- **Read-only access**: history and diffs remain available in consultation mode; Git write actions remain blocked. History reads run neither hooks nor external diff tools.
+
 ## 4.4.5
 
 - **Windows reserved ports**: if the local port is unavailable, Studio selects another port and remembers it. You can also change it in **Preferences → System**, or from the launcher after a startup failure. The change confirms the server shutdown and restarts the application safely, with an extra confirmation if agents are working. `PRIME_STUDIO_DESKTOP_PORT` still takes priority.

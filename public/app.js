@@ -6076,6 +6076,13 @@ worktreesUI = createWorktreesUI({
     if (sessionId) void selectSession(sessionId, ownerCwd || state.projectCwd);
   },
 });
+// Files workspace bridge: the inspector worktrees tab reuses these managed
+// dialogs (create/inspect/integrate/remove) instead of reimplementing them.
+// Management stays owned by the global project: a Files pane pinned to another
+// project must disable management rather than act on the wrong project.
+window.__primeWorktreesUI = Object.assign(worktreesUI, {
+  ownerCwd: () => state.projectCwd,
+});
 imageComposer = makeImageComposer(convViews.byId(PRIMARY_VIEW_ID));
 async function commandsAction(name, args) {
   if (!['model', 'effort', 'name'].includes(name) && args)

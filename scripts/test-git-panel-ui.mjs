@@ -145,7 +145,7 @@ async function openFilesTab({ width, language, readOnly = false }) {
   page.on('pageerror', (error) => errors.push(error.message));
   await page.route('**/api/project-git**', mockGit);
   if (readOnly)
-    await page.route('**/api/bootstrap', async (route) => {
+    await page.route('**/api/bootstrap*', async (route) => {
       const response = await route.fetch();
       const data = await response.json();
       data.preferences = { ...data.preferences, readOnly: true };

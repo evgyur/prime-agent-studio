@@ -1,6 +1,22 @@
 import { t as tr, bindText, bindAttribute, translateKnown, getLanguage, onLanguageChange } from './i18n.js';
 import { filePresentation, defaultFileView, parentFolder } from './file-presentation.js';
 import { getAllowOutsidePreview } from './file-preview-settings.js';
+import {
+  HISTORY_PAGE_SIZE,
+  historyUrl,
+  commitUrl,
+  commitDiffUrl,
+  worktreesUrl,
+  normalizeHistory,
+  normalizeCommit,
+  normalizeCommitDiff,
+  normalizeWorktrees,
+  sameFilesPath,
+  isSupportedFilesWorktree,
+  filterCommits,
+  formatCommitDate,
+  formatFileStat,
+} from './files-workspace.js';
 import { placeViewportMenu } from './file-links.js';
 import { thinkingLabel } from './reasoning.js';
 import { languageForPath, enhanceFileBlock } from './code-highlight.js';
@@ -433,6 +449,38 @@ export function createInspector({
     directory = '',
     contextKey = '',
     generation = 0;
+  // Files workspace: which of the 4 subtabs is shown ('changes' reuses
+  // fileMode 'changes', 'browse' reuses fileMode 'all').
+  let filesView = 'changes';
+  // Files-context worktree override: null = project cwd. Switching worktrees
+  // only retargets Files requests, never the conversation project.
+  let filesCwdOverride = null;
+  // History tab state (bounded pagination, client-side search over pages).
+  let historyState = {
+    commits: [],
+    hasMore: false,
+    ref: 'HEAD',
+    offset: 0,
+    loading: false,
+    error: '',
+    selected: '',
+    search: '',
+    tagsOnly: false,
+  };
+  let historyDetail = {
+    hash: '',
+    commit: null,
+    loading: false,
+    error: '',
+    file: '',
+    patch: '',
+    truncated: false,
+    binary: false,
+  };
+  // Worktrees tab state (read-only list; mutations stay in worktrees.js).
+  let worktreeState = { list: [], currentPath: '', loading: false, error: '', loadedFor: '' };
+  // Modifications inline diff state (working-tree diff of the selected file).
+  let changeDiff = { path: '', patch: '', loading: false, error: '' };
   // Dock split state. Null = classic/mobile singleton (unchanged behavior).
   // Docked = { visible: Set<unitId>, show: (id) => bool }. #details-panel stays
   // the classic home; docking owns every move/restore, so no markers here.
@@ -447,6 +495,9 @@ export function createInspector({
     gitAt = 0,
     gitAction = null,
     suggestBusy = false;
+  // Guards the non-abortable suggest call: only the latest turn may release
+  // the busy flag, restore the button label or sync the commit box.
+  let suggestTurn = 0;
   const pending = new Map();
   // Normalize single-unit map contexts: clones normally pass a function, but
   // accept a map for uniformity (pick owned resolver, never a shared swap).
@@ -565,8 +616,12 @@ export function createInspector({
     });
   }
   const query = (values) => new URLSearchParams({ cwd: current.cwd, ...values }).toString();
+  // Files-context cwd: a selected worktree retargets Files/Git reads and
+  // writes without touching the conversation project.
+  const filesCwd = () => filesCwdOverride || current.cwd;
+  const filesQuery = (values) => new URLSearchParams({ cwd: filesCwd(), ...values }).toString();
   const filesUrl = (action, values = {}) =>
-    `/api/project-files${action ? '/' + action : ''}?${query(values)}`;
+    `/api/project-files${action ? '/' + action : ''}?${filesQuery(values)}`;
   // Explicit-cwd routes (viewer/openDocument): fetch with the passed document
   // cwd so a locked Files pin is never retargeted by cross-context links.
   const queryFor = (cwd, values) => new URLSearchParams({ cwd, ...values }).toString();
@@ -1335,7 +1390,12 @@ export function createInspector({
             file.staged ? tr('ui.contient_des_modifications_indexees') : tr('ui.non_indexe'),
           ].join(' · '),
         );
-        row.onclick = () => openFile(file, defaultFileView(file));
+        // Single click selects the file for the inline working diff (wide
+        // panels); the viewer stays one explicit action away (button,
+        // double-click, context menu) instead of opening on every click.
+        row.onclick = () => selectChangedFile(file.path);
+        row.ondblclick = () => openFile(file, defaultFileView(file), filesCwd());
+        if (file.path === changeDiff.path) row.setAttribute('aria-current', 'true');
         attachFileMenu(row, file);
         if (gitData?.git && !current.readOnly) {
           const wrap = node('div', 'inspector-file-row');
@@ -1360,6 +1420,19 @@ export function createInspector({
         list.append(
           node('p', 'inspector-note', () => tr('ui.les_1_000_premieres_modifications_sont_affichees')),
         );
+      // Keep the inline working diff on the selected file (first change by
+      // default); reload when the file list was refetched.
+      if (fileMode === 'changes') {
+        const first = fileData.entries.find((entry) => !entry.directory)?.path || '';
+        if (changeDiff.path && !changedFileEntry(changeDiff.path)) {
+          changeDiff.path = first;
+          changeDiff.patch = '';
+          changeDiff.error = '';
+        } else if (!changeDiff.path) changeDiff.path = first;
+        if (changeDiff.path && changeDiff.loadedFilesAt !== filesAt && !pending.has('changeDiff'))
+          void loadChangeDiff();
+        else renderChangeDiff();
+      }
     } else {
       bindText(note, () => tr('ui.lecture_seule_dossiers_techniques_masques'));
       const root = node('button', '', () => tr('ui.projet'));
@@ -1410,7 +1483,7 @@ export function createInspector({
   }
   async function loadFiles(force = false, offset = 0) {
     if (!owns('files')) return;
-    if (!current.enabled || !current.cwd || pending.has('files') || (!force && Date.now() - filesAt < 6000))
+    if (!current.enabled || !filesCwd() || pending.has('files') || (!force && Date.now() - filesAt < 6000))
       return;
     filesAt = Date.now();
     if (!fileData) bindText($('inspector-file-note'), () => tr('ui.chargement_des_fichiers'));
@@ -1434,35 +1507,820 @@ export function createInspector({
     directory = path;
     fileData = null;
     fileMode = 'all';
+    filesView = 'browse';
+    syncFilesView();
     syncGitBar();
     syncCommitBox();
     void loadFiles(true);
   }
   function changeFiles(mode) {
+    setFilesView(mode === 'all' ? 'browse' : 'changes');
+  }
+  // Files workspace sub-tabs: Modifications / Historique / Worktrees /
+  // Parcourir. History and worktrees are lazy: they fetch on first show.
+  function setFilesView(view) {
     if (!owns('files')) return;
-    cancel('files');
-    fileMode = mode;
+    const next = view === 'history' || view === 'worktrees' || view === 'browse' ? view : 'changes';
+    filesView = next;
+    if (next === 'changes' || next === 'browse') {
+      const mode = next === 'browse' ? 'all' : 'changes';
+      if (fileMode !== mode) {
+        cancel('files');
+        fileMode = mode;
+        fileData = null;
+        filesAt = 0;
+        $('inspector-file-list')?.replaceChildren();
+      }
+    }
+    syncFilesView();
+    if (next === 'changes' || next === 'browse') {
+      syncGitBar();
+      syncCommitBox();
+      void loadFiles(true);
+      void loadGit();
+    } else if (next === 'history') {
+      void loadGit();
+      void loadHistory(true);
+    } else if (next === 'worktrees') {
+      void loadGit();
+      void loadWorktrees(true);
+    }
+  }
+  function syncFilesView() {
+    if (!owns('files')) return;
+    const host = $('inspector-files');
+    if (host) host.dataset.filesView = filesView;
+    for (const [id, view] of [
+      ['files-changes', 'changes'],
+      ['files-history', 'history'],
+      ['files-worktrees', 'worktrees'],
+      ['files-all', 'browse'],
+    ])
+      $(id)?.setAttribute('aria-pressed', String(filesView === view));
+    const split = $('files-changes-split'),
+      history = $('files-pane-history'),
+      worktrees = $('files-pane-worktrees');
+    if (split) split.hidden = filesView !== 'changes' && filesView !== 'browse';
+    if (history) history.hidden = filesView !== 'history';
+    if (worktrees) worktrees.hidden = filesView !== 'worktrees';
+    // The detail column only carries the inline diff in Modifications.
+    const detail = $('files-change-diff');
+    if (detail && filesView !== 'changes') detail.hidden = true;
+    syncFilesWidth();
+    syncFilesContext();
+  }
+  function syncFilesWidth() {
+    const host = $('inspector-files');
+    if (!host) return;
+    // Wide (expanded/docked) panels show list + detail side by side with a
+    // readable inline diff; the narrow sidebar defers diffs to the viewer
+    // through explicit actions instead of crushed code.
+    host.classList.toggle('is-wide', (host.clientWidth || 0) >= 700);
+  }
+  function syncFilesContext() {
+    if (!owns('files')) return;
+    const ctx = $('files-context');
+    if (!ctx) return;
+    const show = Boolean(filesCwd() && gitData?.git);
+    ctx.hidden = !show;
+    if (!show) return;
+    const match = worktreeState.list.find((entry) => entry.path === filesCwd());
+    const branch = $('files-context-branch');
+    if (branch)
+      branch.textContent =
+        match?.branch || gitData.branch || tr('git.panel_detached', { head: gitShortHead() });
+    const path = $('files-context-path');
+    if (path) {
+      path.textContent = filesCwd();
+      path.title = filesCwd();
+    }
+    const reset = $('files-context-reset');
+    if (reset) reset.hidden = !filesCwdOverride;
+  }
+  function setFilesCwdOverride(path) {
+    if (!owns('files')) return;
+    // A Files context switch is a generation transition (same semantics as the
+    // project switch in update()): in-flight Git writes block the switch, all
+    // pending reads are cancelled, drafts and selections are cleared, and the
+    // generation advances so a late old-root response can never populate the
+    // new view, draft or commit paths. Plain suggest calls are not abortable
+    // but already check the generation before writing.
+    if (gitAction) {
+      toast(() => tr('git.panel_busy'), true);
+      return;
+    }
+    generation++;
+    for (const key of [...pending.keys()]) cancel(key);
+    suggestBusy = false;
+    suggestTurn++;
+    if ($('git-suggest-button')) $('git-suggest-button').textContent = tr('git.panel_suggest');
+    filesCwdOverride = path || null;
     fileData = null;
+    gitData = null;
+    gitAt = 0;
     filesAt = 0;
-    $('files-changes').setAttribute('aria-pressed', String(mode === 'changes'));
-    $('files-all').setAttribute('aria-pressed', String(mode === 'all'));
-    $('inspector-file-list').replaceChildren();
+    directory = '';
+    const draft = $('git-commit-message');
+    if (draft) draft.value = '';
+    closeFileMenu();
+    closeGitMenu();
+    if (viewer.open) viewer.close();
+    historyState = {
+      commits: [],
+      hasMore: false,
+      ref: 'HEAD',
+      offset: 0,
+      loading: false,
+      error: '',
+      selected: '',
+      search: historyState.search,
+      tagsOnly: historyState.tagsOnly,
+    };
+    historyDetail = { hash: '', commit: null, loading: false, error: '', file: '', patch: '', truncated: false, binary: false };
+    worktreeState = { list: [], currentPath: '', loading: false, error: '', loadedFor: '' };
+    changeDiff = { path: '', patch: '', loading: false, error: '', loadedFilesAt: 0 };
+    syncFilesContext();
+    syncFilesView();
     syncGitBar();
     syncCommitBox();
     void loadFiles(true);
-    void loadGit();
+    void loadGit(true);
+    if (filesView === 'history') void loadHistory(true);
+    if (filesView === 'worktrees') void loadWorktrees(true);
+  }
+  // Shared patch renderer (same rules as the file viewer diff mode).
+  function appendPatchLines(pre, text) {
+    for (const line of String(text).split('\n'))
+      pre.append(
+        node(
+          'span',
+          line.startsWith('@@')
+            ? 'diff-hunk'
+            : line.startsWith('+') && !line.startsWith('+++')
+              ? 'diff-add'
+              : line.startsWith('-') && !line.startsWith('---')
+                ? 'diff-remove'
+                : '',
+          () => line || ' ',
+        ),
+      );
+  }
+  // ---- Modifications inline diff (working tree, selected file) ----
+  function changedFileEntry(path) {
+    return (fileData?.entries || []).find((entry) => entry.path === path) || null;
+  }
+  function selectChangedFile(path) {
+    if (!owns('files') || changeDiff.path === path) {
+      if (changeDiff.path === path && !changeDiff.patch && !changeDiff.loading) void loadChangeDiff();
+      return;
+    }
+    changeDiff.path = path;
+    changeDiff.patch = '';
+    changeDiff.error = '';
+    for (const row of $('inspector-file-list')?.querySelectorAll('[data-file-path]') || []) {
+      if (row.getAttribute('aria-current') === 'true') row.removeAttribute('aria-current');
+      if (row.dataset.filePath === path) row.setAttribute('aria-current', 'true');
+    }
+    void loadChangeDiff();
+  }
+  async function loadChangeDiff() {
+    if (!owns('files') || filesView !== 'changes' || fileMode !== 'changes') return;
+    const path = changeDiff.path;
+    if (!path || !filesCwd()) {
+      renderChangeDiff();
+      return;
+    }
+    if (pending.has('changeDiff')) return;
+    changeDiff.loading = true;
+    changeDiff.error = '';
+    renderChangeDiff();
+    const token = generation,
+      filesStamp = filesAt;
+    try {
+      const data = await request('changeDiff', filesUrl('diff', { path }));
+      if (token !== generation) return;
+      changeDiff.patch = typeof data?.text === 'string' ? data.text : '';
+      changeDiff.loadedFilesAt = filesStamp;
+      if (!changeDiff.patch) changeDiff.error = tr('files.diff_empty');
+    } catch (error) {
+      if (error.name === 'AbortError' || token !== generation) return;
+      changeDiff.patch = '';
+      changeDiff.error = translateKnown(error.message);
+    } finally {
+      if (token !== generation || changeDiff.path !== path) return;
+      changeDiff.loading = false;
+      renderChangeDiff();
+    }
+  }
+  function renderChangeDiff() {
+    if (!owns('files')) return;
+    const panel = $('files-change-diff');
+    if (!panel) return;
+    const show = filesView === 'changes' && Boolean(changeDiff.path);
+    panel.hidden = !show;
+    if (!show) return;
+    $('files-change-diff-title').textContent = changeDiff.path;
+    const error = $('files-change-diff-error');
+    if (error) {
+      error.hidden = !changeDiff.error && !changeDiff.loading;
+      if (changeDiff.loading) bindText(error, () => tr('ui.chargement_des_fichiers'));
+      else if (changeDiff.error) error.textContent = changeDiff.error;
+    }
+    const pre = $('files-change-diff-patch');
+    pre.replaceChildren();
+    if (changeDiff.patch) appendPatchLines(pre, changeDiff.patch);
+    syncFilesWidth();
+  }
+  function openChangeDiffViewer() {
+    const entry = changedFileEntry(changeDiff.path) || { path: changeDiff.path, status: 'M' };
+    if (!entry.path) return;
+    openFile(entry, 'diff', filesCwd());
+  }
+  // ---- Historique ----
+  async function loadHistory(reset = false) {
+    if (!owns('files') || filesView !== 'history') return;
+    if (!filesCwd()) return;
+    if (gitData && !gitData.git) {
+      historyState.loading = false;
+      historyState.error = '';
+      renderHistory();
+      return;
+    }
+    if (historyState.loading) return;
+    if (reset) {
+      cancel('history');
+      historyState = {
+        ...historyState,
+        commits: [],
+        hasMore: false,
+        ref: 'HEAD',
+        offset: 0,
+        loading: false,
+        error: '',
+        selected: '',
+      };
+      historyDetail = { hash: '', commit: null, loading: false, error: '', file: '', patch: '', truncated: false, binary: false };
+    }
+    historyState.loading = true;
+    historyState.error = '';
+    renderHistory();
+    const token = generation,
+      offset = reset ? 0 : historyState.offset;
+    try {
+      const data = await request('history', historyUrl(filesCwd(), { offset, limit: HISTORY_PAGE_SIZE }));
+      if (token !== generation) return;
+      const normalized = normalizeHistory(data);
+      historyState.commits = reset ? normalized.commits : [...historyState.commits, ...normalized.commits];
+      historyState.hasMore = normalized.hasMore;
+      historyState.ref = normalized.ref || 'HEAD';
+      historyState.offset = offset + normalized.commits.length;
+      if (reset) {
+        historyState.selected = normalized.commits[0]?.hash || '';
+        if (historyState.selected) void loadCommitDetail();
+        else renderHistoryDetail();
+      }
+    } catch (error) {
+      if (error.name === 'AbortError' || token !== generation) return;
+      historyState.error = translateKnown(error.message);
+    } finally {
+      if (token !== generation) return;
+      historyState.loading = false;
+      renderHistory();
+      renderHistoryDetail();
+    }
+  }
+  function renderHistory() {
+    if (!owns('files')) return;
+    const list = $('files-history-list');
+    if (!list) return;
+    const errorBox = $('files-history-error');
+    if (errorBox) {
+      errorBox.hidden = !historyState.error;
+      if (historyState.error) {
+        errorBox.replaceChildren();
+        const text = document.createElement('span');
+        text.textContent = `${tr('files.history_load_error')} ${historyState.error}`;
+        const retry = document.createElement('button');
+        retry.type = 'button';
+        retry.textContent = tr('files.history_retry');
+        retry.onclick = () => void loadHistory(true);
+        errorBox.append(text, retry);
+      }
+    }
+    list.replaceChildren();
+    if (historyState.loading && !historyState.commits.length) {
+      const item = document.createElement('p');
+      item.className = 'inspector-note';
+      item.textContent = tr('files.history_loading');
+      list.append(item);
+    } else if (gitData && !gitData.git) {
+      const item = document.createElement('p');
+      item.className = 'inspector-note';
+      item.textContent = tr('files.no_git_history');
+      list.append(item);
+    } else {
+      const visible = filterCommits(historyState.commits, {
+        search: historyState.search,
+        tagsOnly: historyState.tagsOnly,
+      });
+      if (!visible.length) {
+        const item = document.createElement('p');
+        item.className = 'inspector-note';
+        item.textContent = historyState.commits.length
+          ? tr('files.history_empty_search')
+          : tr('files.history_empty_repo');
+        list.append(item);
+      }
+      for (const commit of visible) {
+        const row = document.createElement('button');
+        row.type = 'button';
+        row.setAttribute('role', 'option');
+        row.dataset.commitHash = commit.hash;
+        if (commit.hash === historyState.selected) row.setAttribute('aria-current', 'true');
+        const subject = document.createElement('span');
+        subject.className = 'files-row-subject';
+        subject.textContent = commit.subject || commit.hash;
+        const meta = document.createElement('span');
+        meta.className = 'files-row-meta';
+        meta.textContent = [commit.shortHash, commit.authorName, formatCommitDate(commit.date, getLanguage())]
+          .filter(Boolean)
+          .join(' · ');
+        row.append(subject, meta);
+        for (const tag of commit.tags) {
+          const chip = document.createElement('span');
+          chip.className = 'files-tag';
+          chip.textContent = tag;
+          row.append(chip);
+        }
+        row.onclick = () => selectCommit(commit.hash);
+        list.append(row);
+      }
+    }
+    const more = $('files-history-more');
+    if (more) {
+      more.hidden = !historyState.hasMore;
+      more.disabled = historyState.loading;
+    }
+    syncFilesWidth();
+  }
+  function selectCommit(hash) {
+    if (!owns('files') || !hash || historyState.selected === hash) {
+      if (historyState.selected === hash && !historyDetail.commit && !historyDetail.loading)
+        void loadCommitDetail();
+      return;
+    }
+    historyState.selected = hash;
+    historyDetail = { hash, commit: null, loading: false, error: '', file: '', patch: '', truncated: false, binary: false };
+    for (const row of $('files-history-list')?.querySelectorAll('[data-commit-hash]') || []) {
+      if (row.dataset.commitHash === hash) row.setAttribute('aria-current', 'true');
+      else row.removeAttribute('aria-current');
+    }
+    void loadCommitDetail();
+  }
+  async function loadCommitDetail() {
+    if (!owns('files')) return;
+    const hash = historyState.selected;
+    if (!hash || !filesCwd()) return;
+    if (historyDetail.hash === hash && (historyDetail.commit || historyDetail.loading)) {
+      renderHistoryDetail();
+      return;
+    }
+    cancel('commit');
+    cancel('commitDiff');
+    historyDetail = { hash, commit: null, loading: true, error: '', file: '', patch: '', truncated: false, binary: false };
+    renderHistoryDetail();
+    const token = generation;
+    try {
+      const data = await request('commit', commitUrl(filesCwd(), hash));
+      if (token !== generation) return;
+      const commit = normalizeCommit(data);
+      historyDetail.commit = commit;
+      historyDetail.file = commit.files[0]?.path || '';
+    } catch (error) {
+      if (error.name === 'AbortError' || token !== generation) return;
+      historyDetail.error = translateKnown(error.message);
+    } finally {
+      if (token !== generation || historyDetail.hash !== hash) return;
+      historyDetail.loading = false;
+      renderHistoryDetail();
+      if (historyDetail.commit && historyDetail.file) void loadCommitPatch();
+    }
+  }
+  async function loadCommitPatch() {
+    if (!owns('files')) return;
+    const { hash, file } = historyDetail;
+    if (!hash || !file || !filesCwd()) return;
+    if (pending.has('commitDiff')) return;
+    const token = generation;
+    try {
+      const data = await request('commitDiff', commitDiffUrl(filesCwd(), hash, file));
+      if (token !== generation || historyDetail.hash !== hash || historyDetail.file !== file) return;
+      const normalized = normalizeCommitDiff(data);
+      historyDetail.patch = normalized.patch;
+      historyDetail.truncated = normalized.truncated;
+      historyDetail.binary = normalized.binary;
+    } catch (error) {
+      if (error.name === 'AbortError' || token !== generation) return;
+      historyDetail.patch = '';
+      historyDetail.error = translateKnown(error.message);
+    } finally {
+      if (token !== generation || historyDetail.hash !== hash || historyDetail.file !== file) return;
+      renderHistoryDetail();
+    }
+  }
+  function renderHistoryDetail() {
+    if (!owns('files')) return;
+    const panel = $('files-history-detail');
+    if (!panel) return;
+    const hash = historyState.selected;
+    panel.hidden = !hash;
+    if (!hash) return;
+    panel.replaceChildren();
+    const detail = historyDetail;
+    if (detail.loading && !detail.commit) {
+      const item = document.createElement('p');
+      item.className = 'inspector-note';
+      item.textContent = tr('files.history_loading');
+      panel.append(item);
+      return;
+    }
+    if (detail.error && !detail.commit) {
+      const item = document.createElement('p');
+      item.className = 'inspector-note';
+      item.textContent = `${tr('files.history_load_error')} ${detail.error}`;
+      const retry = document.createElement('button');
+      retry.type = 'button';
+      retry.textContent = tr('files.history_retry');
+      retry.onclick = () => void loadCommitDetail();
+      const actions = document.createElement('div');
+      actions.className = 'files-detail-actions';
+      actions.append(retry);
+      panel.append(item, actions);
+      return;
+    }
+    const commit = detail.commit;
+    if (!commit) return;
+    const title = document.createElement('h3');
+    title.textContent = commit.subject || commit.hash;
+    const meta = document.createElement('div');
+    meta.className = 'files-detail-meta';
+    meta.textContent = [
+      commit.hash.slice(0, 7),
+      commit.authorName,
+      formatCommitDate(commit.date, getLanguage()),
+    ]
+      .filter(Boolean)
+      .join(' · ');
+    panel.append(title, meta);
+    for (const tag of [...commit.tags]) {
+      const chip = document.createElement('span');
+      chip.className = 'files-tag';
+      chip.textContent = tag;
+      panel.append(chip);
+    }
+    const stats = document.createElement('div');
+    stats.className = 'files-detail-meta';
+    stats.textContent = tr('files.stats', {
+      files: commit.stats.files,
+      additions: commit.stats.additions,
+      deletions: commit.stats.deletions,
+    });
+    panel.append(stats);
+    if (commit.body) {
+      const body = document.createElement('p');
+      body.className = 'files-detail-meta';
+      body.textContent = commit.body;
+      panel.append(body);
+    }
+    const filesLabel = document.createElement('h3');
+    filesLabel.textContent = tr('files.changed_files');
+    panel.append(filesLabel);
+    if (!commit.files.length) {
+      const item = document.createElement('p');
+      item.className = 'inspector-note';
+      item.textContent = tr('files.diff_empty');
+      panel.append(item);
+    } else {
+      const files = document.createElement('ul');
+      files.className = 'files-commit-files';
+      for (const entry of commit.files) {
+        const item = document.createElement('li');
+        const button = document.createElement('button');
+        button.type = 'button';
+        if (entry.path === detail.file) button.setAttribute('aria-current', 'true');
+        const status = document.createElement('span');
+        status.className = 'files-st';
+        status.textContent = entry.status;
+        const path = document.createElement('span');
+        path.className = 'files-path';
+        path.textContent = entry.oldPath ? `${entry.oldPath} → ${entry.path}` : entry.path;
+        const stat = document.createElement('span');
+        stat.className = 'files-row-meta';
+        stat.textContent = formatFileStat(entry);
+        button.append(status, path, stat);
+        button.onclick = () => {
+          if (historyDetail.file === entry.path) return;
+          historyDetail.file = entry.path;
+          historyDetail.patch = '';
+          historyDetail.error = '';
+          historyDetail.truncated = false;
+          historyDetail.binary = false;
+          renderHistoryDetail();
+          void loadCommitPatch();
+        };
+        item.append(button);
+        files.append(item);
+      }
+      panel.append(files);
+    }
+    const actions = document.createElement('div');
+    actions.className = 'files-detail-actions';
+    const open = document.createElement('button');
+    open.type = 'button';
+    open.id = 'files-history-open';
+    open.textContent = tr('files.open_diff');
+    open.disabled = !detail.file || detail.loading;
+    open.onclick = () => void openCommitDiffViewer(false);
+    const expand = document.createElement('button');
+    expand.type = 'button';
+    expand.id = 'files-history-expand';
+    expand.textContent = tr('files.expand');
+    expand.disabled = !detail.file || detail.loading;
+    expand.onclick = () => void openCommitDiffViewer(true);
+    actions.append(open, expand);
+    panel.append(actions);
+    if (detail.error && detail.commit) {
+      const item = document.createElement('p');
+      item.className = 'inspector-note';
+      item.textContent = `${tr('files.history_diff_error')} ${detail.error}`;
+      panel.append(item);
+    } else if (detail.binary) {
+      const item = document.createElement('p');
+      item.className = 'inspector-note';
+      item.textContent = tr('files.history_binary');
+      panel.append(item);
+    } else if (detail.patch) {
+      const pre = document.createElement('pre');
+      pre.className = 'files-diff';
+      appendPatchLines(pre, detail.patch);
+      panel.append(pre);
+      if (detail.truncated) {
+        const item = document.createElement('p');
+        item.className = 'inspector-note';
+        item.textContent = tr('files.history_truncated');
+        panel.append(item);
+      }
+    }
+    syncFilesWidth();
+  }
+  async function openCommitDiffViewer(forceViewer) {
+    if (!owns('files')) return;
+    const detail = historyDetail;
+    if (!detail.hash || !detail.file) return;
+    const wide = $('inspector-files')?.classList.contains('is-wide');
+    if (!forceViewer && wide && (detail.patch || detail.binary)) {
+      $('files-history-detail')?.querySelector('.files-diff')?.scrollIntoView({ block: 'nearest' });
+      return;
+    }
+    if (!detail.patch && !detail.binary && !detail.loading) {
+      await loadCommitPatch();
+      if (!historyDetail.patch && !historyDetail.binary) return;
+    }
+    const commit = detail.commit,
+      short = (commit?.hash || detail.hash).slice(0, 7);
+    beginView(`${short} · ${detail.file}`);
+    // Replace the loading placeholder rather than appending after it.
+    body.replaceChildren();
+    if (detail.binary) {
+      empty(body, () => tr('files.history_binary'));
+      return;
+    }
+    const pre = node('pre', 'inspector-diff');
+    appendPatchLines(pre, historyDetail.patch);
+    body.append(pre);
+    if (historyDetail.truncated)
+      body.append(node('p', 'inspector-note', () => tr('files.history_truncated')));
+  }
+  // ---- Worktrees (read-only list; create/inspect/integrate/remove reuse
+  // the existing managed dialogs from worktrees.js) ----
+  async function loadWorktrees(force = false) {
+    if (!owns('files') || !filesCwd()) return;
+    if (!force && worktreeState.loadedFor === filesCwd()) {
+      renderWorktrees();
+      return;
+    }
+    if (worktreeState.loading) return;
+    worktreeState.loading = true;
+    worktreeState.error = '';
+    renderWorktrees();
+    const token = generation,
+      cwd = filesCwd();
+    try {
+      const data = await request('worktrees', worktreesUrl(cwd));
+      if (token !== generation) return;
+      const normalized = normalizeWorktrees(data);
+      worktreeState.list = normalized.worktrees;
+      worktreeState.currentPath = normalized.currentPath;
+      worktreeState.loadedFor = cwd;
+    } catch (error) {
+      if (error.name === 'AbortError' || token !== generation) return;
+      worktreeState.error = translateKnown(error.message);
+    } finally {
+      if (token !== generation) return;
+      worktreeState.loading = false;
+      renderWorktrees();
+      syncFilesContext();
+    }
+  }
+  function renderWorktrees() {
+    if (!owns('files')) return;
+    const list = $('files-worktree-list');
+    if (!list) return;
+    const errorBox = $('files-worktrees-error');
+    if (errorBox) {
+      errorBox.hidden = !worktreeState.error;
+      if (worktreeState.error) {
+        errorBox.replaceChildren();
+        const text = document.createElement('span');
+        text.textContent = `${tr('files.worktrees_load_error')} ${worktreeState.error}`;
+        const retry = document.createElement('button');
+        retry.type = 'button';
+        retry.textContent = tr('files.history_retry');
+        retry.onclick = () => void loadWorktrees(true);
+        errorBox.append(text, retry);
+      }
+    }
+    list.replaceChildren();
+    if (worktreeState.loading && !worktreeState.list.length) {
+      const item = document.createElement('p');
+      item.className = 'inspector-note';
+      item.textContent = tr('files.history_loading');
+      list.append(item);
+    } else if (!worktreeState.list.length) {
+      const item = document.createElement('p');
+      item.className = 'inspector-note';
+      item.textContent = tr('files.worktrees_empty');
+      list.append(item);
+    }
+    const bridge = window.__primeWorktreesUI;
+    // Management dialogs act on the bridge's global project. When this pane is
+    // pinned to another project, management stands down with an explanation;
+    // Files-local actions (open context, folder reveal) stay available.
+    const bridgeOwner = typeof bridge?.ownerCwd === 'function' ? bridge.ownerCwd() : '';
+    const ownerMismatch =
+      Boolean(bridgeOwner) && Boolean(current.cwd) && !sameFilesPath(bridgeOwner, current.cwd);
+    const newButton = $('files-worktree-new');
+    if (newButton) newButton.hidden = Boolean(current.readOnly) || !bridge?.openCreate || ownerMismatch;
+    const headNote = $('files-worktrees-owner-note');
+    if (headNote) {
+      headNote.hidden = !ownerMismatch;
+      if (ownerMismatch) headNote.textContent = tr('files.worktrees_owner_mismatch');
+    }
+    for (const entry of worktreeState.list) {
+      const row = document.createElement('div');
+      row.className = 'files-wt-row';
+      const isCurrent = entry.isCurrent || entry.path === filesCwd();
+      if (isCurrent) row.classList.add('is-current');
+      const name = document.createElement('strong');
+      name.textContent = entry.branch || tr('files.worktree_detached');
+      if (entry.bare) name.textContent = tr('files.worktree_bare');
+      const meta = document.createElement('div');
+      meta.className = 'files-detail-meta';
+      const states = [entry.path];
+      if (isCurrent) states.push(tr('files.worktree_current'));
+      // dirty is intentionally omitted by the backend when unavailable:
+      // never assume clean, render an explicit unknown state instead.
+      states.push(
+        entry.dirty === true
+          ? tr('files.worktree_dirty')
+          : entry.dirty === false
+            ? tr('files.worktree_clean')
+            : tr('files.worktree_unknown'),
+      );
+      if (entry.detached && entry.branch) states.push(tr('files.worktree_detached'));
+      meta.textContent = states.filter(Boolean).join(' · ');
+      meta.title = entry.path;
+      const actions = document.createElement('div');
+      actions.className = 'files-wt-actions';
+      // Ouvrir switches the Files context only. Unsupported native contexts
+      // (unmanaged foreign worktrees) would fail every follow-up Files/Git
+      // call, so only managed entries and the registered project root stay
+      // selectable; going back to the root is always allowed.
+      const supported = isSupportedFilesWorktree(entry, current.cwd);
+      const open = document.createElement('button');
+      open.type = 'button';
+      open.textContent = tr('files.worktree_open');
+      open.disabled = !supported || sameFilesPath(entry.path, filesCwd());
+      if (!supported) open.title = tr('files.worktree_open_unavailable');
+      if (!open.disabled) open.onclick = () => setFilesCwdOverride(entry.path);
+      actions.append(open);
+      if (!current.readOnly && current.nativeFileOpen && current.online) {
+        const folder = document.createElement('button');
+        folder.type = 'button';
+        folder.textContent = tr('files.worktree_folder');
+        folder.onclick = () => void openWorktreeFolder(entry.path, folder);
+        actions.append(folder);
+      }
+      const managed = entry.managed && entry.id;
+      const inspect = document.createElement('button');
+      inspect.type = 'button';
+      inspect.textContent = tr('files.worktree_inspect');
+      inspect.disabled = !managed || !bridge?.openTask || ownerMismatch;
+      if (ownerMismatch && managed) inspect.title = tr('files.worktrees_owner_mismatch');
+      if (!inspect.disabled)
+        inspect.onclick = (event) => {
+          try {
+            bridge.openTask(entry.id, event.currentTarget);
+          } catch (error) {
+            toast(() => translateKnown(error.message), true);
+          }
+        };
+      actions.append(inspect);
+      row.append(name, meta, actions);
+      // The unsupported warning fires only for genuinely unopenable contexts,
+      // never for the supported registered root (already current or not).
+      if (!supported && !sameFilesPath(entry.path, filesCwd())) {
+        const note = document.createElement('div');
+        note.className = 'files-wt-note';
+        note.textContent = tr('files.worktree_unmanaged_note');
+        row.append(note);
+      }
+      list.append(row);
+    }
+    syncFilesWidth();
+  }
+  async function openWorktreeFolder(path, button) {
+    if (!owns('files') || !path || !current.nativeFileOpen || current.readOnly) return;
+    button.disabled = true;
+    try {
+      await api('/api/projects/open', { method: 'POST', body: { cwd: filesCwd(), reference: path } });
+      toast(() => tr('ui.ouverture_demandee_sur_le_pc'));
+    } catch (error) {
+      toast(() => translateKnown(error.message), true);
+    } finally {
+      button.disabled = false;
+    }
   }
   if (owns('files')) {
     const filesChanges = $('files-changes'),
+      filesHistory = $('files-history'),
+      filesWorktrees = $('files-worktrees'),
       filesAll = $('files-all'),
       refreshFiles = $('refresh-files');
-    if (filesChanges) filesChanges.onclick = () => changeFiles('changes');
-    if (filesAll) filesAll.onclick = () => changeFiles('all');
+    if (filesChanges) filesChanges.onclick = () => setFilesView('changes');
+    if (filesHistory) filesHistory.onclick = () => setFilesView('history');
+    if (filesWorktrees) filesWorktrees.onclick = () => setFilesView('worktrees');
+    if (filesAll) filesAll.onclick = () => setFilesView('browse');
     if (refreshFiles)
       refreshFiles.onclick = () => {
-        void loadFiles(true);
-        void loadGit(true);
+        if (filesView === 'history') {
+          void loadGit(true);
+          void loadHistory(true);
+        } else if (filesView === 'worktrees') {
+          void loadGit(true);
+          void loadWorktrees(true);
+        } else {
+          void loadFiles(true);
+          void loadGit(true);
+        }
       };
+    const historySearch = $('files-history-search');
+    if (historySearch)
+      historySearch.oninput = () => {
+        historyState.search = historySearch.value;
+        renderHistory();
+      };
+    const historyTags = $('files-history-tags');
+    if (historyTags)
+      historyTags.onclick = () => {
+        historyState.tagsOnly = !historyState.tagsOnly;
+        historyTags.setAttribute('aria-pressed', String(historyState.tagsOnly));
+        renderHistory();
+      };
+    const historyMore = $('files-history-more');
+    if (historyMore) historyMore.onclick = () => void loadHistory(false);
+    const changeOpen = $('files-change-diff-open');
+    if (changeOpen) changeOpen.onclick = () => openChangeDiffViewer();
+    const contextSwitch = $('files-context-switch');
+    if (contextSwitch) contextSwitch.onclick = () => setFilesView('worktrees');
+    const contextReset = $('files-context-reset');
+    if (contextReset) contextReset.onclick = () => setFilesCwdOverride(null);
+    const worktreeNew = $('files-worktree-new');
+    if (worktreeNew)
+      worktreeNew.onclick = (event) => {
+        try {
+          if (window.__primeWorktreesUI?.openCreate) window.__primeWorktreesUI.openCreate(event.currentTarget);
+          else $('new-task')?.click();
+        } catch (error) {
+          toast(() => translateKnown(error.message), true);
+        }
+      };
+    onLanguageChange(() => {
+      renderHistory();
+      renderHistoryDetail();
+      renderWorktrees();
+      renderChangeDiff();
+    });
   }
   // Git controls in the Files tab: branch switcher, fetch/pull/push and commit.
   const gitBusy = () => Boolean(agentData?.session && busy.has(agentData.session.status));
@@ -1480,7 +2338,7 @@ export function createInspector({
     if (!owns('files')) return;
     const bar = $('inspector-git-bar');
     if (!bar) return;
-    const show = Boolean(current.cwd && gitData?.git);
+    const show = Boolean(filesCwd() && gitData?.git);
     bar.hidden = !show;
     if (!show) return;
     $('git-branch-label').textContent = gitData.branch || tr('git.panel_detached', { head: gitShortHead() });
@@ -1543,7 +2401,7 @@ export function createInspector({
     const box = $('inspector-git-commit');
     if (!box) return;
     const show = Boolean(
-      current.cwd && !current.readOnly && fileMode === 'changes' && gitData?.git && fileData?.git,
+      filesCwd() && !current.readOnly && fileMode === 'changes' && gitData?.git && fileData?.git,
     );
     box.hidden = !show;
     if (!show) return;
@@ -1562,11 +2420,12 @@ export function createInspector({
       if (!selected.length) suggest.setAttribute('title', tr('git.panel_no_selection'));
       else suggest.removeAttribute('title');
       suggest.setAttribute('aria-busy', String(suggestBusy));
+      suggest.textContent = suggestBusy ? '…' : tr('git.panel_suggest');
     }
   }
   async function loadGit(force = false) {
     if (!owns('files')) return;
-    if (!current.enabled || !current.cwd) {
+    if (!current.enabled || !filesCwd()) {
       syncGitBar();
       return;
     }
@@ -1576,7 +2435,7 @@ export function createInspector({
     }
     gitAt = Date.now();
     try {
-      gitData = await request('git', `/api/project-git?${query()}`);
+      gitData = await request('git', `/api/project-git?${filesQuery()}`);
     } catch (error) {
       if (error.name === 'AbortError') return;
       gitData = null;
@@ -1595,9 +2454,9 @@ export function createInspector({
     return false;
   }
   async function gitRun(action, body, successKey, successParams, reloadFiles = true) {
-    // Writes keep the originating cwd across await and never run read-only.
-    if (!owns('files') || !current.cwd || current.readOnly || gitAction) return;
-    const cwd = current.cwd,
+    // Writes keep the originating Files-context cwd across await and never run read-only.
+    if (!owns('files') || !filesCwd() || current.readOnly || gitAction) return;
+    const cwd = filesCwd(),
       token = generation;
     if (reloadFiles) cancel('files');
     gitAction = action;
@@ -1608,6 +2467,7 @@ export function createInspector({
         method: 'POST',
         body: { cwd, ...body },
       });
+      if (generation !== token) return;
       if (!applyGitStatus(result)) await loadGit(true);
       if (successKey) toast(() => tr(successKey, successParams || {}));
       if (generation === token && reloadFiles) {
@@ -1618,8 +2478,8 @@ export function createInspector({
       if (error.name !== 'AbortError' && generation === token)
         toast(() => translateKnown(error.message), true);
     } finally {
-      gitAction = null;
       if (generation === token) {
+        gitAction = null;
         syncGitBar();
         syncCommitBox();
       }
@@ -1634,14 +2494,13 @@ export function createInspector({
       toast(() => tr('git.panel_no_selection'), true);
       return;
     }
-    if (!owns('files') || !current.cwd || current.readOnly || gitAction || suggestBusy) return;
-    const cwd = current.cwd,
-      token = generation;
+    if (!owns('files') || !filesCwd() || current.readOnly || gitAction || suggestBusy) return;
+    const cwd = filesCwd(),
+      token = generation,
+      myTurn = ++suggestTurn;
     suggestBusy = true;
     syncCommitBox();
-    const suggestButton = $('git-suggest-button');
-    const previousLabel = suggestButton ? suggestButton.textContent : '';
-    if (suggestButton) suggestButton.textContent = '…';
+
     try {
       const result = await api('/api/project-git/suggest-message', {
         method: 'POST',
@@ -1658,9 +2517,11 @@ export function createInspector({
       if (error.name !== 'AbortError' && generation === token)
         toast(() => translateKnown(error.message), true);
     } finally {
+      // A stale completion (older turn or older generation) releases nothing:
+      // the reset already cleared the flag and the newer turn owns the UI.
+      if (suggestTurn !== myTurn || generation !== token) return;
       suggestBusy = false;
-      if (suggestButton) suggestButton.textContent = previousLabel;
-      if (generation === token) syncCommitBox();
+      syncCommitBox();
     }
   }
   async function gitCommit() {
@@ -1678,8 +2539,8 @@ export function createInspector({
       toast(() => tr('git.panel_no_selection'), true);
       return;
     }
-    if (!owns('files') || !current.cwd || current.readOnly || gitAction) return;
-    const cwd = current.cwd,
+    if (!owns('files') || !filesCwd() || current.readOnly || gitAction) return;
+    const cwd = filesCwd(),
       token = generation;
     cancel('files');
     gitAction = 'commit';
@@ -1690,6 +2551,7 @@ export function createInspector({
         method: 'POST',
         body: { cwd, message, paths },
       });
+      if (generation !== token) return;
       if (!applyGitStatus(result)) await loadGit(true);
       toast(() => tr('git.panel_committed', { head: String(result?.commit || '').slice(0, 7) }));
       if (generation === token) {
@@ -1701,8 +2563,8 @@ export function createInspector({
       if (error.name !== 'AbortError' && generation === token)
         toast(() => translateKnown(error.message), true);
     } finally {
-      gitAction = null;
       if (generation === token) {
+        gitAction = null;
         syncGitBar();
         syncCommitBox();
       }
@@ -2013,7 +2875,7 @@ export function createInspector({
           anchor?.focus({ preventScroll: true });
           if (!target) return;
           if (target.directory) browse(target.path);
-          else openFile(target, defaultFileView(target));
+          else openFile(target, defaultFileView(target), filesCwd());
         },
       ],
       [
@@ -2028,7 +2890,7 @@ export function createInspector({
           try {
             await api('/api/projects/open', {
               method: 'POST',
-              body: { cwd: current.cwd, path: target.directory ? target.path : parentFolder(target.path) },
+              body: { cwd: filesCwd(), path: target.directory ? target.path : parentFolder(target.path) },
             });
             toast(() => tr('ui.ouverture_demandee_sur_le_pc'));
           } catch (error) {
@@ -2045,9 +2907,9 @@ export function createInspector({
           closeFileMenu();
           anchor?.focus({ preventScroll: true });
           if (target) {
-            const separator = current.cwd.includes('\\') ? '\\' : '/';
+            const separator = filesCwd().includes('\\') ? '\\' : '/';
             const path =
-              current.cwd.replace(/[\\/]$/, '') + separator + target.path.replaceAll('/', separator);
+              filesCwd().replace(/[\\/]$/, '') + separator + target.path.replaceAll('/', separator);
             void copyFilePath(path);
           }
         },
@@ -2121,7 +2983,7 @@ export function createInspector({
     empty(body, () => tr('common.loading'));
     if (!viewer.open) viewer.showModal();
   }
-  function renderFileText(file, text) {
+  function renderFileText(file, text, cwd) {
     const presentation = filePresentation(file.path, text);
     let source = false;
     const options = node('div', 'inspector-text-options');
@@ -2132,7 +2994,7 @@ export function createInspector({
       body.replaceChildren();
       for (const [button, value] of buttons) button.setAttribute('aria-pressed', String(value === source));
       if (!source && presentation.kind === 'markdown') {
-        const document = markdown(text, { cwd: current.cwd, basePath: file.path });
+        const document = markdown(text, { cwd: cwd || current.cwd, basePath: file.path });
         document.classList.add('inspector-document');
         body.append(document);
       } else {
@@ -2230,7 +3092,7 @@ export function createInspector({
     cancel.focus();
   }
   async function openFile(file, mode, explicitCwd) {
-    const viewCwd = explicitCwd || current.cwd;
+    const viewCwd = explicitCwd || filesCwd();
     beginView(file.path);
     const token = viewVersion;
     if (file.status) {
@@ -2328,7 +3190,7 @@ export function createInspector({
         body.append(image);
       } else if (typeof data.text === 'string' && data.text) {
         if (mode !== 'diff') {
-          renderFileText(file, data.text);
+          renderFileText(file, data.text, viewCwd);
           return;
         }
         const pre = node('pre', mode === 'diff' ? 'inspector-diff' : 'inspector-code');
@@ -2653,6 +3515,28 @@ export function createInspector({
       gitAction = null;
       lastAgents = '';
       directory = '';
+      filesCwdOverride = null;
+      // Orphan any in-flight suggest: its generation guard already blocks
+      // writes, and the turn bump stops it releasing a newer turn's UI.
+      // Restore the button text too, or the next turn would snapshot '…'
+      // as its previous label and restore it forever.
+      suggestBusy = false;
+      suggestTurn++;
+      if ($('git-suggest-button')) $('git-suggest-button').textContent = tr('git.panel_suggest');
+      historyState = {
+        commits: [],
+        hasMore: false,
+        ref: 'HEAD',
+        offset: 0,
+        loading: false,
+        error: '',
+        selected: '',
+        search: historyState.search,
+        tagsOnly: historyState.tagsOnly,
+      };
+      historyDetail = { hash: '', commit: null, loading: false, error: '', file: '', patch: '', truncated: false, binary: false };
+      worktreeState = { list: [], currentPath: '', loading: false, error: '', loadedFor: '' };
+      changeDiff = { path: '', patch: '', loading: false, error: '', loadedFilesAt: 0 };
       if (owns('files')) {
         closeFileMenu();
         closeGitMenu();
@@ -2737,10 +3621,15 @@ export function createInspector({
     }
     if (!plan.any || document.hidden || !current.online) return;
     if (plan.files) {
-      if (fileMode === 'changes' || !fileData) void loadFiles();
+      if ((filesView === 'changes' || filesView === 'browse') && (fileMode === 'changes' || !fileData))
+        void loadFiles();
+      syncFilesView();
       syncGitBar();
       syncCommitBox();
       void loadGit();
+      // Keep the Files-context row fresh without polling history pages.
+      if (gitData?.git && worktreeState.loadedFor !== filesCwd() && !worktreeState.loading)
+        void loadWorktrees();
     }
     if (plan.agents) void loadAgents();
   }

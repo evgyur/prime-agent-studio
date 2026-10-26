@@ -41,6 +41,7 @@
     <link rel="stylesheet" href="/public/worktrees.css" />
     <link rel="stylesheet" href="/public/computer-use.css" />
     <link rel="stylesheet" href="/public/git-panel.css" />
+    <link rel="stylesheet" href="/public/files-workspace.css" />
     <link rel="stylesheet" href="/public/code-highlight.css" />
   </head>
   <body>
@@ -897,7 +898,7 @@
             </div>
             <div
               id="inspector-files"
-              class="inspector-content"
+              class="inspector-content files-host"
               role="tabpanel"
               aria-labelledby="inspector-tab-files"
               hidden
@@ -922,15 +923,30 @@
                 </div>
               </div>
               <div
-                class="inspector-file-filters"
+                class="inspector-file-filters files-subtabs"
                 role="group"
                 aria-label="Vue des fichiers"
                 data-i18n-aria-label="ui.vue_des_fichiers"
               >
                 <button id="files-changes" type="button" aria-pressed="true">
                   <span data-i18n="ui.modifications">Modifications</span></button
+                ><button id="files-history" type="button" aria-pressed="false">
+                  <span data-i18n="ui.historique">Historique</span></button
+                ><button id="files-worktrees" type="button" aria-pressed="false">
+                  <span data-i18n="files.worktrees_tab">Worktrees</span></button
                 ><button id="files-all" type="button" aria-pressed="false" data-i18n="ui.parcourir">
                   Parcourir
+                </button>
+              </div>
+              <div id="files-context" class="files-context" hidden>
+                <span data-icon="branch" aria-hidden="true"></span>
+                <strong id="files-context-branch">…</strong>
+                <span id="files-context-path" class="files-context-path"></span>
+                <button id="files-context-switch" type="button" data-i18n="files.context_switch">
+                  Changer
+                </button>
+                <button id="files-context-reset" type="button" data-i18n="files.context_reset" hidden>
+                  Revenir au projet
                 </button>
               </div>
               <div id="inspector-git-bar" class="inspector-git-bar" hidden>
@@ -972,39 +988,112 @@
                   </button>
                 </div>
               </div>
-              <div id="inspector-git-commit" class="inspector-git-commit" hidden>
-                <textarea
-                  id="git-commit-message"
-                  rows="3"
-                  maxlength="5000"
-                  spellcheck="true"
-                  data-i18n-placeholder="git.panel_message_placeholder"
-                  placeholder="Message de commit…"
-                  data-i18n-aria-label="git.panel_commit"
-                  aria-label="Commiter"
-                ></textarea>
-                <div class="inspector-git-commit-actions">
-                  <button
-                    id="git-suggest-button"
-                    type="button"
-                    class="secondary-button"
-                    data-i18n="git.panel_suggest"
-                  >
-                    Proposer un message
-                  </button>
-                  <button
-                    id="git-commit-button"
-                    type="button"
-                    class="primary-button"
-                    data-i18n="git.panel_commit"
-                  >
-                    Commiter
-                  </button>
+              <div id="files-changes-split" class="files-split">
+                <div class="files-list-col">
+                  <div id="inspector-git-commit" class="inspector-git-commit" hidden>
+                    <textarea
+                      id="git-commit-message"
+                      rows="3"
+                      maxlength="5000"
+                      spellcheck="true"
+                      data-i18n-placeholder="git.panel_message_placeholder"
+                      placeholder="Message de commit…"
+                      data-i18n-aria-label="git.panel_commit"
+                      aria-label="Commiter"
+                    ></textarea>
+                    <div class="inspector-git-commit-actions">
+                      <button
+                        id="git-suggest-button"
+                        type="button"
+                        class="secondary-button"
+                        data-i18n="git.panel_suggest"
+                      >
+                        Proposer un message
+                      </button>
+                      <button
+                        id="git-commit-button"
+                        type="button"
+                        class="primary-button"
+                        data-i18n="git.panel_commit"
+                      >
+                        Commiter
+                      </button>
+                    </div>
+                  </div>
+                  <p id="inspector-file-note" class="inspector-note" role="status"></p>
+                  <div id="inspector-file-breadcrumb" class="inspector-file-breadcrumb"></div>
+                  <div id="inspector-file-list"></div>
+                </div>
+                <div class="files-detail-col">
+                  <div id="files-change-diff" class="files-detail" hidden>
+                    <h3 id="files-change-diff-title"></h3>
+                    <div class="files-detail-actions">
+                      <button id="files-change-diff-open" type="button" data-i18n="files.open_in_viewer">
+                        Ouvrir dans la visionneuse
+                      </button>
+                    </div>
+                    <div id="files-change-diff-error" class="inspector-note" role="status" hidden></div>
+                    <pre id="files-change-diff-patch" class="files-diff"></pre>
+                  </div>
                 </div>
               </div>
-              <p id="inspector-file-note" class="inspector-note" role="status"></p>
-              <div id="inspector-file-breadcrumb" class="inspector-file-breadcrumb"></div>
-              <div id="inspector-file-list"></div>
+              <div id="files-pane-history" class="files-pane" hidden>
+                <div class="files-search-row">
+                  <input
+                    id="files-history-search"
+                    type="search"
+                    data-i18n-placeholder="files.history_search"
+                    placeholder="Rechercher dans les commits chargés…"
+                    data-i18n-aria-label="files.history_search"
+                    aria-label="Rechercher dans les commits chargés"
+                  />
+                  <button
+                    id="files-history-tags"
+                    type="button"
+                    class="files-tags-toggle"
+                    aria-pressed="false"
+                    data-i18n="files.history_tags_only"
+                    data-i18n-title="files.history_tags_title"
+                    title="Filtre les tags des commits chargés"
+                  >
+                    Tags
+                  </button>
+                </div>
+                <div id="files-history-error" class="files-error" hidden></div>
+                <div class="files-split">
+                  <div class="files-list-col">
+                    <div id="files-history-list" class="files-list" role="listbox"></div>
+                    <button
+                      id="files-history-more"
+                      type="button"
+                      class="files-more"
+                      data-i18n="files.history_more"
+                      hidden
+                    >
+                      Afficher la suite
+                    </button>
+                  </div>
+                  <div class="files-detail-col">
+                    <div id="files-history-detail" class="files-detail" hidden></div>
+                  </div>
+                </div>
+              </div>
+              <div id="files-pane-worktrees" class="files-pane" hidden>
+                <div class="files-pane-head">
+                  <span data-i18n="files.worktrees_hint">Travaillez dans un dossier isolé par branche.</span>
+                  <button
+                    id="files-worktree-new"
+                    type="button"
+                    class="secondary-button"
+                    data-i18n="worktrees.nouvelle_tache"
+                  >
+                    Nouveau worktree
+                  </button>
+                </div>
+                <div id="files-worktrees-owner-note" class="files-wt-note files-pane-head" role="note" hidden></div>
+                <div id="files-worktrees-error" class="files-error" hidden></div>
+                <div id="files-worktree-list" class="files-wt-list"></div>
+              </div>
             </div>
           </aside>
         </div>

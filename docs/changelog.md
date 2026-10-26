@@ -4,6 +4,14 @@
 
 Les changements par version. Retrouvez les installateurs et les archives du code source dans les [releases GitHub](https://github.com/zerr0o/prime-agent-studio/releases).
 
+## 4.4.6-beta.1
+
+- **Fichiers** : quatre vues distinctes — **Modifications**, **Historique**, **Worktrees** et **Parcourir**. Les panneaux larges affichent le diff à côté de la liste ; les panneaux étroits proposent une ouverture agrandie.
+- **Historique Git** : commits paginés, tags visibles, fichiers du commit et diff avec son premier parent, y compris pour le premier commit du dépôt. La recherche et le filtre des tags portent sur les commits chargés ; **Afficher la suite** étend la liste.
+- **Worktrees** : liste des worktrees du dépôt et sélection des worktrees gérés par Studio pour le panneau Fichiers, sans changer la conversation. Les worktrees externes restent visibles sans autoriser un contexte de fichier non enregistré.
+- **Commits** : le bouton existant **Proposer un message** est conservé, y compris dans les worktrees gérés. Un commit ne prend que les fichiers sélectionnés et laisse les autres fichiers déjà indexés en place. Les noms contenant des caractères de pathspec Git sont traités littéralement. Aucun commit ni push automatique.
+- **Consultation** : historique et diffs restent accessibles en lecture seule ; les actions Git d’écriture restent interdites. Les lectures de l’historique n’exécutent ni hooks ni outils de diff externes.
+
 ## 4.4.5
 
 - **Ports réservés sous Windows** : si le port local est indisponible, Studio choisit un autre port et le mémorise. Le port peut aussi être changé dans **Préférences → Système** ou depuis le lanceur en cas d’échec. Le changement confirme l’arrêt du serveur puis relance proprement l’application, avec une confirmation supplémentaire si des agents travaillent. La variable `PRIME_STUDIO_DESKTOP_PORT` reste prioritaire.

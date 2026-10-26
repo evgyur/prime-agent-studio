@@ -1,0 +1,303 @@
+/* Files workspace: 4-tab layout (Modifications / Historique / Worktrees / Parcourir).
+   Narrow panel stacks list over detail with explicit enlarge actions; wide
+   panels (.is-wide, toggled by JS on measured width) show list + detail
+   side by side with readable inline diffs. Studio tokens only. */
+
+.files-subtabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 3px;
+  padding: 0 12px 10px;
+}
+.files-subtabs button {
+  min-height: 36px;
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.files-subtabs button[aria-pressed='true'] {
+  background: var(--accent-bg);
+  color: var(--text);
+}
+
+.files-context {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 12px 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.files-context[hidden] { display: none; }
+.files-context strong { color: var(--text); font-weight: 600; }
+.files-context .files-context-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+.files-context button {
+  background: transparent;
+  border: 0;
+  color: var(--accent-text, var(--text));
+  cursor: pointer;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.files-context button:hover { text-decoration: underline; }
+
+/* History + changes panes share the list/detail pattern. */
+.files-pane[hidden] { display: none; }
+.files-search-row {
+  display: flex;
+  gap: 8px;
+  padding: 0 12px 8px;
+}
+.files-search-row input[type='search'] {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 12px;
+  padding: 8px 10px;
+}
+.files-tags-toggle {
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 8px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.files-tags-toggle[aria-pressed='true'] {
+  background: var(--accent-bg);
+  color: var(--text);
+  border-color: var(--tinted-line, var(--line));
+}
+.files-split {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 12px;
+  min-height: 0;
+}
+.files-host.is-wide .files-split { flex-direction: row; align-items: flex-start; }
+.files-host.is-wide .files-list-col { flex: 1 1 46%; min-width: 0; }
+.files-host.is-wide .files-detail-col { flex: 1 1 54%; min-width: 0; }
+
+.files-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 260px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.files-host.is-wide .files-list { max-height: 520px; }
+.files-list button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--line-soft, var(--line));
+  color: var(--text);
+  cursor: pointer;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+.files-list button:last-child { border-bottom: 0; }
+.files-list button:hover { background: var(--surface-hover); }
+.files-list button[aria-current='true'] {
+  background: var(--accent-bg);
+  box-shadow: inset 2px 0 var(--accent);
+}
+.files-list .files-row-subject {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.files-list .files-row-meta {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.files-tag {
+  display: inline-block;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  color: var(--muted);
+  font-size: 10.5px;
+  padding: 1px 8px;
+  margin-left: 6px;
+  vertical-align: baseline;
+}
+.files-detail {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 12px;
+  min-width: 0;
+}
+.files-detail h3 {
+  margin: 0 0 4px;
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+.files-detail .files-detail-meta { color: var(--muted); font-size: 11px; margin-bottom: 8px; }
+.files-detail-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+.files-detail-actions button {
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 7px 10px;
+}
+.files-detail-actions button:hover { background: var(--surface-hover); }
+.files-detail-actions button:disabled { opacity: 0.5; cursor: default; }
+.files-commit-files {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+  max-height: 180px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.files-host.is-wide .files-commit-files { max-height: 280px; }
+.files-commit-files li { display: flex; }
+.files-commit-files button {
+  flex: 1;
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--line-soft, var(--line));
+  color: var(--text);
+  cursor: pointer;
+  font-size: 11.5px;
+  padding: 8px 10px;
+  text-align: left;
+  min-width: 0;
+}
+.files-commit-files li:last-child button { border-bottom: 0; }
+.files-commit-files button:hover, .files-commit-files button[aria-current='true'] { background: var(--surface-hover); }
+.files-commit-files .files-st {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 10.5px;
+  color: var(--muted);
+  min-width: 84px;
+}
+.files-commit-files .files-path { overflow-wrap: anywhere; }
+.files-diff {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 11.5px;
+  line-height: 1.55;
+  overflow: auto;
+  max-height: 260px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.files-host.is-wide .files-diff { max-height: 480px; }
+.files-diff > span { display: block; min-height: 1.55em; }
+.files-diff .diff-hunk { color: var(--muted); }
+.files-diff .diff-add { color: var(--diff-add, #2f9e44); }
+.files-diff .diff-remove { color: var(--diff-remove, #d6336c); }
+.files-more {
+  margin: 8px 12px 0;
+  width: calc(100% - 24px);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 8px 10px;
+}
+.files-more:hover { background: var(--surface-hover); }
+.files-more:disabled { opacity: 0.5; cursor: default; }
+.files-error {
+  margin: 8px 12px 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 12px;
+  color: var(--text);
+}
+.files-error button {
+  margin-top: 8px;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 7px 10px;
+}
+
+/* Narrow sidebar: defer diffs to the existing viewer through explicit
+   actions instead of crushed inline code. */
+/* Narrow hosts (classic sidebar, small dock slots, clones alike): inline diffs
+   stay hidden and open in the existing viewer through explicit actions. */
+.files-host:not(.is-wide) .files-diff {
+  display: none;
+}
+
+/* Worktrees */
+.files-wt-list { display: flex; flex-direction: column; gap: 8px; padding: 0 12px; }
+.files-wt-row {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 12px;
+}
+.files-wt-row.is-current { border-color: var(--accent, var(--line)); box-shadow: inset 2px 0 var(--accent); }
+.files-wt-row strong { display: block; font-size: 12.5px; overflow-wrap: anywhere; }
+.files-wt-row .files-detail-meta { margin: 4px 0 8px; }
+.files-wt-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.files-wt-actions button {
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 7px 10px;
+}
+.files-wt-actions button:hover { background: var(--surface-hover); }
+.files-wt-actions button:disabled { opacity: 0.5; cursor: default; }
+.files-wt-note { color: var(--muted); font-size: 11px; margin-top: 8px; }
+.files-pane-head { display: flex; align-items: center; gap: 8px; padding: 0 12px 8px; }
+.files-pane-head .secondary-button { margin-left: auto; }

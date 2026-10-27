@@ -236,14 +236,17 @@ try {
   await expect(page.locator('#composer-form .composer-command-label').first()).toHaveText('/skill:alpha');
   for (const width of [1440, 1024, 390]) {
     await page.setViewportSize({ width, height: 900 });
-    const metrics = await left.evaluate((el) => ({
-      width: el.getBoundingClientRect().width,
-      rowWidth: el.parentElement.getBoundingClientRect().width,
-      scrollHeight: el.scrollHeight,
-      clientHeight: el.clientHeight,
-    }));
-    assert.ok(metrics.width > metrics.rowWidth * 0.35, `Skill must not collapse input at ${width}px: ${JSON.stringify(metrics)}`);
-    assert.ok(metrics.scrollHeight <= metrics.clientHeight + 1, `Empty skill input must not scroll at ${width}px`);
+    // Reduced motion still creates 0.01ms CSS transitions: measure after they settle.
+    await expect(async () => {
+      const metrics = await left.evaluate((el) => ({
+        width: el.getBoundingClientRect().width,
+        rowWidth: el.parentElement.getBoundingClientRect().width,
+        scrollHeight: el.scrollHeight,
+        clientHeight: el.clientHeight,
+      }));
+      assert.ok(metrics.width > metrics.rowWidth * 0.35, `Skill must not collapse input at ${width}px: ${JSON.stringify(metrics)}`);
+      assert.ok(metrics.scrollHeight <= metrics.clientHeight + 1, `Empty skill input must not scroll at ${width}px`);
+    }).toPass({ timeout: 5000 });
   }
   await page.screenshot({ path: '.local/modular-slash/skill-classic-mobile.png' });
   await page.locator('#composer-form .composer-command button').first().click();

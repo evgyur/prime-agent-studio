@@ -78,6 +78,8 @@ const fr = (key) => messages[key].fr;
 const wtFeature = join(temp, 'wt-feature');
 const wtOther = join(temp, 'wt-other');
 const openedFolders = [];
+let commitDiffCalls = 0;
+let fileDiffCalls = 0;
 async function mockGit(route) {
   const request = route.request();
   const requestUrl = new URL(request.url());
@@ -89,6 +91,7 @@ async function mockGit(route) {
     body = {};
   }
   calls.push({ method: request.method(), route: tail, body });
+  if (request.method() === 'GET' && tail === '/commit-diff') commitDiffCalls++;
   const reply = (code, payload) =>
     route.fulfill({ status: code, contentType: 'application/json', body: JSON.stringify(payload) });
   if (failNext && failNext.route === tail) {
@@ -96,7 +99,8 @@ async function mockGit(route) {
     failNext = null;
     return reply(failure.status, { error: failure.error });
   }
-  if (request.method() === 'GET' && tail === '/') return reply(200, status());
+  if (request.method() === 'GET' && tail === '/')
+    return reply(200, { ...status(), branch: requestUrl.searchParams.get('cwd') === wtFeature ? 'feature' : 'main' });
   if (request.method() === 'GET' && tail === '/history') {
     const offset = Number(requestUrl.searchParams.get('offset') || 0);
     if (offset >= 2) return reply(200, { commits: commitsPage2, hasMore: false, ref: H3 });
@@ -111,8 +115,9 @@ async function mockGit(route) {
         files: [
           { path: 'app.js', status: 'M', additions: 2, deletions: 1 },
           { path: 'new.txt', status: 'A', additions: 1, deletions: 0 },
+          { path: 'removed.txt', status: 'D', additions: 0, deletions: 3 },
         ],
-        stats: { files: 2, additions: 3, deletions: 1 },
+        stats: { files: 3, additions: 3, deletions: 4 },
       });
     if (hash === H2 || hash === H1)
       return reply(200, {
@@ -171,6 +176,15 @@ async function mockGit(route) {
 
 let browser;
 const errors = [];
+
+// Scoped-clone tolerant selectors (primary instance bare IDs, clones --files).
+const commitBox = (page) => page.locator('#inspector-git-commit');
+const commitMessage = (page) => page.locator('#git-commit-message');
+const suggestButton = (page) => page.locator('#git-suggest-button');
+const commitButton = (page) => page.locator('#git-commit-button');
+const filesViewer = (page) =>
+  page.locator('dialog.inspector-viewer[data-inspector-instance="primary-files"]').first();
+
 async function openFilesTab({ width, language = 'fr', theme = 'dark', readOnly = false }) {
   const context = await browser.newContext({
     locale: language === 'en' ? 'en-US' : 'fr-FR',
@@ -194,6 +208,12 @@ async function openFilesTab({ width, language = 'fr', theme = 'dark', readOnly =
   page.setDefaultTimeout(10000);
   page.on('pageerror', (error) => errors.push(error.message));
   await page.route('**/api/project-git**', mockGit);
+  // Count working-tree diff fetches: none may fire before the user opens the
+  // viewer (row click). Polling and tab switches must stay diff-free.
+  await page.route('**/api/project-files/diff**', async (route) => {
+    fileDiffCalls++;
+    return route.fallback();
+  });
   // Old-root Files reads hang on demand so a mid-flight context switch can
   // prove stale responses never populate the new view (generation transition).
   await page.route('**/api/project-files/changes**', async (route) => {
@@ -218,7 +238,7 @@ async function openFilesTab({ width, language = 'fr', theme = 'dark', readOnly =
     });
   await page.goto(url);
   await expect(page.locator('#connection-label')).toHaveText(
-    language === 'en' ? 'Engine connected' : 'Moteur connect\u00e9',
+    language === 'en' ? 'Engine connected' : 'Moteur connecté',
   );
   // Docked shell above 1080 px (real tabs + splitter); classic panel below.
   if ((await page.locator('button[data-dock-tab="files"]').count()) > 0) {
@@ -233,37 +253,122 @@ async function openFilesTab({ width, language = 'fr', theme = 'dark', readOnly =
 }
 
 // Settled-state gate before every screenshot: no invalid-layout recovery
-// toast, no visible loading note in the Files panel, no error box.
+// toast, no visible loading note in the Files panel (periodic polling must not
+// flash "Chargement"/"Loading"), no error box.
 async function expectFilesSettled(page) {
   await expect(page.locator('#toasts')).not.toContainText('invalide');
   await expect(page.locator('#toasts')).not.toContainText('invalid');
   await expect(page.locator('#inspector-files .inspector-note:visible', { hasText: 'Chargement' })).toHaveCount(0);
+  await expect(page.locator('#inspector-files .inspector-note:visible', { hasText: 'Loading' })).toHaveCount(0);
   await expect(page.locator('#files-history-error:visible')).toBeHidden();
   await expect(page.locator('#files-worktrees-error:visible')).toBeHidden();
 }
 
-// Diff lines must stack vertically (increasing Y), never one wrapped blob.
-async function expectStackedDiffLines(page, selector) {
-  const tops = await page.locator(`${selector} > span`).evaluateAll((nodes) =>
+function resetDiffCounters() {
+  commitDiffCalls = 0;
+  fileDiffCalls = 0;
+}
+
+// Diff additions/removals must be visibly green/red in the viewer, never a
+// single wrapped blob: stacked spans with distinct add/remove colors.
+async function expectViewerDiffColors(page, viewer) {
+  await expect(viewer).toBeVisible();
+  await expect(viewer.locator('.diff-add').first()).toBeVisible({ timeout: 15000 });
+  await expect(viewer.locator('.diff-remove').first()).toBeVisible({ timeout: 15000 });
+  const tops = await viewer.locator('pre > span').evaluateAll((nodes) =>
     nodes.slice(0, 8).map((node) => Math.round(node.getBoundingClientRect().top)),
   );
   assert.ok(tops.length >= 3, `expected diff lines, got ${tops.length}`);
   for (let i = 1; i < tops.length; i++) assert.ok(tops[i] > tops[i - 1], `diff lines stacked (${tops})`);
+  const colors = await viewer.locator('.diff-add, .diff-remove').evaluateAll((nodes) =>
+    nodes.slice(0, 6).map((node) => {
+      const style = getComputedStyle(node);
+      return { cls: node.className, color: style.color, background: style.backgroundColor };
+    }),
+  );
+  assert.ok(colors.length >= 2, JSON.stringify(colors));
+  const parse = (rgb) => (rgb.match(/[\d.]+/g) || []).slice(0, 3).map(Number);
+  for (const entry of colors) {
+    const [r, g, b] = parse(entry.color);
+    if (entry.cls.includes('diff-add')) assert.ok(g > r && g >= b, `add should read green: ${JSON.stringify(entry)}`);
+    else assert.ok(r > g && r >= b, `remove should read red: ${JSON.stringify(entry)}`);
+  }
+}
+
+async function expectToolbarRow(page) {
+  await expect(page.locator('#git-fetch-button')).toHaveText('Fetch');
+  const geometry = await page.locator('#git-branch-button, #git-sync-counts, #git-fetch-button, #git-pull-button, #git-push-button').evaluateAll((nodes) => nodes.map((node) => {
+    const r = node.getBoundingClientRect(); return { y: r.y + r.height / 2, right: r.right };
+  }));
+  assert.ok(Math.max(...geometry.map(r => r.y)) - Math.min(...geometry.map(r => r.y)) < 3, JSON.stringify(geometry));
+  assert.ok(Math.max(...geometry.map(r => r.right)) <= page.viewportSize().width, JSON.stringify(geometry));
 }
 
 try {
   browser = await launchStudioBrowser({ channel: 'chrome' });
-  // French desktop dark, narrow sidebar: history list + summary + explicit viewer.
+  // French desktop dark: Changes is a file list only — row click opens viewer.
   {
     const { context, page } = await openFilesTab({ width: 1440, theme: 'dark' });
     await expect(page.locator('#files-changes')).toBeVisible();
     await expect(page.locator('#files-history')).toContainText('Historique');
     await expect(page.locator('#files-worktrees')).toContainText('Worktrees');
     await expect(page.locator('#files-all')).toContainText('Parcourir');
+    // No duplicate context banner; selected context reads from #git-branch-label.
+    await expect(page.locator('#files-context')).toHaveCount(0);
+    await expect(page.locator('#files-context-switch')).toHaveCount(0);
+    await expect(page.locator('#files-context-branch')).toHaveCount(0);
+    // No inline diff elements anywhere in the Changes pane.
+    await expect(page.locator('#files-change-diff')).toHaveCount(0);
+    await expect(page.locator('#files-change-diff-title')).toHaveCount(0);
+    await expect(page.locator('#files-change-diff-patch')).toHaveCount(0);
+    await expect(page.locator('#files-change-diff-open')).toHaveCount(0);
+    // Checkbox selection is retained; file list shows both dirty files.
+    await expect(page.locator('.git-file-check')).toHaveCount(2);
+    await expect(page.locator('.git-file-check[data-git-path="app.js"]')).toBeChecked();
+    resetDiffCounters();
+    // Clicking a row opens the existing file viewer directly (no inline diff).
+    await page.locator('.inspector-file[data-file-path="app.js"]').click();
+    const viewer = filesViewer(page);
+    await expect(viewer).toContainText('const title', { timeout: 15000 });
+    await expectViewerDiffColors(page, viewer);
+    // No background diff fetch fired before the explicit open; the single open
+    // fetched exactly the viewer payload.
+    assert.ok(fileDiffCalls >= 1, `viewer open should fetch diff once, got ${fileDiffCalls}`);
+    await expect(commitDiffCalls).toEqual(0);
+    await page.keyboard.press('Escape');
+    await expect(viewer).toBeHidden();
+    // Checkbox selection survives a polling refresh with no loading flash.
+    // Silent loadFiles keeps the row nodes (identical list markup).
+    await page.locator('.git-file-check[data-git-path="new.txt"]').uncheck();
+    const listHTML = await page.locator('#inspector-file-list').innerHTML();
+    resetDiffCounters();
+    await page.locator('#refresh-files').click();
+    await expect(page.locator('.git-file-check[data-git-path="app.js"]')).toBeChecked();
+    await expect(page.locator('.git-file-check[data-git-path="new.txt"]')).not.toBeChecked();
+    assert.equal(await page.locator('#inspector-file-list').innerHTML(), listHTML);
+    await expectFilesSettled(page);
+    assert.equal(fileDiffCalls, 0);
+    assert.equal(commitDiffCalls, 0);
+    // The inline editor remains visible; suggestion is disabled without files.
+    await page.locator('.git-file-check[data-git-path="app.js"]').uncheck();
+    await expect(suggestButton(page)).toBeDisabled();
+    await page.locator('.git-file-check[data-git-path="app.js"]').check();
+    await page.locator('.git-file-check[data-git-path="new.txt"]').check();
+    await expect(suggestButton(page)).toBeEnabled();
+    await expect(commitMessage(page)).toBeVisible();
+    await expect(suggestButton(page)).toHaveText('Proposer un message');
+    await expectToolbarRow(page);
+    await page.screenshot({ path: 'test-results/files-workspace/changes-wide-dark-1440.png', animations: 'disabled' });
+    await page.locator('#inspector-files').screenshot({ path: 'test-results/files-workspace/changes-refined.png' });
+    await context.close();
+  }
+  // History: scroll pagination/search/tags, left commits / right files, file opens viewer.
+  {
+    const { context, page } = await openFilesTab({ width: 1440, theme: 'dark' });
     await page.locator('#files-history').click();
     await expect(page.locator('#files-history-list [data-commit-hash]')).toHaveCount(2);
-    await expect(page.locator('#files-history-more')).toBeVisible();
-    await page.locator('#files-history-more').click();
+    await expect(page.locator('#files-history-more')).toHaveCount(0);
+    await page.locator('#files-history-list').dispatchEvent('scroll');
     await expect(page.locator('#files-history-list [data-commit-hash]')).toHaveCount(3);
     await page.locator('#files-history-search').fill('third');
     await expect(page.locator('#files-history-list [data-commit-hash]')).toHaveCount(1);
@@ -271,70 +376,131 @@ try {
     await page.locator('#files-history-tags').click();
     await expect(page.locator('#files-history-list [data-commit-hash]')).toHaveCount(1);
     await page.locator('#files-history-tags').click();
+    // Select a commit: right pane lists commit files, no inline patch.
+    resetDiffCounters();
     await page.locator('#files-history-list [data-commit-hash="3333333333333333333333333333333333333333"]').click();
-    await expect(page.locator('#files-history-detail h3').first()).toContainText('feat: third change');
-    await expect(page.locator('#files-history-detail')).toContainText('v1.1');
+    await expect(page.locator('#files-history-detail h3')).toHaveText('Fichiers modifiés');
+    await expect(page.locator('#files-history-list [aria-current=true]')).toContainText('v1.1');
     await expect(page.locator('#files-history-detail')).toContainText('app.js');
-    // Narrow: inline patch stays hidden, explicit expand opens the viewer.
-    await expect(page.locator('#files-history-expand')).toBeVisible();
-    await page.locator('#files-history-expand').click();
-    const filesViewer = page.locator('dialog.inspector-viewer[data-inspector-instance="primary-files"]');
-    await expect(filesViewer).toContainText('const title');
+    await expect(page.locator('#files-history-detail .files-commit-files button')).toHaveCount(3);
+    const selectedStyle = await page.locator('#files-history-list [aria-current="true"]').evaluate((el) => ({ shadow: getComputedStyle(el).boxShadow, left: getComputedStyle(el).borderLeftWidth }));
+    assert.deepEqual(selectedStyle, { shadow: 'none', left: '0px' });
+    const statusSymbols = await page.locator('#files-history-detail .git-file-status').allTextContents();
+    assert.deepEqual(statusSymbols, ['•', '+', '−']);
+    await expect(page.locator('#files-history-detail .git-additions').first()).toHaveCSS('color', 'rgb(40, 167, 69)');
+    await expect(page.locator('#files-history-detail .git-deletions').first()).toHaveCSS('color', 'rgb(215, 58, 73)');
+    await expect(page.locator('#files-history-detail .is-modified')).toHaveCSS('color', 'rgb(219, 171, 9)');
+    // Removed controls: no per-row open/expand buttons, no inline diff.
+    await expect(page.locator('#files-history-open')).toHaveCount(0);
+    await expect(page.locator('#files-history-expand')).toHaveCount(0);
+    await expect(page.locator('#files-history-detail .files-diff')).toHaveCount(0);
+    await expect(page.locator('#files-history-detail pre')).toHaveCount(0);
+    // No commit-diff HTTP fired by selection alone (files come from /commit).
+    assert.equal(commitDiffCalls, 0);
+    // Left commits / right files stay side-by-side on wide layout.
+    const listBox = await page.locator('#files-history-list').boundingBox();
+    const detailBox = await page.locator('#files-history-detail').boundingBox();
+    assert.ok(listBox && detailBox, JSON.stringify({ listBox, detailBox }));
+    assert.ok(detailBox.x > listBox.x, `history should be left/right, got ${JSON.stringify({ listBox, detailBox })}`);
+    // Clicking a commit file opens the viewer directly with green/red diff.
+    await page.locator('#files-history-detail .files-commit-files button', { hasText: 'app.js' }).first().click();
+    const viewer = filesViewer(page);
+    await expect(viewer).toContainText('const title', { timeout: 15000 });
+    await expectViewerDiffColors(page, viewer);
     await page.keyboard.press('Escape');
-    await expect(filesViewer).toBeHidden();
+    await expect(viewer).toBeHidden();
     await expectFilesSettled(page);
     await page.screenshot({ path: 'test-results/files-workspace/history-narrow-dark-1440.png', animations: 'disabled' });
     await context.close();
   }
-  // Wide panel via the real dock splitter: true inline list + detail diffs.
+  // A real scrollable page: wheel at the bottom loads one page, retains scroll, stops at EOF.
+  {
+    const { context, page } = await openFilesTab({ width: 1440, theme: 'dark' });
+    const offsets = [];
+    const page1 = [commitsPage1[0], ...Array.from({ length: 49 }, (_, i) => ({
+      ...commitsPage1[1], hash: (i + 100).toString(16).padStart(40, '0'), subject: `Commit ${i + 1}`,
+    }))];
+    await page.route('**/api/project-git/history*', async (route) => {
+      const offset = Number(new URL(route.request().url()).searchParams.get('offset') || 0);
+      offsets.push(offset);
+      await route.fulfill({ json: { commits: offset ? commitsPage2 : page1, hasMore: offset === 0, ref: H3 } });
+    });
+    await page.locator('#files-history').click();
+    const list = page.locator('#files-history-list');
+    await expect(list.locator('[data-commit-hash]')).toHaveCount(50);
+    await list.hover();
+    await page.mouse.wheel(0, 4000);
+    await expect(list.locator('[data-commit-hash]')).toHaveCount(51);
+    assert.deepEqual(offsets, [0, 50]);
+    assert.ok(await list.evaluate(el => el.scrollTop > 0));
+    await page.mouse.wheel(0, 4000);
+    await page.waitForTimeout(150);
+    assert.deepEqual(offsets, [0, 50], 'no duplicate or EOF requests');
+    await context.close();
+  }
+  // Wide viewport: history columns stay left/right by rects (always CSS grid now).
   {
     const { context, page } = await openFilesTab({ width: 1600, theme: 'dark' });
-    const splitter = page.locator('.dock-splitter[data-dock-split]').first();
+    const splitter = page.locator('.dock-splitter[aria-orientation="vertical"]').first();
     await splitter.focus();
-    for (let n = 0; n < 24; n++) {
-      if (await page.locator('#inspector-files.is-wide').count()) break;
-      await page.keyboard.press('Shift+ArrowLeft');
-    }
-    await expect(page.locator('#inspector-files.is-wide')).toBeAttached();
+    for (let i = 0; i < 10; i++) await splitter.press('Shift+ArrowLeft');
+    await expect.poll(async () => (await page.locator('#inspector-files').boundingBox()).width).toBeGreaterThan(700);
+    await expect(page.locator('#inspector-files.is-wide')).toHaveCount(0);
     await page.locator('#files-history').click();
     await expect(page.locator('#files-history-list [data-commit-hash]')).toHaveCount(2);
     await page.locator('#files-history-list [data-commit-hash="3333333333333333333333333333333333333333"]').click();
-    await expect(page.locator('#files-history-detail h3').first()).toContainText('feat: third change');
-    await expect(page.locator('#files-history-detail .files-diff')).toBeVisible();
-    await expect(page.locator('#files-history-detail .files-diff')).toContainText('const title');
-    await expectStackedDiffLines(page, '#files-history-detail .files-diff');
+    await expect(page.locator('#files-history-detail .files-commit-files button')).toHaveCount(3);
+    await expect(page.locator('#files-history-detail .files-diff')).toHaveCount(0);
+    const listBox = await page.locator('#files-history-list').boundingBox();
+    const detailBox = await page.locator('#files-history-detail').boundingBox();
+    assert.ok(listBox && detailBox, JSON.stringify({ listBox, detailBox }));
+    assert.ok(detailBox.x > listBox.x, `history should be left/right, got ${JSON.stringify({ listBox, detailBox })}`);
+    assert.ok(
+      detailBox.y < listBox.y + listBox.height && listBox.y < detailBox.y + detailBox.height,
+      `columns should overlap vertically, got ${JSON.stringify({ listBox, detailBox })}`,
+    );
     await expectFilesSettled(page);
-    await page.screenshot({ path: 'test-results/files-workspace/history-wide-dark-1440.png', animations: 'disabled' });
-    // Modifications wide: selection + commit form beside the inline working diff.
-    await page.locator('#files-changes').click();
-    await expect(page.locator('#inspector-git-commit')).toBeVisible();
-    await expect(page.locator('#git-suggest-button')).toContainText('Proposer un message');
-    await expect(page.locator('#inspector-files.is-wide')).toBeAttached();
-    const changeRow = page.locator('.inspector-file[data-file-path="app.js"]');
-    await expect(changeRow).toBeVisible();
-    await changeRow.click();
-    await expect(page.locator('#files-change-diff')).toBeVisible();
-    await expect(page.locator('#files-change-diff-title')).toContainText('app.js');
-    await expect(page.locator('#files-change-diff-patch')).toBeVisible();
-    await expect(page.locator('#files-change-diff-error')).toBeHidden();
-    await expectStackedDiffLines(page, '#files-change-diff-patch');
-    // Existing AI suggestion still works through the mocked endpoint (no agent).
-    await page.locator('#git-suggest-button').click();
-    await expect(page.locator('#git-commit-message')).toHaveValue(/met \u00e0 jour le titre/);
-    const suggestCall = calls.filter((call) => call.route === '/suggest-message').at(-1);
-    assert.ok(suggestCall && suggestCall.body.paths.length > 0);
-    // The existing suggestion service root is the only AI call: no new endpoint.
-    assert.ok(!calls.some((call) => call.route.includes('suggest') && call.route !== '/suggest-message'));
-    await expectFilesSettled(page);
-    await page.screenshot({ path: 'test-results/files-workspace/changes-wide-dark-1440.png', animations: 'disabled' });
+    await page.screenshot({ path: 'test-results/files-workspace/history-wide-dark-1600.png', animations: 'disabled' });
+    await page.locator('#inspector-files').screenshot({ path: 'test-results/files-workspace/history-refined.png' });
     await context.close();
   }
-  // Worktrees tab: Files-context switch only, unmanaged note, no fake actions.
+  // Visible commit editor: suggest, retain draft and commit only selected paths.
+  {
+    const { context, page } = await openFilesTab({ width: 1440, theme: 'dark' });
+    await expect(commitMessage(page)).toBeVisible();
+    await expect(page.locator('#git-commit-dialog')).toHaveCount(0);
+    await suggestButton(page).click();
+    await expect(commitMessage(page)).toHaveValue(/met à jour le titre/);
+    await commitMessage(page).fill('Corrige le titre');
+    await page.locator('.git-file-check[data-git-path="new.txt"]').uncheck();
+    await page.screenshot({ path: 'test-results/files-workspace/commit-inline-dark-1440.png', animations: 'disabled' });
+    const before = calls.filter((call) => call.route === '/commit').length;
+    await commitButton(page).click();
+    await expect.poll(() => calls.filter((call) => call.route === '/commit').length).toBeGreaterThan(before);
+    const commitCall = calls.filter((call) => call.route === '/commit').at(-1);
+    assert.deepEqual(commitCall.body.paths, ['app.js']);
+    assert.equal(commitCall.body.message, 'Corrige le titre');
+    await expect(commitMessage(page)).toHaveValue('');
+    await expectFilesSettled(page);
+    await context.close();
+  }
+  // Worktrees tab: label carries (N) only when N > 1; context via Git bar.
   {
     const { context, page } = await openFilesTab({ width: 1440, theme: 'dark' });
     await page.locator('#files-worktrees').click();
     await expect(page.locator('.files-wt-row')).toHaveCount(3);
-    await expect(page.locator('.files-wt-row').first()).toContainText('Actuel');
+    await expect(page.locator('#files-worktrees')).toContainText(/Worktrees\s*\(3\)/);
+    await expect(page.locator('.files-wt-current')).toHaveCount(1);
+    const currentRow = page.locator('.files-wt-row.is-current');
+    await expect(currentRow).toHaveCSS('border-top-left-radius', '8px');
+    await expect(currentRow.locator('.files-wt-current')).toHaveText('Actuel');
+    await expect(currentRow.locator('.files-wt-path')).toHaveText(cwd);
+    await expect(currentRow.locator('.files-wt-state')).toHaveText('Modifications en cours');
+    await expect(page.locator('.files-wt-row').nth(1).locator('.files-wt-state')).toHaveText('Propre');
+    const pathBox = await currentRow.locator('.files-wt-path').boundingBox();
+    const statusBox = await currentRow.locator('.files-wt-status').boundingBox();
+    assert.ok(statusBox.y >= pathBox.y + pathBox.height, 'state must be below the path');
+    assert.ok(await currentRow.locator('.files-wt-path').evaluate(el => el.scrollWidth <= el.clientWidth + 1));
     // Supported registered root carries no unsupported warning (only the
     // genuinely unopenable foreign row does).
     await expect(page.locator('.files-wt-row').first()).not.toContainText('indisponibles');
@@ -350,16 +516,44 @@ try {
     await expect.poll(() => openedFolders.length).toBe(1);
     assert.deepEqual(openedFolders[0], { cwd, reference: wtFeature });
     await openButtons.nth(1).click();
-    await expect(page.locator('#files-context')).toBeVisible();
-    await expect(page.locator('#files-context-branch')).toContainText('feature');
-    await expect(page.locator('#files-context-reset')).toBeVisible();
+    // New contract: no duplicate #files-context banner; the Git bar shows it.
+    await expect(page.locator('#files-context')).toHaveCount(0);
+    await expect(page.locator('#git-branch-label')).toContainText('feature');
+    await expect(page.locator('.files-wt-current')).toHaveCount(1);
+    await expect(page.locator('.files-wt-row').nth(1).locator('.files-wt-current')).toHaveText('Actuel');
+    await expect(page.locator('.files-wt-row').first().locator('.files-wt-current')).toHaveCount(0);
     await expect(page.locator('#inspector-git-bar')).toBeVisible();
-    await page.locator('#files-context-reset').click();
-    await expect(page.locator('#files-context-reset')).toBeHidden();
+    const resetInBar = page.locator('#inspector-git-bar #files-context-reset');
+    await expect(resetInBar).toBeVisible();
+    await resetInBar.click();
+    await expect(page.locator('#git-branch-label')).toContainText('main');
+    await expect(resetInBar).toBeHidden();
     await expect(page.locator('.files-wt-row')).toHaveCount(3);
     await expect(page.locator('#files-worktree-list .inspector-note:visible')).toHaveCount(0);
     await expectFilesSettled(page);
     await page.screenshot({ path: 'test-results/files-workspace/worktrees-narrow-dark-1440.png', animations: 'disabled' });
+    await page.locator('#inspector-files').screenshot({ path: 'test-results/files-workspace/worktrees-refined.png' });
+    await context.close();
+  }
+  // Single worktree: the tab carries no counter.
+  {
+    const { context, page } = await openFilesTab({ width: 1440, theme: 'dark' });
+    await page.route('**/api/project-git/worktrees*', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          worktrees: [
+            { path: cwd, branch: 'main', head: 'a'.repeat(40), dirty: false, managed: false, isCurrent: true },
+          ],
+          currentPath: cwd,
+        }),
+      }),
+    );
+    await page.locator('#files-worktrees').click();
+    await expect(page.locator('.files-wt-row')).toHaveCount(1);
+    await expect(page.locator('#files-worktrees')).toHaveText('Worktrees');
+    await expectFilesSettled(page);
     await context.close();
   }
   // Management stands down when the pane follows another project (pinned
@@ -403,28 +597,22 @@ try {
     await expect(cloneTab).toBeVisible({ timeout: 10000 });
     await cloneTab.click();
     await expect.poll(async () => page.locator('.files-host').count(), { timeout: 10000 }).toBe(2);
-    // Only the active tab has a real width: widen until the active clone
-    // (second host) carries the wide rules while the parked primary does not.
-    const splitter = page.locator('.dock-splitter[data-dock-split]').first();
-    await splitter.focus();
-    for (let n = 0; n < 24; n++) {
-      if ((await page.locator('.files-host.is-wide').count()) >= 1) break;
-      await page.keyboard.press('Shift+ArrowLeft');
-    }
-    await expect.poll(
-      async () =>
-        page.locator('.files-host').evaluateAll((els) => els.map((el) => el.classList.contains('is-wide'))),
-      { timeout: 10000 },
-    ).toEqual([false, true]);
-    const cloneDir = await page
-      .locator('.files-host')
-      .nth(1)
-      .locator('.files-split')
-      .first()
-      .evaluate((el) => getComputedStyle(el).flexDirection);
-    assert.equal(cloneDir, 'row');
+    // The clone is a functional Files panel: its History tab lists commits and
+    // its columns sit left/right by rects (no .is-wide class anymore).
+    const cloneHost = page.locator('.files-host').nth(1);
+    await expect(cloneHost.locator('.files-subtabs')).toBeVisible();
+    await cloneHost.locator('[data-panel-id="files-history"]').click();
+    await expect(cloneHost.locator('[data-commit-hash]').first()).toBeVisible({ timeout: 15000 });
+    await expect(cloneHost.locator('.files-commit-files button')).toHaveCount(3);
+    const cloneList = await cloneHost.locator('.files-list-col, #files-history-list').first().boundingBox();
+    const cloneDetail = await cloneHost.locator('.files-detail-col, #files-history-detail').first().boundingBox();
+    assert.ok(cloneList && cloneDetail, JSON.stringify({ cloneList, cloneDetail }));
+    assert.ok(cloneDetail.x >= cloneList.x, `clone columns left/right, got ${JSON.stringify({ cloneList, cloneDetail })}`);
     await expectFilesSettled(page);
     await page.screenshot({ path: 'test-results/files-workspace/clone-wide-dark-1600.png', animations: 'disabled' });
+    await cloneHost.locator('[data-panel-id="files-changes"]').click();
+    await expect(cloneHost.locator('[data-panel-id="git-commit-message"]')).toBeVisible();
+    await expect(cloneHost.locator('[data-panel-id="git-suggest-button"]')).toHaveText('Proposer un message');
     await context.close();
   }
   // Context race: held old-root reads/suggest must not overwrite the new
@@ -432,16 +620,18 @@ try {
   {
     const { context, page } = await openFilesTab({ width: 1440, theme: 'dark' });
     await expect(page.locator('.git-file-check')).not.toHaveCount(0);
-    // A Git write in flight blocks the switch until it lands.
+    // A Git write in flight blocks the switch until it lands (dialog stays
+    // pending; the worktree open is refused with an "en cours" toast).
     holdCommit = true;
-    await page.locator('#git-commit-message').fill('race message');
-    await page.locator('#git-commit-button').click();
+    await expect(commitMessage(page)).toBeVisible();
+    await commitMessage(page).fill('race message');
+    await commitButton(page).click();
     await page.waitForTimeout(500);
     await page.locator('#files-worktrees').click();
     await expect(page.locator('.files-wt-row')).toHaveCount(3);
     await page.locator('.files-wt-row').nth(1).locator('button', { hasText: 'Ouvrir' }).click();
     await expect(page.locator('#toasts')).toContainText('en cours');
-    await expect(page.locator('#files-context-reset')).toBeHidden();
+    await expect(page.locator('#inspector-git-bar #files-context-reset')).toBeHidden();
     holdCommit = false;
     await expect(page.locator('#toasts')).toContainText('créé');
     // Held old-root Files read + suggest: switch mid-flight, then release.
@@ -449,21 +639,22 @@ try {
     holdSuggest = true;
     await page.locator('#files-changes').click();
     await page.locator('#refresh-files').click();
-    await page.locator('#git-suggest-button').click();
+    await expect(commitMessage(page)).toBeVisible();
+    await suggestButton(page).click();
     await page.waitForTimeout(500);
+    await expect(suggestButton(page)).toHaveText('…');
     await page.locator('#files-worktrees').click();
     await page.locator('.files-wt-row').nth(1).locator('button', { hasText: 'Ouvrir' }).click();
-    await expect(page.locator('#files-context-branch')).toContainText('feature');
+    await expect(page.locator('#git-branch-label')).toContainText('feature');
     holdOldFiles = false;
     holdSuggest = false;
     // Late old-root responses land after the switch: new view keeps the new
     // context (error note for the unknown folder), never old rows or drafts.
     await expect(page.locator('#inspector-file-list .inspector-file')).toHaveCount(0);
-    await expect(page.locator('#git-commit-message')).toHaveValue('');
-    await expect(page.locator('#files-context-reset')).toBeVisible();
+    await expect(page.locator('#inspector-git-bar #files-context-reset')).toBeVisible();
     await expectFilesSettled(page);
-    await page.locator('#files-context-reset').click();
-    await expect(page.locator('#files-context-reset')).toBeHidden();
+    await page.locator('#inspector-git-bar #files-context-reset').click();
+    await expect(page.locator('#inspector-git-bar #files-context-reset')).toBeHidden();
     await context.close();
   }
   // Stale AI completion: A finishes after the switch while B is pending —
@@ -474,24 +665,26 @@ try {
     suggestCalls = 0;
     holdA = true;
     holdB = true;
-    await page.locator('#git-suggest-button').click();
-    await expect(page.locator('#git-suggest-button')).toHaveText('\u2026');
+    await expect(commitMessage(page)).toBeVisible();
+    await suggestButton(page).click();
+    await expect(suggestButton(page)).toHaveText('…');
     await page.locator('#files-worktrees').click();
     await expect(page.locator('.files-wt-row')).toHaveCount(3);
     await page.locator('.files-wt-row').nth(1).locator('button', { hasText: 'Ouvrir' }).click();
-    await expect(page.locator('#files-context-branch')).toContainText('feature');
-    await page.locator('#files-context-reset').click();
+    await expect(page.locator('#git-branch-label')).toContainText('feature');
+    await page.locator('#inspector-git-bar #files-context-reset').click();
     await page.locator('#files-changes').click();
     await expect(page.locator('.git-file-check')).not.toHaveCount(0);
-    await page.locator('#git-suggest-button').click();
+    await expect(commitMessage(page)).toBeVisible();
+    await suggestButton(page).click();
     holdA = false;
     await page.waitForTimeout(800);
     // A resolved stale mid-B: B still owns the button and the draft is empty.
-    await expect(page.locator('#git-suggest-button')).toHaveText('\u2026');
-    await expect(page.locator('#git-commit-message')).toHaveValue('');
+    await expect(suggestButton(page)).toHaveText('…');
+    await expect(commitMessage(page)).toHaveValue('');
     holdB = false;
-    await expect(page.locator('#git-commit-message')).toHaveValue('message B');
-    await expect(page.locator('#git-suggest-button')).toContainText('Proposer un message');
+    await expect(commitMessage(page)).toHaveValue('message B');
+    await expect(suggestButton(page)).toContainText('Proposer un message');
     suggestAB = false;
     await expectFilesSettled(page);
     await context.close();
@@ -512,7 +705,7 @@ try {
     await page.locator('#files-history').click();
     await expect(page.locator('#files-history-list [data-commit-hash]')).toHaveCount(2);
     await page.locator('#files-changes').click();
-    await expect(page.locator('#inspector-git-commit')).toBeHidden();
+    await expect(commitBox(page)).toBeHidden();
     await expect(page.locator('.git-file-check')).toHaveCount(0);
     await page.locator('#files-worktrees').click();
     await expect(page.locator('#files-worktree-new')).toBeHidden();
@@ -522,25 +715,33 @@ try {
   {
     const { context, page } = await openFilesTab({ width: 1440, language: 'en', theme: 'light' });
     await expect(page.locator('#files-history')).toContainText('History');
-    await expect(page.locator('#files-worktrees')).toContainText('Worktrees');
+    await expect(page.locator('#files-worktrees')).toContainText(/Worktrees/);
     await expect(page.locator('#files-all')).toContainText('Browse');
     await page.locator('#files-history').click();
     await expect(page.locator('#files-history-list [data-commit-hash]')).toHaveCount(2);
+    await page.locator('#files-history-list [data-commit-hash="3333333333333333333333333333333333333333"]').click();
+    await expect(page.locator('#files-history-detail .files-commit-files button')).toHaveCount(3);
+    await expect(page.locator('#files-history-detail .files-diff')).toHaveCount(0);
     await page.screenshot({ path: 'test-results/files-workspace/history-narrow-light-1440.png', animations: 'disabled' });
     await context.close();
   }
-  // Mobile 390: sub-tabs fit, history stays usable.
+  // Mobile 390: sub-tabs fit, history stays usable left/right stacked.
   {
     const { context, page } = await openFilesTab({ width: 390 });
+    await expectToolbarRow(page);
+    await expect(commitMessage(page)).toBeVisible();
     const box = await page.locator('.files-subtabs').boundingBox();
     assert.ok(box && box.x >= -1 && box.x + box.width <= 391, JSON.stringify(box));
     await page.locator('#files-history').click();
     await expect(page.locator('#files-history-list [data-commit-hash]')).toHaveCount(2);
+    await page.locator('#files-history-list [data-commit-hash="3333333333333333333333333333333333333333"]').click();
+    await expect(page.locator('#files-history-detail .files-commit-files button')).toHaveCount(3);
+    await expectFilesSettled(page);
     await page.screenshot({ path: 'test-results/files-workspace/history-narrow-dark-390.png', animations: 'disabled' });
     await context.close();
   }
   assert.deepEqual(errors, []);
-  console.log('Files workspace UI PASS: history pagination/search/tags, inline wide diffs, viewer fallback, suggest intact, worktree Files-context, error retry, read-only, EN/light, 1440 + 390');
+  console.log('Files workspace UI PASS: flat changes, viewer green/red, inline commit/suggest, left/right history without inline diffs, worktree (N) + Git-bar context, error retry, read-only, EN/light, 1440 + 390 + 1600');
 } finally {
   holdOldFiles = holdSuggest = holdCommit = holdA = holdB = false;
   await browser?.close();

@@ -12,6 +12,7 @@ import { promisify } from 'node:util';
 import { setTimeout as delay } from 'node:timers/promises';
 import { randomUUID } from 'node:crypto';
 import { createApp } from '../server.mjs';
+import { createDefaultLayout } from '../public/docking-layout.js';
 
 const exec = promisify(execFile);
 const SHOTS = join('test-results', 'worktrees-ui');
@@ -121,7 +122,18 @@ async function loadedPanel(page) {
 
 try {
   browser = await launchStudioBrowser({ channel: 'chrome' });
-  const page = track(await browser.newPage({ locale: 'fr-FR', viewport: { width: 1440, height: 960 } }));
+  const context = await browser.newContext({ locale: 'fr-FR', viewport: { width: 1440, height: 960 } });
+  // Fixture-only: legacy Worktrees global composer/dialog flow needs the classic
+  // singleton home (opt out of default-on dock; honored via stored enabled:false).
+  await context.addInitScript(
+    (layout) => {
+      try {
+        localStorage.setItem('prime-studio.docking.layout', JSON.stringify(layout));
+      } catch {}
+    },
+    { ...createDefaultLayout(), enabled: false },
+  );
+  const page = track(await context.newPage());
   await page.goto(url);
   await expect(page.locator('#connection-label')).toContainText('connect', { timeout: 15000 });
   await projectRows(page).filter({ hasText: 'Atelier' }).click();

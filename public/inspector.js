@@ -467,20 +467,9 @@ export function createInspector({
     search: '',
     tagsOnly: false,
   };
-  let historyDetail = {
-    hash: '',
-    commit: null,
-    loading: false,
-    error: '',
-    file: '',
-    patch: '',
-    truncated: false,
-    binary: false,
-  };
+  let historyDetail = { hash: '', commit: null, loading: false, error: '' };
   // Worktrees tab state (read-only list; mutations stay in worktrees.js).
   let worktreeState = { list: [], currentPath: '', loading: false, error: '', loadedFor: '' };
-  // Modifications inline diff state (working-tree diff of the selected file).
-  let changeDiff = { path: '', patch: '', loading: false, error: '' };
   // Dock split state. Null = classic/mobile singleton (unchanged behavior).
   // Docked = { visible: Set<unitId>, show: (id) => bool }. #details-panel stays
   // the classic home; docking owns every move/restore, so no markers here.
@@ -488,6 +477,7 @@ export function createInspector({
   let current = {},
     agentData = null,
     fileData = null,
+    fileReadError = false,
     agentsAt = 0,
     filesAt = 0,
     lastAgents = '',
@@ -1355,6 +1345,16 @@ export function createInspector({
       };
   }
 
+  function fileStatusIcon(file) {
+    const status = String(file.status || '');
+    const kind = file.deleted || status.includes('D') ? 'deleted'
+      : file.untracked || status.includes('A') || status === '??' ? 'added' : 'modified';
+    const badge = node('span', `git-file-status is-${kind}`, () => ({ added: '+', deleted: '−', modified: '•' })[kind]);
+    badge.setAttribute('role', 'img');
+    bindAttribute(badge, 'aria-label', () => tr(`files.status_${kind}`));
+    bindAttribute(badge, 'title', () => tr(`files.status_${kind}`));
+    return badge;
+  }
   function renderFiles(append = false) {
     if (!owns('files')) return;
     closeFileMenu();
@@ -1362,6 +1362,7 @@ export function createInspector({
       crumb = $('inspector-file-breadcrumb');
     if (!list || !crumb) return;
     const focusedPath = document.activeElement?.closest('[data-file-path]')?.dataset.filePath;
+    const selection = new Map([...list.querySelectorAll('.git-file-check')].map((box) => [box.dataset.gitPath, box.checked]));
     if (!append) list.replaceChildren();
     crumb.replaceChildren();
     const note = $('inspector-file-note');
@@ -1375,34 +1376,21 @@ export function createInspector({
         const row = node('button', 'inspector-file');
         row.type = 'button';
         row.dataset.filePath = file.path;
-        const code = file.untracked ? '+' : file.deleted ? '−' : file.status.includes('R') ? 'R' : 'M';
-        row.append(
-          node(
-            'span',
-            `inspector-file-status ${file.deleted ? 'is-deleted' : file.untracked ? 'is-added' : ''}`,
-            () => code,
-          ),
-          node('span', 'inspector-file-path', () => file.path),
-        );
+        row.append(fileStatusIcon(file), node('span', 'inspector-file-path', () => file.path));
         bindAttribute(row, 'title', () =>
           [
             file.previousPath ? `${file.previousPath} → ${file.path}` : file.path,
             file.staged ? tr('ui.contient_des_modifications_indexees') : tr('ui.non_indexe'),
           ].join(' · '),
         );
-        // Single click selects the file for the inline working diff (wide
-        // panels); the viewer stays one explicit action away (button,
-        // double-click, context menu) instead of opening on every click.
-        row.onclick = () => selectChangedFile(file.path);
-        row.ondblclick = () => openFile(file, defaultFileView(file), filesCwd());
-        if (file.path === changeDiff.path) row.setAttribute('aria-current', 'true');
+        row.onclick = () => openFile(file, defaultFileView(file), filesCwd());
         attachFileMenu(row, file);
-        if (gitData?.git && !current.readOnly) {
+        if (fileData.git && !current.readOnly) {
           const wrap = node('div', 'inspector-file-row');
           const check = document.createElement('input');
           check.type = 'checkbox';
           check.className = 'git-file-check';
-          check.checked = true;
+          check.checked = selection.get(file.path) ?? true;
           check.dataset.gitPath = file.path;
           bindAttribute(check, 'aria-label', () => `${tr('git.panel_select_files')} : ${file.path}`);
           check.onchange = () => syncCommitBox();
@@ -1420,19 +1408,6 @@ export function createInspector({
         list.append(
           node('p', 'inspector-note', () => tr('ui.les_1_000_premieres_modifications_sont_affichees')),
         );
-      // Keep the inline working diff on the selected file (first change by
-      // default); reload when the file list was refetched.
-      if (fileMode === 'changes') {
-        const first = fileData.entries.find((entry) => !entry.directory)?.path || '';
-        if (changeDiff.path && !changedFileEntry(changeDiff.path)) {
-          changeDiff.path = first;
-          changeDiff.patch = '';
-          changeDiff.error = '';
-        } else if (!changeDiff.path) changeDiff.path = first;
-        if (changeDiff.path && changeDiff.loadedFilesAt !== filesAt && !pending.has('changeDiff'))
-          void loadChangeDiff();
-        else renderChangeDiff();
-      }
     } else {
       bindText(note, () => tr('ui.lecture_seule_dossiers_techniques_masques'));
       const root = node('button', '', () => tr('ui.projet'));
@@ -1489,13 +1464,18 @@ export function createInspector({
     if (!fileData) bindText($('inspector-file-note'), () => tr('ui.chargement_des_fichiers'));
     const mode = fileMode;
     try {
-      fileData = await request(
+      const data = await request(
         'files',
         mode === 'changes' ? filesUrl('changes') : filesUrl('', { path: directory, offset }),
       );
+      // Background reads must not replace unchanged rows, selection or scroll position.
+      if (!fileReadError && offset === 0 && JSON.stringify(data) === JSON.stringify(fileData)) return;
+      fileReadError = false;
+      fileData = data;
       renderFiles(offset > 0);
     } catch (error) {
       if (error.name !== 'AbortError') {
+        fileReadError = true;
         bindText($('inspector-file-note'), () => translateKnown(error.message));
         if (!fileData) empty($('inspector-file-list'), () => tr('ui.reessayez_avec_le_bouton_actualiser'));
       }
@@ -1563,39 +1543,14 @@ export function createInspector({
     if (split) split.hidden = filesView !== 'changes' && filesView !== 'browse';
     if (history) history.hidden = filesView !== 'history';
     if (worktrees) worktrees.hidden = filesView !== 'worktrees';
-    // The detail column only carries the inline diff in Modifications.
-    const detail = $('files-change-diff');
-    if (detail && filesView !== 'changes') detail.hidden = true;
-    syncFilesWidth();
     syncFilesContext();
-  }
-  function syncFilesWidth() {
-    const host = $('inspector-files');
-    if (!host) return;
-    // Wide (expanded/docked) panels show list + detail side by side with a
-    // readable inline diff; the narrow sidebar defers diffs to the viewer
-    // through explicit actions instead of crushed code.
-    host.classList.toggle('is-wide', (host.clientWidth || 0) >= 700);
+    syncCommitBox();
   }
   function syncFilesContext() {
     if (!owns('files')) return;
-    const ctx = $('files-context');
-    if (!ctx) return;
-    const show = Boolean(filesCwd() && gitData?.git);
-    ctx.hidden = !show;
-    if (!show) return;
-    const match = worktreeState.list.find((entry) => entry.path === filesCwd());
-    const branch = $('files-context-branch');
-    if (branch)
-      branch.textContent =
-        match?.branch || gitData.branch || tr('git.panel_detached', { head: gitShortHead() });
-    const path = $('files-context-path');
-    if (path) {
-      path.textContent = filesCwd();
-      path.title = filesCwd();
-    }
     const reset = $('files-context-reset');
     if (reset) reset.hidden = !filesCwdOverride;
+    $('git-branch-button')?.setAttribute('title', filesCwd() || '');
   }
   function setFilesCwdOverride(path) {
     if (!owns('files')) return;
@@ -1636,9 +1591,8 @@ export function createInspector({
       search: historyState.search,
       tagsOnly: historyState.tagsOnly,
     };
-    historyDetail = { hash: '', commit: null, loading: false, error: '', file: '', patch: '', truncated: false, binary: false };
+    historyDetail = { hash: '', commit: null, loading: false, error: '' };
     worktreeState = { list: [], currentPath: '', loading: false, error: '', loadedFor: '' };
-    changeDiff = { path: '', patch: '', loading: false, error: '', loadedFilesAt: 0 };
     syncFilesContext();
     syncFilesView();
     syncGitBar();
@@ -1665,77 +1619,7 @@ export function createInspector({
         ),
       );
   }
-  // ---- Modifications inline diff (working tree, selected file) ----
-  function changedFileEntry(path) {
-    return (fileData?.entries || []).find((entry) => entry.path === path) || null;
-  }
-  function selectChangedFile(path) {
-    if (!owns('files') || changeDiff.path === path) {
-      if (changeDiff.path === path && !changeDiff.patch && !changeDiff.loading) void loadChangeDiff();
-      return;
-    }
-    changeDiff.path = path;
-    changeDiff.patch = '';
-    changeDiff.error = '';
-    for (const row of $('inspector-file-list')?.querySelectorAll('[data-file-path]') || []) {
-      if (row.getAttribute('aria-current') === 'true') row.removeAttribute('aria-current');
-      if (row.dataset.filePath === path) row.setAttribute('aria-current', 'true');
-    }
-    void loadChangeDiff();
-  }
-  async function loadChangeDiff() {
-    if (!owns('files') || filesView !== 'changes' || fileMode !== 'changes') return;
-    const path = changeDiff.path;
-    if (!path || !filesCwd()) {
-      renderChangeDiff();
-      return;
-    }
-    if (pending.has('changeDiff')) return;
-    changeDiff.loading = true;
-    changeDiff.error = '';
-    renderChangeDiff();
-    const token = generation,
-      filesStamp = filesAt;
-    try {
-      const data = await request('changeDiff', filesUrl('diff', { path }));
-      if (token !== generation) return;
-      changeDiff.patch = typeof data?.text === 'string' ? data.text : '';
-      changeDiff.loadedFilesAt = filesStamp;
-      if (!changeDiff.patch) changeDiff.error = tr('files.diff_empty');
-    } catch (error) {
-      if (error.name === 'AbortError' || token !== generation) return;
-      changeDiff.patch = '';
-      changeDiff.error = translateKnown(error.message);
-    } finally {
-      if (token !== generation || changeDiff.path !== path) return;
-      changeDiff.loading = false;
-      renderChangeDiff();
-    }
-  }
-  function renderChangeDiff() {
-    if (!owns('files')) return;
-    const panel = $('files-change-diff');
-    if (!panel) return;
-    const show = filesView === 'changes' && Boolean(changeDiff.path);
-    panel.hidden = !show;
-    if (!show) return;
-    $('files-change-diff-title').textContent = changeDiff.path;
-    const error = $('files-change-diff-error');
-    if (error) {
-      error.hidden = !changeDiff.error && !changeDiff.loading;
-      if (changeDiff.loading) bindText(error, () => tr('ui.chargement_des_fichiers'));
-      else if (changeDiff.error) error.textContent = changeDiff.error;
-    }
-    const pre = $('files-change-diff-patch');
-    pre.replaceChildren();
-    if (changeDiff.patch) appendPatchLines(pre, changeDiff.patch);
-    syncFilesWidth();
-  }
-  function openChangeDiffViewer() {
-    const entry = changedFileEntry(changeDiff.path) || { path: changeDiff.path, status: 'M' };
-    if (!entry.path) return;
-    openFile(entry, 'diff', filesCwd());
-  }
+  // Shared patch rendering for working-tree and commit viewers.
   // ---- Historique ----
   async function loadHistory(reset = false) {
     if (!owns('files') || filesView !== 'history') return;
@@ -1759,7 +1643,7 @@ export function createInspector({
         error: '',
         selected: '',
       };
-      historyDetail = { hash: '', commit: null, loading: false, error: '', file: '', patch: '', truncated: false, binary: false };
+      historyDetail = { hash: '', commit: null, loading: false, error: '' };
     }
     historyState.loading = true;
     historyState.error = '';
@@ -1771,7 +1655,7 @@ export function createInspector({
       if (token !== generation) return;
       const normalized = normalizeHistory(data);
       historyState.commits = reset ? normalized.commits : [...historyState.commits, ...normalized.commits];
-      historyState.hasMore = normalized.hasMore;
+      historyState.hasMore = normalized.hasMore && normalized.commits.length > 0;
       historyState.ref = normalized.ref || 'HEAD';
       historyState.offset = offset + normalized.commits.length;
       if (reset) {
@@ -1793,6 +1677,9 @@ export function createInspector({
     if (!owns('files')) return;
     const list = $('files-history-list');
     if (!list) return;
+    const scrollTop = list.scrollTop;
+    const focusedHash = list.contains(document.activeElement) ? document.activeElement.dataset.commitHash : null;
+    list.setAttribute('aria-busy', String(historyState.loading));
     const errorBox = $('files-history-error');
     if (errorBox) {
       errorBox.hidden = !historyState.error;
@@ -1803,7 +1690,7 @@ export function createInspector({
         const retry = document.createElement('button');
         retry.type = 'button';
         retry.textContent = tr('files.history_retry');
-        retry.onclick = () => void loadHistory(true);
+        retry.onclick = () => void loadHistory(historyState.commits.length === 0);
         errorBox.append(text, retry);
       }
     }
@@ -1856,12 +1743,10 @@ export function createInspector({
         list.append(row);
       }
     }
-    const more = $('files-history-more');
-    if (more) {
-      more.hidden = !historyState.hasMore;
-      more.disabled = historyState.loading;
-    }
-    syncFilesWidth();
+    if (historyState.loading && historyState.commits.length)
+      list.append(node('p', 'inspector-note', () => tr('files.history_loading')));
+    list.scrollTop = scrollTop;
+    if (focusedHash) list.querySelector(`[data-commit-hash="${CSS.escape(focusedHash)}"]`)?.focus({ preventScroll: true });
   }
   function selectCommit(hash) {
     if (!owns('files') || !hash || historyState.selected === hash) {
@@ -1870,7 +1755,7 @@ export function createInspector({
       return;
     }
     historyState.selected = hash;
-    historyDetail = { hash, commit: null, loading: false, error: '', file: '', patch: '', truncated: false, binary: false };
+    historyDetail = { hash, commit: null, loading: false, error: '' };
     for (const row of $('files-history-list')?.querySelectorAll('[data-commit-hash]') || []) {
       if (row.dataset.commitHash === hash) row.setAttribute('aria-current', 'true');
       else row.removeAttribute('aria-current');
@@ -1887,7 +1772,7 @@ export function createInspector({
     }
     cancel('commit');
     cancel('commitDiff');
-    historyDetail = { hash, commit: null, loading: true, error: '', file: '', patch: '', truncated: false, binary: false };
+    historyDetail = { hash, commit: null, loading: true, error: '' };
     renderHistoryDetail();
     const token = generation;
     try {
@@ -1895,7 +1780,6 @@ export function createInspector({
       if (token !== generation) return;
       const commit = normalizeCommit(data);
       historyDetail.commit = commit;
-      historyDetail.file = commit.files[0]?.path || '';
     } catch (error) {
       if (error.name === 'AbortError' || token !== generation) return;
       historyDetail.error = translateKnown(error.message);
@@ -1903,203 +1787,78 @@ export function createInspector({
       if (token !== generation || historyDetail.hash !== hash) return;
       historyDetail.loading = false;
       renderHistoryDetail();
-      if (historyDetail.commit && historyDetail.file) void loadCommitPatch();
-    }
-  }
-  async function loadCommitPatch() {
-    if (!owns('files')) return;
-    const { hash, file } = historyDetail;
-    if (!hash || !file || !filesCwd()) return;
-    if (pending.has('commitDiff')) return;
-    const token = generation;
-    try {
-      const data = await request('commitDiff', commitDiffUrl(filesCwd(), hash, file));
-      if (token !== generation || historyDetail.hash !== hash || historyDetail.file !== file) return;
-      const normalized = normalizeCommitDiff(data);
-      historyDetail.patch = normalized.patch;
-      historyDetail.truncated = normalized.truncated;
-      historyDetail.binary = normalized.binary;
-    } catch (error) {
-      if (error.name === 'AbortError' || token !== generation) return;
-      historyDetail.patch = '';
-      historyDetail.error = translateKnown(error.message);
-    } finally {
-      if (token !== generation || historyDetail.hash !== hash || historyDetail.file !== file) return;
-      renderHistoryDetail();
     }
   }
   function renderHistoryDetail() {
     if (!owns('files')) return;
     const panel = $('files-history-detail');
     if (!panel) return;
-    const hash = historyState.selected;
-    panel.hidden = !hash;
-    if (!hash) return;
+    panel.hidden = !historyState.selected;
     panel.replaceChildren();
+    if (!historyState.selected) return;
     const detail = historyDetail;
-    if (detail.loading && !detail.commit) {
-      const item = document.createElement('p');
-      item.className = 'inspector-note';
-      item.textContent = tr('files.history_loading');
-      panel.append(item);
+    if (detail.loading) {
+      empty(panel, () => tr('files.history_loading'));
       return;
     }
-    if (detail.error && !detail.commit) {
-      const item = document.createElement('p');
-      item.className = 'inspector-note';
-      item.textContent = `${tr('files.history_load_error')} ${detail.error}`;
-      const retry = document.createElement('button');
+    if (detail.error) {
+      empty(panel, () => `${tr('files.history_load_error')} ${detail.error}`);
+      const retry = node('button', 'inspector-refresh', () => tr('files.history_retry'));
       retry.type = 'button';
-      retry.textContent = tr('files.history_retry');
       retry.onclick = () => void loadCommitDetail();
-      const actions = document.createElement('div');
-      actions.className = 'files-detail-actions';
-      actions.append(retry);
-      panel.append(item, actions);
+      panel.append(retry);
       return;
     }
-    const commit = detail.commit;
-    if (!commit) return;
-    const title = document.createElement('h3');
-    title.textContent = commit.subject || commit.hash;
-    const meta = document.createElement('div');
-    meta.className = 'files-detail-meta';
-    meta.textContent = [
-      commit.hash.slice(0, 7),
-      commit.authorName,
-      formatCommitDate(commit.date, getLanguage()),
-    ]
-      .filter(Boolean)
-      .join(' · ');
-    panel.append(title, meta);
-    for (const tag of [...commit.tags]) {
-      const chip = document.createElement('span');
-      chip.className = 'files-tag';
-      chip.textContent = tag;
-      panel.append(chip);
+    if (!detail.commit) return;
+    panel.append(node('h3', '', () => tr('files.changed_files')));
+    if (!detail.commit.files.length) {
+      empty(panel, () => tr('files.history_no_files'));
+      return;
     }
-    const stats = document.createElement('div');
-    stats.className = 'files-detail-meta';
-    stats.textContent = tr('files.stats', {
-      files: commit.stats.files,
-      additions: commit.stats.additions,
-      deletions: commit.stats.deletions,
-    });
-    panel.append(stats);
-    if (commit.body) {
-      const body = document.createElement('p');
-      body.className = 'files-detail-meta';
-      body.textContent = commit.body;
-      panel.append(body);
-    }
-    const filesLabel = document.createElement('h3');
-    filesLabel.textContent = tr('files.changed_files');
-    panel.append(filesLabel);
-    if (!commit.files.length) {
-      const item = document.createElement('p');
-      item.className = 'inspector-note';
-      item.textContent = tr('files.diff_empty');
-      panel.append(item);
-    } else {
-      const files = document.createElement('ul');
-      files.className = 'files-commit-files';
-      for (const entry of commit.files) {
-        const item = document.createElement('li');
-        const button = document.createElement('button');
-        button.type = 'button';
-        if (entry.path === detail.file) button.setAttribute('aria-current', 'true');
-        const status = document.createElement('span');
-        status.className = 'files-st';
-        status.textContent = entry.status;
-        const path = document.createElement('span');
-        path.className = 'files-path';
-        path.textContent = entry.oldPath ? `${entry.oldPath} → ${entry.path}` : entry.path;
-        const stat = document.createElement('span');
-        stat.className = 'files-row-meta';
-        stat.textContent = formatFileStat(entry);
-        button.append(status, path, stat);
-        button.onclick = () => {
-          if (historyDetail.file === entry.path) return;
-          historyDetail.file = entry.path;
-          historyDetail.patch = '';
-          historyDetail.error = '';
-          historyDetail.truncated = false;
-          historyDetail.binary = false;
-          renderHistoryDetail();
-          void loadCommitPatch();
-        };
-        item.append(button);
-        files.append(item);
+    const files = document.createElement('ul');
+    files.className = 'files-commit-files';
+    for (const entry of detail.commit.files) {
+      const item = document.createElement('li');
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.append(
+        fileStatusIcon(entry),
+        node('span', 'files-path', () => entry.oldPath ? `${entry.oldPath} → ${entry.path}` : entry.path),
+      );
+      const stats = node('span', 'files-line-stats');
+      if (entry.binary) stats.textContent = formatFileStat(entry);
+      else if (typeof entry.additions === 'number' && typeof entry.deletions === 'number') {
+        stats.append(node('span', 'git-additions', () => `+${entry.additions}`),
+          node('span', 'git-deletions', () => `−${entry.deletions}`));
       }
-      panel.append(files);
+      button.append(stats);
+      button.onclick = () => void openCommitDiffViewer(entry);
+      item.append(button);
+      files.append(item);
     }
-    const actions = document.createElement('div');
-    actions.className = 'files-detail-actions';
-    const open = document.createElement('button');
-    open.type = 'button';
-    open.id = 'files-history-open';
-    open.textContent = tr('files.open_diff');
-    open.disabled = !detail.file || detail.loading;
-    open.onclick = () => void openCommitDiffViewer(false);
-    const expand = document.createElement('button');
-    expand.type = 'button';
-    expand.id = 'files-history-expand';
-    expand.textContent = tr('files.expand');
-    expand.disabled = !detail.file || detail.loading;
-    expand.onclick = () => void openCommitDiffViewer(true);
-    actions.append(open, expand);
-    panel.append(actions);
-    if (detail.error && detail.commit) {
-      const item = document.createElement('p');
-      item.className = 'inspector-note';
-      item.textContent = `${tr('files.history_diff_error')} ${detail.error}`;
-      panel.append(item);
-    } else if (detail.binary) {
-      const item = document.createElement('p');
-      item.className = 'inspector-note';
-      item.textContent = tr('files.history_binary');
-      panel.append(item);
-    } else if (detail.patch) {
-      const pre = document.createElement('pre');
-      pre.className = 'files-diff';
-      appendPatchLines(pre, detail.patch);
-      panel.append(pre);
-      if (detail.truncated) {
-        const item = document.createElement('p');
-        item.className = 'inspector-note';
-        item.textContent = tr('files.history_truncated');
-        panel.append(item);
-      }
-    }
-    syncFilesWidth();
+    panel.append(files);
   }
-  async function openCommitDiffViewer(forceViewer) {
-    if (!owns('files')) return;
-    const detail = historyDetail;
-    if (!detail.hash || !detail.file) return;
-    const wide = $('inspector-files')?.classList.contains('is-wide');
-    if (!forceViewer && wide && (detail.patch || detail.binary)) {
-      $('files-history-detail')?.querySelector('.files-diff')?.scrollIntoView({ block: 'nearest' });
-      return;
+  async function openCommitDiffViewer(entry) {
+    if (!owns('files') || !historyDetail.commit) return;
+    const commit = historyDetail.commit;
+    const cwd = filesCwd();
+    beginView(`${commit.hash.slice(0, 7)} · ${entry.path}`);
+    const token = viewVersion;
+    try {
+      const data = normalizeCommitDiff(await request('viewer', commitDiffUrl(cwd, commit.hash, entry.path)));
+      if (token !== viewVersion) return;
+      body.replaceChildren();
+      if (data.binary) empty(body, () => tr('files.history_binary'));
+      else if (data.patch) {
+        const pre = node('pre', 'inspector-diff');
+        appendPatchLines(pre, data.patch);
+        body.append(pre);
+      } else empty(body, () => tr('files.diff_empty'));
+      if (data.truncated) body.append(node('p', 'inspector-note', () => tr('files.history_truncated')));
+    } catch (error) {
+      if (error.name !== 'AbortError' && token === viewVersion)
+        empty(body, () => translateKnown(error.message));
     }
-    if (!detail.patch && !detail.binary && !detail.loading) {
-      await loadCommitPatch();
-      if (!historyDetail.patch && !historyDetail.binary) return;
-    }
-    const commit = detail.commit,
-      short = (commit?.hash || detail.hash).slice(0, 7);
-    beginView(`${short} · ${detail.file}`);
-    // Replace the loading placeholder rather than appending after it.
-    body.replaceChildren();
-    if (detail.binary) {
-      empty(body, () => tr('files.history_binary'));
-      return;
-    }
-    const pre = node('pre', 'inspector-diff');
-    appendPatchLines(pre, historyDetail.patch);
-    body.append(pre);
-    if (historyDetail.truncated)
-      body.append(node('p', 'inspector-note', () => tr('files.history_truncated')));
   }
   // ---- Worktrees (read-only list; create/inspect/integrate/remove reuse
   // the existing managed dialogs from worktrees.js) ----
@@ -2134,6 +1893,8 @@ export function createInspector({
   }
   function renderWorktrees() {
     if (!owns('files')) return;
+    const tab = $('files-worktrees');
+    if (tab) bindText(tab, () => `${tr('files.worktrees_tab')}${worktreeState.list.length > 1 ? ` (${worktreeState.list.length})` : ''}`);
     const list = $('files-worktree-list');
     if (!list) return;
     const errorBox = $('files-worktrees-error');
@@ -2179,27 +1940,26 @@ export function createInspector({
     for (const entry of worktreeState.list) {
       const row = document.createElement('div');
       row.className = 'files-wt-row';
-      const isCurrent = entry.isCurrent || entry.path === filesCwd();
+      const isCurrent = sameFilesPath(entry.path, filesCwd());
       if (isCurrent) row.classList.add('is-current');
       const name = document.createElement('strong');
       name.textContent = entry.branch || tr('files.worktree_detached');
       if (entry.bare) name.textContent = tr('files.worktree_bare');
       const meta = document.createElement('div');
       meta.className = 'files-detail-meta';
-      const states = [entry.path];
-      if (isCurrent) states.push(tr('files.worktree_current'));
-      // dirty is intentionally omitted by the backend when unavailable:
-      // never assume clean, render an explicit unknown state instead.
-      states.push(
-        entry.dirty === true
-          ? tr('files.worktree_dirty')
-          : entry.dirty === false
-            ? tr('files.worktree_clean')
-            : tr('files.worktree_unknown'),
-      );
+      const path = document.createElement('div');
+      path.className = 'files-wt-path';
+      path.textContent = entry.path;
+      path.title = entry.path;
+      const status = document.createElement('div');
+      status.className = 'files-wt-status';
+      if (isCurrent) status.append(node('span', 'files-wt-current', () => tr('files.worktree_current')));
+      // Missing dirty metadata means unknown, never clean.
+      const states = [entry.dirty === true ? tr('files.worktree_dirty')
+        : entry.dirty === false ? tr('files.worktree_clean') : tr('files.worktree_unknown')];
       if (entry.detached && entry.branch) states.push(tr('files.worktree_detached'));
-      meta.textContent = states.filter(Boolean).join(' · ');
-      meta.title = entry.path;
+      status.append(node('span', 'files-wt-state', () => states.join(' · ')));
+      meta.append(path, status);
       const actions = document.createElement('div');
       actions.className = 'files-wt-actions';
       // Ouvrir switches the Files context only. Unsupported native contexts
@@ -2247,7 +2007,6 @@ export function createInspector({
       }
       list.append(row);
     }
-    syncFilesWidth();
   }
   async function openWorktreeFolder(path, button) {
     if (!owns('files') || !path || !current.nativeFileOpen || current.readOnly) return;
@@ -2297,12 +2056,12 @@ export function createInspector({
         historyTags.setAttribute('aria-pressed', String(historyState.tagsOnly));
         renderHistory();
       };
-    const historyMore = $('files-history-more');
-    if (historyMore) historyMore.onclick = () => void loadHistory(false);
-    const changeOpen = $('files-change-diff-open');
-    if (changeOpen) changeOpen.onclick = () => openChangeDiffViewer();
-    const contextSwitch = $('files-context-switch');
-    if (contextSwitch) contextSwitch.onclick = () => setFilesView('worktrees');
+    const historyList = $('files-history-list');
+    if (historyList) historyList.onscroll = () => {
+      if (filesView === 'history' && historyState.hasMore && !historyState.loading && !historyState.error &&
+          historyList.scrollTop + historyList.clientHeight >= historyList.scrollHeight - 48)
+        void loadHistory();
+    };
     const contextReset = $('files-context-reset');
     if (contextReset) contextReset.onclick = () => setFilesCwdOverride(null);
     const worktreeNew = $('files-worktree-new');
@@ -2319,7 +2078,6 @@ export function createInspector({
       renderHistory();
       renderHistoryDetail();
       renderWorktrees();
-      renderChangeDiff();
     });
   }
   // Git controls in the Files tab: branch switcher, fetch/pull/push and commit.
@@ -2401,7 +2159,7 @@ export function createInspector({
     const box = $('inspector-git-commit');
     if (!box) return;
     const show = Boolean(
-      filesCwd() && !current.readOnly && fileMode === 'changes' && gitData?.git && fileData?.git,
+      filesCwd() && !current.readOnly && filesView === 'changes' && gitData?.git && fileData?.git,
     );
     box.hidden = !show;
     if (!show) return;
@@ -2442,6 +2200,7 @@ export function createInspector({
     }
     syncGitBar();
     syncCommitBox();
+    if (gitData?.git) void loadWorktrees(true);
   }
   // POST responses carry the bare status shape (no git flag); normalize it.
   function applyGitStatus(result) {
@@ -3195,20 +2954,7 @@ export function createInspector({
         }
         const pre = node('pre', mode === 'diff' ? 'inspector-diff' : 'inspector-code');
         if (mode === 'diff') {
-          for (const line of data.text.split('\n'))
-            pre.append(
-              node(
-                'span',
-                line.startsWith('@@')
-                  ? 'diff-hunk'
-                  : line.startsWith('+') && !line.startsWith('+++')
-                    ? 'diff-add'
-                    : line.startsWith('-') && !line.startsWith('---')
-                      ? 'diff-remove'
-                      : '',
-                () => line || ' ',
-              ),
-            );
+          appendPatchLines(pre, data.text);
           body.append(
             node('p', 'inspector-note', () =>
               tr('ui.etat_actuel_compare_au_dernier_commit_head_index_et_fichiers_de_t'),
@@ -3534,10 +3280,9 @@ export function createInspector({
         search: historyState.search,
         tagsOnly: historyState.tagsOnly,
       };
-      historyDetail = { hash: '', commit: null, loading: false, error: '', file: '', patch: '', truncated: false, binary: false };
+      historyDetail = { hash: '', commit: null, loading: false, error: '' };
       worktreeState = { list: [], currentPath: '', loading: false, error: '', loadedFor: '' };
-      changeDiff = { path: '', patch: '', loading: false, error: '', loadedFilesAt: 0 };
-      if (owns('files')) {
+        if (owns('files')) {
         closeFileMenu();
         closeGitMenu();
       }

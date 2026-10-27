@@ -938,17 +938,6 @@
                   Parcourir
                 </button>
               </div>
-              <div id="files-context" class="files-context" hidden>
-                <span data-icon="branch" aria-hidden="true"></span>
-                <strong id="files-context-branch">…</strong>
-                <span id="files-context-path" class="files-context-path"></span>
-                <button id="files-context-switch" type="button" data-i18n="files.context_switch">
-                  Changer
-                </button>
-                <button id="files-context-reset" type="button" data-i18n="files.context_reset" hidden>
-                  Revenir au projet
-                </button>
-              </div>
               <div id="inspector-git-bar" class="inspector-git-bar" hidden>
                 <button
                   id="git-branch-button"
@@ -961,6 +950,7 @@
                   <span data-icon="branch" aria-hidden="true"></span><span id="git-branch-label">…</span>
                 </button>
                 <span id="git-sync-counts" class="inspector-git-counts" role="status"></span>
+                <button id="files-context-reset" type="button" class="inspector-refresh" data-i18n-aria-label="files.context_reset" data-i18n-title="files.context_reset" aria-label="Revenir au projet" title="Revenir au projet" hidden>↩</button>
                 <div class="inspector-git-actions">
                   <button
                     id="git-fetch-button"
@@ -968,7 +958,7 @@
                     class="inspector-refresh"
                     data-i18n="git.panel_fetch"
                   >
-                    Récupérer
+                    Fetch
                   </button>
                   <button
                     id="git-pull-button"
@@ -988,8 +978,7 @@
                   </button>
                 </div>
               </div>
-              <div id="files-changes-split" class="files-split">
-                <div class="files-list-col">
+              <div id="files-changes-split" class="files-list-pane">
                   <div id="inspector-git-commit" class="inspector-git-commit" hidden>
                     <textarea
                       id="git-commit-message"
@@ -1020,22 +1009,9 @@
                       </button>
                     </div>
                   </div>
-                  <p id="inspector-file-note" class="inspector-note" role="status"></p>
-                  <div id="inspector-file-breadcrumb" class="inspector-file-breadcrumb"></div>
-                  <div id="inspector-file-list"></div>
-                </div>
-                <div class="files-detail-col">
-                  <div id="files-change-diff" class="files-detail" hidden>
-                    <h3 id="files-change-diff-title"></h3>
-                    <div class="files-detail-actions">
-                      <button id="files-change-diff-open" type="button" data-i18n="files.open_in_viewer">
-                        Ouvrir dans la visionneuse
-                      </button>
-                    </div>
-                    <div id="files-change-diff-error" class="inspector-note" role="status" hidden></div>
-                    <pre id="files-change-diff-patch" class="files-diff"></pre>
-                  </div>
-                </div>
+                <p id="inspector-file-note" class="inspector-note" role="status"></p>
+                <div id="inspector-file-breadcrumb" class="inspector-file-breadcrumb"></div>
+                <div id="inspector-file-list"></div>
               </div>
               <div id="files-pane-history" class="files-pane" hidden>
                 <div class="files-search-row">
@@ -1063,15 +1039,6 @@
                 <div class="files-split">
                   <div class="files-list-col">
                     <div id="files-history-list" class="files-list" role="listbox"></div>
-                    <button
-                      id="files-history-more"
-                      type="button"
-                      class="files-more"
-                      data-i18n="files.history_more"
-                      hidden
-                    >
-                      Afficher la suite
-                    </button>
                   </div>
                   <div class="files-detail-col">
                     <div id="files-history-detail" class="files-detail" hidden></div>

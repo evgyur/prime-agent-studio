@@ -302,6 +302,31 @@ async function hydrateCase(activeId, label) {
     `${label}: both drafts preserved in storage`,
   );
   step(`${label}: focus (${activeId}) + both drafts preserved after hydration`);
+  // Beta.7+ renders tool activity collapsed (lazy closed bodies for perf):
+  // hydration itself stays zero-click (asserted above); open the stacks
+  // through the real UI, then keep the SAME tool/1MB assertions.
+  // Re-query after each open: expanding reflows, handles can go stale.
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const closed = await page
+      .locator(
+        '#messages details.activity-stack:not([open]), .cvw-shell[data-view="conv:dyn1"] .cvw-messages details.activity-stack:not([open])',
+      )
+      .all();
+    if (closed.length === 0) break;
+    await closed[0].locator(':scope > summary').click();
+    await expect(
+      page
+        .locator(
+          '#messages details.activity-stack[open], .cvw-shell[data-view="conv:dyn1"] .cvw-messages details.activity-stack[open]',
+        )
+        .first(),
+    ).toBeAttached({ timeout: 5000 });
+  }
+  step(`${label}: activity stacks opened through UI (lazy bodies), same content expected`);
+  if ((await marker(page))[0] !== activeId) {
+    await page.locator(`button[data-dock-tab="${activeId}"]`).click();
+    await expect.poll(() => marker(page), { timeout: 10000 }).toEqual([activeId]);
+  }
   const toolA = page.locator('#messages .tool-block').filter({ hasText: 'historical-tool-result:reg-a' });
   await expect(toolA).toHaveCount(1, { timeout: 10000 });
   const dynTools = page

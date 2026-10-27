@@ -369,26 +369,6 @@
   overflow-wrap: anywhere;
   min-width: 0;
 }
-.inspector-file-status {
-  display: grid;
-  place-items: center;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  width: 20px;
-  height: 22px;
-  border-radius: 5px;
-  background: var(--accent-bg);
-  color: var(--accent-text, var(--text));
-  flex-shrink: 0;
-}
-.inspector-file-status.is-added {
-  color: #a5d8b7;
-  background: #274532;
-}
-.inspector-file-status.is-deleted {
-  color: #efbbbb;
-  background: #513034;
-}
 .inspector-file-symbol {
   width: 20px;
   flex-shrink: 0;
@@ -617,12 +597,12 @@
   padding: 0 6px;
   min-height: 1.8em;
 }
-.diff-add {
-  color: #bce6c8;
+.inspector-diff .diff-add {
+  color: var(--git-added, #28a745);
   background: #25412d;
 }
-.diff-remove {
-  color: #f0c0c0;
+.inspector-diff .diff-remove {
+  color: var(--git-deleted, #d73a49);
   background: #4b2b30;
 }
 .diff-hunk {
@@ -661,12 +641,12 @@
 [data-theme='light'] .inspector-status.is-failed {
   color: #a53f3f;
 }
-[data-theme='light'] .diff-add {
-  color: #245432;
+[data-theme='light'] .inspector-diff .diff-add {
+  color: var(--git-added, #22863a);
   background: #e6f4e9;
 }
-[data-theme='light'] .diff-remove {
-  color: #863333;
+[data-theme='light'] .inspector-diff .diff-remove {
+  color: var(--git-deleted, #cb2431);
   background: #fce9e9;
 }
 @media (min-width: 1600px) {

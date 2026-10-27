@@ -4,6 +4,14 @@
 
 Changes by version. See [GitHub releases](https://github.com/zerr0o/prime-agent-studio/releases) for installers and source archives.
 
+## 4.4.6
+
+- **GPT-6.1 Terra**: added to the OpenAI API and Codex catalogs with verified model metadata and reasoning levels. Codex availability still depends on your account; your default model is unchanged.
+- **Files**: simpler Changes and History views. The commit message and **Suggest a message** remain visible in Changes. History shows commits beside their files, with tags, automatic loading on bottom scroll, and GitHub Desktop status colors. Click a file to open its diff in the viewer.
+- **Worktrees**: a count in the tab, rounded selection, a **Current** badge, and separate path and change-status lines. Opening a worktree changes only the Files context, not the conversation.
+- **Stable layout**: background file refreshes no longer flash a loading message or reset checked files. Branch, status, and Fetch/Pull/Push share one compact toolbar. Active skill chips no longer collapse the primary message input.
+- **Git safety**: commits include only selected files and preserve unrelated staged files. File names are treated literally, and read-only access keeps Git write operations blocked.
+
 ## 4.4.6-beta.2
 
 - **Input with an active skill**: fixed a CSS specificity conflict that collapsed the primary input to a few pixels and caused an unwanted scrollbar. The input now keeps its width with or without a skill on desktop, laptop, and mobile layouts.

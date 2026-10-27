@@ -15,6 +15,11 @@ try {
   let reads = 0,
     posts = 0,
     manualResponse;
+  let autoRefreshGate = null;
+  let autoRefreshRelease = null;
+  autoRefreshGate = new Promise((resolve) => {
+    autoRefreshRelease = resolve;
+  });
   await page.route('**/api/models{,/refresh}', async (route) => {
     if (route.request().method() === 'POST') {
       posts += 1;
@@ -24,6 +29,13 @@ try {
       return route.fulfill({ json: modelCatalogue() });
     }
     reads += 1;
+    if (reads === 2) {
+      // Deterministic automatic refresh: hold the dialog-triggered refresh until
+      // the test has observed the refreshing status, so the assertion cannot race
+      // the mocked network round-trip. Release happens right after the status check.
+      await autoRefreshGate;
+      return route.fulfill({ json: modelCatalogue({ retired: true, refreshing: false }) });
+    }
     return route.fulfill({ json: modelCatalogue({ retired: reads > 1, refreshing: reads === 1 }) });
   });
   await page.goto(fixture.url);
@@ -33,6 +45,7 @@ try {
   await page.locator('#thinking-select').selectOption('high');
   await page.locator('#model-picker-button').click();
   await expect(page.locator('#model-results-status')).toHaveText('Actualisation des modèles…');
+  autoRefreshRelease();
   await page.locator('#model-search').fill('minimax');
   await freeRow.locator('.model-favorite').click();
   await expect(freeRow.locator('.model-favorite')).toBeFocused();
@@ -108,11 +121,17 @@ try {
   const offline = await browser.newPage({ locale: 'fr-FR', viewport: { width: 1440, height: 960 } });
   offline.on('pageerror', (error) => errors.push(error.message));
   let offlineReads = 0;
-  await offline.route('**/api/models', (route) => {
+  let offlineRefreshRelease = null;
+  const offlineRefreshGate = new Promise((resolve) => {
+    offlineRefreshRelease = resolve;
+  });
+  await offline.route('**/api/models', async (route) => {
     offlineReads += 1;
-    return offlineReads === 1
-      ? route.fulfill({ json: modelCatalogue({ refreshing: true }) })
-      : route.continue();
+    if (offlineReads === 1) return route.fulfill({ json: modelCatalogue({ refreshing: true }) });
+    // Deterministic offline interrupt: hold the dialog-triggered refresh until the
+    // test has gone offline, so the continued network attempt must fail while offline.
+    await offlineRefreshGate;
+    return route.continue();
   });
   await offline.goto(fixture.url);
   await offline.locator('#composer').fill('Brouillon conservé hors connexion');
@@ -121,6 +140,7 @@ try {
   await expect(offline.locator('#model-results-status')).toHaveText('Actualisation des modèles…');
   await offline.locator('#model-search').fill('minimax');
   await offline.context().setOffline(true);
+  offlineRefreshRelease();
   await expect(offline.locator('#model-results-status')).toHaveText(
     'Actualisation interrompue. Catalogue conservé.',
   );

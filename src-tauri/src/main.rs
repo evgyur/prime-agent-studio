@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod components;
+mod desktop_port;
 mod directory_picker;
 mod notifications;
 #[cfg(test)]
@@ -33,11 +34,19 @@ struct Preferences {
     legacy_root: Option<String>,
     #[serde(default)]
     notifications: notifications::Preferences,
+    /// Preferred Studio loopback port. `None` (4.4.4 files) means 3088.
+    #[serde(default)]
+    port: Option<u16>,
 }
 struct Desktop {
     root: PathBuf,
     resources: PathBuf,
+    /// Effective loopback port (preferred or automatic fallback).
     port: u16,
+    /// Preferred port before fallback; equals `port` when no move happened.
+    preferred_port: u16,
+    /// Explicit `PRIME_STUDIO_DESKTOP_PORT` override: strict, no fallback.
+    env_override: bool,
     prefs: Mutex<Preferences>,
     starting: AtomicBool,
     restart_phase: Mutex<Option<serde_json::Value>>,
@@ -395,6 +404,177 @@ fn desktop_state(
     Ok(
         serde_json::json!({"version":app.package_info().version.to_string(),"started":prefs.started,"legacyRoot":prefs.legacy_root,"imported":state.root.join("data").exists(),"autostart":app.autolaunch().is_enabled().ok()}),
     )
+}
+/// Current loopback port selection: `{port, envOverride, movedFrom}`.
+/// `movedFrom` is the preferred port when the automatic fallback moved us
+/// elsewhere, otherwise null (including under an env override).
+#[tauri::command]
+fn desktop_port_state(
+    window: WebviewWindow,
+    app: tauri::AppHandle,
+) -> Result<serde_json::Value, String> {
+    update_window_only(&window, &app)?;
+    let state = app.state::<Desktop>();
+    Ok(serde_json::json!({
+        "port": state.port,
+        "envOverride": state.env_override,
+        "movedFrom": if state.env_override || state.port == state.preferred_port {
+            serde_json::Value::Null
+        } else {
+            state.preferred_port.into()
+        },
+    }))
+}
+/// Persist a new preferred port, then restart the app so the next launch
+/// serves it. Returns `{changed:true, port}` once the restart is requested,
+/// or a control-style refusal `{changed:false, reason:"agents_running"}`
+/// when agents are active and `force` is false. Rejects unknown ports with
+/// `port_invalid`, env overrides with `port_env_override`, and occupied or
+/// unbindable destinations with `port_unavailable`. A failed preference
+/// write after the stop rejects with `port_save_failed` (old server already
+/// stopped; re-invoke Start or relaunch).
+#[tauri::command]
+async fn desktop_port_set(
+    window: WebviewWindow,
+    app: tauri::AppHandle,
+    port: i64,
+    force: Option<bool>,
+) -> Result<serde_json::Value, String> {
+    update_window_only(&window, &app)?;
+    let force = force.unwrap_or(false);
+    // Shared guards: never change ports while another server operation runs.
+    let updates = app.state::<updates::Updates>();
+    let _operation = updates::begin(&updates)?;
+    // Tracked stop with Quit parity, so the port change is visible in the
+    // 1s light poll instead of an invisible stop. No cancellation override:
+    // the kind is one-shot and the blocking stop is awaited, never timed out.
+    let track_id = updates::track_operation_start(&app, "quit", "working", false)?;
+    let state = app.state::<Desktop>();
+    if state.starting.swap(true, Ordering::SeqCst) {
+        updates::track_operation_finish(&app, &track_id, "error", Some("update_busy"));
+        return Err("update_busy".into());
+    }
+    let outcome = desktop_port_set_inner(&app, port, force, &track_id).await;
+    // Restart path keeps the guard through request_restart/process exit:
+    // a late Start IPC must see busy, never boot the old-port server while
+    // the new process comes up on the new port.
+    if !desktop_port::port_set_keep_starting_guard(&outcome) {
+        state.starting.store(false, Ordering::SeqCst);
+    }
+    // Every exit lands terminal: changed/no-op finish done, refusals and
+    // errors finish error with the stable code.
+    let (stage, code) = desktop_port::port_change_terminal(&outcome);
+    updates::track_operation_finish(&app, &track_id, stage, code.as_deref());
+    match outcome {
+        Ok((value, restart)) => {
+            if restart {
+                // Single-instance Exit cleanup must run so the lock file is
+                // released; never use the immediate `restart()` here.
+                app.request_restart();
+            }
+            Ok(value)
+        }
+        Err(error) => Err(error),
+    }
+}
+async fn desktop_port_set_inner(
+    app: &tauri::AppHandle,
+    requested: i64,
+    force: bool,
+    track_id: &str,
+) -> Result<(serde_json::Value, bool), String> {
+    let (root, resources, current, env_override, preferred) = {
+        let state = app.state::<Desktop>();
+        (
+            state.root.clone(),
+            state.resources.clone(),
+            state.port,
+            state.env_override,
+            state.preferred_port,
+        )
+    };
+    if desktop_port::validate_port_request(env_override, current, requested)? {
+        return Ok((
+            serde_json::json!({
+                "changed": false,
+                "port": current,
+                "envOverride": env_override,
+                "movedFrom": if env_override || current == preferred {
+                    serde_json::Value::Null
+                } else {
+                    preferred.into()
+                },
+            }),
+            false,
+        ));
+    }
+    let requested = requested as u16;
+    // Never steal a live port: healthy Studio, foreign service, reserved
+    // range, or an unbindable socket all reject here.
+    if !desktop_port::destination_available_live(requested) {
+        return Err("port_unavailable".into());
+    }
+    // Safely stop the old server with the same ownership and active-agent
+    // gates as Quit: only a clean stop (or nothing running) may proceed.
+    // Phases relay into the tracked operation (no timeout: the underlying
+    // stop is awaited, never abandoned).
+    let options =
+        quit_control_options(&resources, &root, current, force);
+    let app_for_phases = app.clone();
+    let track_for_phases = track_id.to_string();
+    let stop = tauri::async_runtime::spawn_blocking(move || {
+        run_desktop_control_with_phases(&resources, &options, Some(&|phase: serde_json::Value| {
+            let stage = phase.get("stage").and_then(|s| s.as_str()).unwrap_or("working");
+            let detail = phase.get("detail").and_then(|s| s.as_str()).unwrap_or("");
+            updates::track_operation_progress(
+                &app_for_phases,
+                &track_for_phases,
+                stage,
+                0,
+                None,
+                detail,
+                false,
+            );
+        }))
+    })
+    .await
+    .map_err(|_| "server_stop_failed".to_string())
+    .and_then(|r| r);
+    match desktop_port::classify_stop_result(&stop) {
+        desktop_port::StopOutcome::Proceed => {}
+        desktop_port::StopOutcome::AgentsRunning(value) => {
+            let mut refusal = serde_json::json!({
+                "changed": false,
+                "reason": "agents_running",
+                "port": current,
+            });
+            if let Some(active) = value.get("activeRuns") {
+                refusal["activeRuns"] = active.clone();
+            }
+            return Ok((refusal, false));
+        }
+        desktop_port::StopOutcome::Failed(reason) => return Err(reason),
+    }
+    // Persist only after the old server stopped cleanly: persisting
+    // before the stop could record the new port despite an active-agent
+    // refusal, and rolling that back is worse than failing here. On save
+    // failure the in-memory preference is restored (disk untouched) and a
+    // stable port_save_failed is returned: the old server is already
+    // stopped, so the user re-invokes Start (state.port is unchanged) or
+    // relaunches. No auto-restart recovery: it would risk a duplicate
+    // server for a best-effort write.
+    {
+        let state = app.state::<Desktop>();
+        let mut prefs = state.prefs.lock().map_err(|e| e.to_string())?;
+        let previous = prefs.port;
+        prefs.port = Some(requested);
+        if let Err(error) = save_preferences(&state, &prefs) {
+            prefs.port = previous;
+            let _ = fs::write(state.root.join("desktop-server-error.log"), &error);
+            return Err("port_save_failed".into());
+        }
+    }
+    Ok((serde_json::json!({"changed": true, "port": requested}), true))
 }
 #[tauri::command]
 fn desktop_autostart(
@@ -855,6 +1035,8 @@ fn main() {
             updates::desktop_update_cancel,
             desktop_server_restart,
             desktop_quit,
+            desktop_port_state,
+            desktop_port_set,
             directory_picker::desktop_pick_directory,
             updates::desktop_update_check,
             updates::desktop_update_install,
@@ -870,14 +1052,37 @@ fn main() {
             if cfg!(debug_assertions) && !resources.join("node.exe").is_file() {
                 resources = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.desktop-build");
             }
-            let port = std::env::var("PRIME_STUDIO_DESKTOP_PORT")
+            // Preferred port first: explicit env override wins (strict, no
+            // fallback) over the persisted preference (default 3088).
+            // Stable error: `port_invalid` for any bad override value.
+            let env_port = match desktop_port::env_port_override() {
+                Ok(port) => port,
+                Err(code) => {
+                    let _ = fs::write(root.join("desktop-error.log"), &code);
+                    return Err(code.into());
+                }
+            };
+            let prefs: Preferences = fs::read(root.join("desktop.json"))
                 .ok()
-                .map(|p| p.parse::<u16>())
-                .transpose()?
-                .unwrap_or(3088);
-            if port == 0 {
-                return Err("Invalid Studio port".into());
-            }
+                .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+                .unwrap_or_default();
+            let preferred = match env_port {
+                Some(port) => port,
+                None => desktop_port::preferred_port(prefs.port),
+            };
+            let env_override = env_port.is_some();
+            // Effective port BEFORE the exact-origin capability is
+            // registered: reserved 3088 (EACCES) and foreign occupants fall
+            // through to spaced alternatives, then an OS ephemeral port.
+            // A healthy Studio on the preferred port is reused; a live
+            // server we own on another port (backend.json hint verified by
+            // instance identity against data/server.json) is reused so two
+            // writers never share one data root.
+            let (port, _moved_from) = if env_override {
+                (preferred, None)
+            } else {
+                desktop_port::resolve_effective_port(&root, preferred)
+            };
             // Only these commands cross into the exact local Studio origin.
             // No general filesystem, shell, opener or launcher settings permissions.
             // Operation getter/cancel live in the worker update_operation module;
@@ -896,25 +1101,46 @@ fn main() {
                     .permission("allow-desktop-autostart")
                     .permission("allow-desktop-server-restart")
                     .permission("allow-desktop-quit")
+                    .permission("allow-desktop-port-state")
+                    .permission("allow-desktop-port-set")
                     .permission("allow-desktop-pick-directory")
                     .permission("allow-desktop-notification-preferences")
                     .permission("allow-desktop-update-check")
                     .permission("allow-desktop-update-install"),
             )?;
-            let prefs = fs::read(root.join("desktop.json"))
-                .ok()
-                .and_then(|bytes| serde_json::from_slice(&bytes).ok())
-                .unwrap_or_default();
             let webview_data = root.join("webview");
             let window_file = root.join(window_state::FILE);
+            let error_log = root.join("desktop-error.log");
             app.manage(Desktop {
                 root,
                 resources,
                 port,
+                preferred_port: preferred,
+                env_override,
                 prefs: Mutex::new(prefs),
                 starting: AtomicBool::new(false),
                 restart_phase: Mutex::new(None),
             });
+            // Persistent fallback: when the resolver moved away from the
+            // preference, store the effective port so the next launch serves
+            // the same origin instead of flip-flopping. Desktop keeps the
+            // original preference for this launch's movedFrom notice. A
+            // failed write is logged, never fatal: worst case the next
+            // launch re-resolves.
+            if desktop_port::persisted_effective_port(preferred, port, env_override).is_some() {
+                let state = app.state::<Desktop>();
+                match state.prefs.lock() {
+                    Ok(mut guard) => {
+                        guard.port = Some(port);
+                        if let Err(error) = save_preferences(&state, &guard) {
+                            let _ = fs::write(&error_log, &error);
+                        }
+                    }
+                    Err(error) => {
+                        let _ = fs::write(&error_log, error.to_string());
+                    }
+                };
+            }
             app.manage(LauncherOrigin::default());
             let handle = app.handle().clone();
             let navigation_app = handle.clone();

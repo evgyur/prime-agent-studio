@@ -686,6 +686,26 @@ export const messages = {
     fr: 'Fichier non accessible depuis le Studio : {value1}',
     en: 'File not accessible from Studio: {value1}',
   },
+  'files.allow_outside_label': {
+    fr: 'Aperçus des fichiers hors projet',
+    en: 'File previews outside the project',
+  },
+  'files.allow_outside_note': {
+    fr: 'Les liens vers des fichiers en dehors du projet s’ouvrent en lecture seule dans l’inspecteur, avec leur chemin complet. Sans ouverture, exécution ni modification.',
+    en: 'Links to files outside the project open read-only in the inspector, with their full path. No opening, running or editing.',
+  },
+  'files.allow_outside_readonly': {
+    fr: 'Lecture seule : les aperçus hors projet restent désactivés.',
+    en: 'Read-only: outside-project previews stay disabled.',
+  },
+  'files.allow_outside_error': {
+    fr: 'Réglage non enregistré. Réessayez.',
+    en: 'Setting not saved. Try again.',
+  },
+  'files.outside_project': {
+    fr: 'Hors projet — aperçu en lecture seule',
+    en: 'Outside project — read-only preview',
+  },
   'setup.eyebrow': { fr: 'CONFIGURATION REQUISE', en: 'SETUP REQUIRED' },
   'setup.title': { fr: 'Avant votre premier message', en: 'Before your first message' },
   'setup.note': {
@@ -6606,6 +6626,62 @@ export const messages = {
     fr: 'Le réglage de démarrage Windows ne peut pas être lu. Il n’a pas été modifié.',
     en: 'The Windows startup setting could not be read. It has not been changed.',
   },
+  'settings.port_label': { fr: 'Port local (application de bureau)', en: 'Local port (desktop app)' },
+  'settings.local_port_note': {
+    fr: 'Port de boucle locale du Studio. Appliquer enregistre ce port préféré puis relance l’application et le serveur.',
+    en: 'Studio loopback port. Applying saves this preferred port, then restarts the app and server.',
+  },
+  'settings.port_apply': { fr: 'Appliquer', en: 'Apply' },
+  'settings.port_applying': {
+    fr: 'Application du nouveau port en cours…',
+    en: 'Applying the new port…',
+  },
+  'settings.port_effective': { fr: 'Adresse locale : {url}', en: 'Local address: {url}' },
+  'settings.port_fallback': {
+    fr: 'Port {preferred} indisponible : repli automatique sur {port}. Ce port est mémorisé pour les prochains lancements.',
+    en: 'Port {preferred} unavailable: automatically fell back to {port}. This port is remembered for future launches.',
+  },
+  'settings.port_env_override': {
+    fr: 'Le port est imposé par la variable d’environnement PRIME_STUDIO_DESKTOP_PORT : le champ est désactivé.',
+    en: 'The port is forced by the PRIME_STUDIO_DESKTOP_PORT environment variable: the field is disabled.',
+  },
+  'settings.port_invalid': {
+    fr: 'Choisissez un port entier entre 1 et 65535.',
+    en: 'Choose a whole port number between 1 and 65535.',
+  },
+  'settings.port_unavailable': {
+    fr: 'Ce port est occupé ou inutilisable. Choisissez-en un autre.',
+    en: 'This port is occupied or unusable. Choose another one.',
+  },
+  'settings.port_not_managed': {
+    fr: 'Le serveur n’est pas géré par le Studio : le port n’a pas été modifié.',
+    en: 'The server is not managed by Studio: the port was not changed.',
+  },
+  'settings.port_stop_failed': {
+    fr: 'Le serveur n’a pas pu être arrêté proprement : le port n’a pas été modifié.',
+    en: 'The server could not be stopped cleanly: the port was not changed.',
+  },
+  'settings.port_save_failed': {
+    fr: 'Le nouveau port n’a pas pu être enregistré et le serveur est arrêté : relancez le Studio pour le redémarrer.',
+    en: 'The new port could not be saved and the server is stopped: relaunch Studio to start it again.',
+  },
+  'settings.port_busy': {
+    fr: 'Une opération est en cours. Réessayez dans quelques instants.',
+    en: 'An operation is in progress. Try again in a moment.',
+  },
+  'settings.port_same': {
+    fr: 'Ce port est déjà utilisé. Aucun changement.',
+    en: 'This port is already in use. No change.',
+  },
+  'settings.port_restarting': {
+    fr: 'Port enregistré. L’application redémarre…',
+    en: 'Port saved. The app is restarting…',
+  },
+  'settings.port_agents_title': { fr: 'Appliquer le port et relancer ?', en: 'Apply the port and restart?' },
+  'settings.port_agents_note': {
+    fr: 'L’application et le serveur local vont redémarrer pour utiliser le port {port}. Les préférences d’interface par origine peuvent être réinitialisées ; vos projets et conversations sont conservés.',
+    en: 'The app and local server will restart to use port {port}. Per-origin UI preferences may reset; your projects and conversations are kept.',
+  },
   'worktrees.nouvelle_tache': { fr: 'Nouveau worktree', en: 'New worktree' },
   'worktrees.creer_tache_title': { fr: 'Nouveau worktree', en: 'New worktree' },
   'worktrees.creer_tache': { fr: 'Nouvelle conversation', en: 'New conversation' },
@@ -6956,7 +7032,7 @@ export const messages = {
   'git.panel_create_title': { fr: 'Créer une branche', en: 'Create a branch' },
   'git.panel_search_branches': { fr: 'Rechercher une branche…', en: 'Search branches…' },
   'git.panel_detached': { fr: 'détaché ({head})', en: 'detached ({head})' },
-  'git.panel_fetch': { fr: 'Récupérer', en: 'Fetch' },
+  'git.panel_fetch': { fr: 'Fetch', en: 'Fetch' },
   'git.panel_pull': { fr: 'Pull', en: 'Pull' },
   'git.panel_push': { fr: 'Push', en: 'Push' },
   'git.panel_commit': { fr: 'Commiter', en: 'Commit' },
@@ -7041,6 +7117,94 @@ export const messages = {
   'git.suggest_empty': {
     fr: 'Sélectionnez au moins un fichier modifié.',
     en: 'Select at least one changed file.',
+  },
+  'git.panel_busy': {
+    fr: 'Une opération Git est en cours — réessayez après sa fin.',
+    en: 'A Git operation is in flight — retry once it finishes.',
+  },
+  'files.worktrees_tab': { fr: 'Worktrees', en: 'Worktrees' },
+  'files.context_switch': { fr: 'Changer', en: 'Switch' },
+  'files.context_reset': { fr: 'Revenir au projet', en: 'Back to project' },
+  'files.open_in_viewer': { fr: 'Ouvrir dans la visionneuse', en: 'Open in viewer' },
+  'files.history_search': { fr: 'Rechercher dans les commits chargés…', en: 'Search loaded commits…' },
+  'files.history_tags_title': {
+    fr: 'Filtre les tags des commits chargés',
+    en: 'Filter tags of loaded commits',
+  },
+  'files.history_tags_only': { fr: 'Tags seulement', en: 'Tags only' },
+  'files.history_more': { fr: 'Afficher la suite', en: 'Show more' },
+  'files.worktrees_hint': {
+    fr: 'Travaillez dans un dossier isolé par branche.',
+    en: 'Work in an isolated folder per branch.',
+  },
+  'files.history_loading': { fr: 'Chargement de l’historique…', en: 'Loading history…' },
+  'files.status_added': { fr: 'Ajout', en: 'Added' },
+  'files.status_deleted': { fr: 'Suppression', en: 'Deleted' },
+  'files.status_modified': { fr: 'Modification', en: 'Modified' },
+  'files.history_no_files': { fr: 'Aucun fichier modifié dans ce commit.', en: 'No changed files in this commit.' },
+  'files.history_empty_repo': { fr: 'Aucun commit pour le moment.', en: 'No commits yet.' },
+  'files.history_empty_search': {
+    fr: 'Aucun commit chargé ne correspond. Retirez le filtre et faites défiler pour charger la suite.',
+    en: 'No loaded commit matches. Clear the filter and scroll to load more.',
+  },
+  'files.history_load_error': {
+    fr: 'L’historique n’a pas pu être chargé.',
+    en: 'History could not be loaded.',
+  },
+  'files.history_retry': { fr: 'Réessayer', en: 'Retry' },
+  'files.changed_files': { fr: 'Fichiers modifiés', en: 'Changed files' },
+  'files.stats': {
+    fr: '{files} fichiers · +{additions} −{deletions}',
+    en: '{files} files · +{additions} −{deletions}',
+  },
+  'files.history_diff_error': {
+    fr: 'Le diff n’a pas pu être chargé.',
+    en: 'The diff could not be loaded.',
+  },
+  'files.history_binary': {
+    fr: 'Fichier binaire — aperçu indisponible.',
+    en: 'Binary file — preview unavailable.',
+  },
+  'files.history_truncated': {
+    fr: 'Diff tronqué — ouvrez la visionneuse pour la suite.',
+    en: 'Diff truncated — open the viewer for the rest.',
+  },
+  'files.diff_empty': { fr: 'Aucun diff disponible.', en: 'No diff available.' },
+  'files.select_file_for_diff': {
+    fr: 'Sélectionnez un fichier pour voir le diff.',
+    en: 'Select a file to view the diff.',
+  },
+  'files.expand': { fr: 'Agrandir', en: 'Expand' },
+  'files.open_diff': { fr: 'Voir le diff', en: 'View diff' },
+  'files.worktrees_load_error': {
+    fr: 'La liste des worktrees n’a pas pu être chargée.',
+    en: 'The worktree list could not be loaded.',
+  },
+  'files.worktrees_empty': { fr: 'Aucun worktree.', en: 'No worktrees.' },
+  'files.worktree_open': { fr: 'Ouvrir', en: 'Open' },
+  'files.worktree_folder': { fr: 'Dossier', en: 'Folder' },
+  'files.worktree_inspect': { fr: 'Inspecter', en: 'Inspect' },
+  'files.worktree_current': { fr: 'Actuel', en: 'Current' },
+  'files.worktree_unmanaged_note': {
+    fr: 'Worktree non géré : ouverture et inspection indisponibles.',
+    en: 'Unmanaged worktree: open and inspection unavailable.',
+  },
+  'files.worktree_open_unavailable': {
+    fr: 'Ouverture indisponible : worktree non pris en charge.',
+    en: 'Open unavailable: unsupported worktree.',
+  },
+  'files.worktrees_owner_mismatch': {
+    fr: 'Gestion désactivée : ce panneau suit un autre projet que le projet global.',
+    en: 'Management disabled: this panel follows a different project than the global one.',
+  },
+  'files.worktree_dirty': { fr: 'Modifications en cours', en: 'Uncommitted changes' },
+  'files.worktree_clean': { fr: 'Propre', en: 'Clean' },
+  'files.worktree_unknown': { fr: 'État inconnu', en: 'State unknown' },
+  'files.worktree_detached': { fr: 'Détaché', en: 'Detached' },
+  'files.worktree_bare': { fr: 'Dépôt nu', en: 'Bare repository' },
+  'files.no_git_history': {
+    fr: 'Pas un dépôt Git — historique indisponible.',
+    en: 'Not a Git repository — history unavailable.',
   },
   'sync.title': { fr: 'Synchronisation', en: 'Sync' },
   'sync.scope': {

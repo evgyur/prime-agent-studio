@@ -4,6 +4,36 @@
 
 Les changements par version. Retrouvez les installateurs et les archives du code source dans les [releases GitHub](https://github.com/zerr0o/prime-agent-studio/releases).
 
+## 4.4.6
+
+- **GPT-6.1 Terra** : ajouté aux catalogues API OpenAI et Codex avec des métadonnées et niveaux de raisonnement vérifiés. L’accès Codex dépend toujours du compte ; le modèle par défaut ne change pas.
+- **Fichiers** : vues Modifications et Historique simplifiées. Le message de commit et **Proposer un message** restent visibles dans Modifications. L’historique affiche les commits à côté de leurs fichiers, avec tags, chargement automatique en bas de liste et couleurs de statut GitHub Desktop. Un clic sur un fichier ouvre son diff dans la visionneuse.
+- **Worktrees** : compteur dans l’onglet, sélection arrondie, badge **Actuel**, chemin et état des modifications sur des lignes distinctes. Ouvrir un worktree change uniquement le contexte Fichiers, pas la conversation.
+- **Interface stable** : les rafraîchissements ne font plus apparaître de message de chargement et conservent les cases cochées. Branche, état et Fetch/Pull/Push partagent une barre compacte. Les skills actives ne compriment plus le champ de saisie principal.
+- **Sécurité Git** : les commits ne prennent que les fichiers sélectionnés et préservent les autres fichiers indexés. Les noms sont traités littéralement et l’accès en consultation continue de bloquer les opérations Git d’écriture.
+
+## 4.4.6-beta.2
+
+- **Saisie avec une skill active** : correction d’un conflit de priorité CSS qui réduisait le champ principal à quelques pixels et faisait apparaître une barre de défilement. La saisie conserve maintenant sa largeur avec ou sans skill, sur ordinateur, portable et mobile.
+
+## 4.4.6-beta.1
+
+- **Fichiers** : quatre vues distinctes — **Modifications**, **Historique**, **Worktrees** et **Parcourir**. Les panneaux larges affichent le diff à côté de la liste ; les panneaux étroits proposent une ouverture agrandie.
+- **Historique Git** : commits paginés, tags visibles, fichiers du commit et diff avec son premier parent, y compris pour le premier commit du dépôt. La recherche et le filtre des tags portent sur les commits chargés ; **Afficher la suite** étend la liste.
+- **Worktrees** : liste des worktrees du dépôt et sélection des worktrees gérés par Studio pour le panneau Fichiers, sans changer la conversation. Les worktrees externes restent visibles sans autoriser un contexte de fichier non enregistré.
+- **Commits** : le bouton existant **Proposer un message** est conservé, y compris dans les worktrees gérés. Un commit ne prend que les fichiers sélectionnés et laisse les autres fichiers déjà indexés en place. Les noms contenant des caractères de pathspec Git sont traités littéralement. Aucun commit ni push automatique.
+- **Consultation** : historique et diffs restent accessibles en lecture seule ; les actions Git d’écriture restent interdites. Les lectures de l’historique n’exécutent ni hooks ni outils de diff externes.
+
+## 4.4.5
+
+- **Ports réservés sous Windows** : si le port local est indisponible, Studio choisit un autre port et le mémorise. Le port peut aussi être changé dans **Préférences → Système** ou depuis le lanceur en cas d’échec. Le changement confirme l’arrêt du serveur puis relance proprement l’application, avec une confirmation supplémentaire si des agents travaillent. La variable `PRIME_STUDIO_DESKTOP_PORT` reste prioritaire.
+- **Démarrage et conversations** : un index local léger évite de relire tous les historiques à chaque lancement. Seuls les fichiers modifiés sont analysés à nouveau, et ouvrir une conversation ne charge que son historique. La première construction de l’index peut encore prendre du temps. La liste s’affiche sans attendre le moteur ou les modèles ; les requêtes bloquées sont retentées automatiquement et les étapes lentes sont journalisées sans contenu de conversation.
+- **Aperçus hors projet** : l’option **Aperçus des fichiers hors projet**, dans **Préférences → Apparence**, est activée par défaut. Les liens vers des fichiers locaux hors du projet ouvrent un aperçu en lecture seule avec leur chemin complet. La désactivation est appliquée côté serveur. Les dossiers protégés, les chemins réseau et l’accès distant en consultation restent exclus ; aucun droit supplémentaire de modification ou d’exécution n’est accordé.
+- **Préférences** : correction d’une erreur de traduction dans l’état du démarrage automatique sous Windows.
+- **Sécurité** : mise à jour de DOMPurify vers la version 3.4.17.
+
+> Un changement de port change l’origine Web : le layout et les brouillons enregistrés pour l’ancienne adresse peuvent ne plus être visibles. Les projets et conversations sont conservés.
+
 ## 4.4.4
 
 - **Coloration du code** : l’aperçu des fichiers et les blocs de code des conversations sont colorés comme dans VS Code (thèmes sombre et clair), avec des numéros de ligne. highlight.js est servi par le Studio lui-même et chargé seulement quand un code s’affiche ; les très gros fichiers restent en texte simple. L’option **Coloration du code dans les conversations**, dans Préférences → Apparence, la désactive dans les conversations.

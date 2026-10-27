@@ -65,3 +65,9 @@ Links are not limited to selected extensions: a binary file such as an `.exe` or
 Previews accept UTF-8 text up to 512 KiB and PNG, JPEG, GIF or WebP images up to 8 MiB. Formatting affects display only: it does not modify project files. Deleted files have a diff but can no longer be opened. On Windows, scripts that would execute on open (`.js`, `.ps1`, `.bat`, `.py`, …) open as text in Notepad, while web pages and non-executable code open with the associated application; this command does not launch executables or shortcuts. If a text file has no associated application, Studio uses Notepad. For runnable scripts (except `.reg`/`.inf`), a **Run** button asks for confirmation — name, relative path and a warning that the script runs on the PC with your Windows rights — then opens a new console window that stays open in the script folder.
 
 Content browsing, previews and downloads remain restricted to registered projects and the usual remote access code. Technical folders (`.git`, `node_modules`, caches), private engine and Studio data, and links leaving the project are excluded. An explicit link into `.local` is accessible only when that folder is not Studio’s private data directory. Remote read-only mode allows these views without allowing agent commands.
+
+## Outside-project previews — 4.4.5
+
+In **Preferences → Appearance**, **Outside-project file previews** is enabled by default. Clicking a link to a local file outside the project opens a read-only preview with its full path and an “Outside project” label. Disabling this option blocks these reads on the server. The setting is saved for this Studio.
+
+This option adds no permission to edit, execute or download files. Protected Studio and engine directories, network paths and remote consultation access remain excluded. Images embedded automatically in conversations remain confined to the project.

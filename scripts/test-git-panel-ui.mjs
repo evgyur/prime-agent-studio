@@ -1,6 +1,7 @@
 // Git panel UI: mocked /api/project-git endpoints, real server for the rest.
 // Never touches user repos: temp git fixture only. No build, no commit.
 import assert from 'node:assert/strict';
+import { createDefaultLayout } from '../public/docking-layout.js';
 import { chromium, expect } from '@playwright/test';
 import { launchStudioBrowser } from './fixtures/browser.mjs';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
@@ -131,21 +132,21 @@ async function openFilesTab({ width, language, readOnly = false }) {
     hasTouch: width < 1080,
   });
   await context.addInitScript(
-    ({ cwd, language }) => {
+    ({ cwd, language, layout }) => {
       localStorage.setItem('prime-studio.selection', JSON.stringify({ cwd }));
       if (language) localStorage.setItem('prime-studio.language', language);
       // Fixture-only: keep the classic inspector home (opt out of the default-on
       // modular dock; honored via stored enabled:false). No production change.
-      localStorage.setItem('prime-studio.docking.layout', JSON.stringify({ enabled: false }));
+      localStorage.setItem('prime-studio.docking.layout', JSON.stringify(layout));
     },
-    { cwd, language },
+    { cwd, language, layout: { ...createDefaultLayout(), enabled: false } },
   );
   const page = await context.newPage();
   page.setDefaultTimeout(10000);
   page.on('pageerror', (error) => errors.push(error.message));
   await page.route('**/api/project-git**', mockGit);
   if (readOnly)
-    await page.route('**/api/bootstrap', async (route) => {
+    await page.route('**/api/bootstrap*', async (route) => {
       const response = await route.fetch();
       const data = await response.json();
       data.preferences = { ...data.preferences, readOnly: true };

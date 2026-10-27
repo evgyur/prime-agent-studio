@@ -25,7 +25,7 @@ const sol = (models) => models.find((model) => model.id === 'gpt-6-sol');
 const luna = (models) => models.find((model) => model.id === 'gpt-6-luna');
 
 test('OpenAI GPT-6 API metadata matches official release values', () => {
-  assert.equal(OPENAI_GPT6_MODELS.length, 3);
+  assert.equal(OPENAI_GPT6_MODELS.length, 4);
   for (const model of [sol(OPENAI_GPT6_MODELS), luna(OPENAI_GPT6_MODELS)]) {
     assert.equal(model.api, 'openai-responses');
     assert.equal(model.provider, 'openai');
@@ -63,8 +63,20 @@ test('GPT-6.1 Sol API metadata keeps always-on reasoning and its own cache price
   assert.equal(model.maxTokens, 128000);
 });
 
-test('Codex GPT-6 metadata uses subscription transport with 272000 context', () => {
-  assert.equal(OPENAI_CODEX_GPT6_MODELS.length, 3);
+test('GPT-6.1 Terra API metadata matches the official model documentation', () => {
+  const model = OPENAI_GPT6_MODELS.find((entry) => entry.id === 'gpt-6.1-terra');
+  assert.equal(model.name, 'GPT-6.1 Terra');
+  assert.equal(model.api, 'openai-responses');
+  assert.equal(model.provider, 'openai');
+  assert.deepEqual(model.input, ['text', 'image']);
+  assert.equal(model.contextWindow, 1050000);
+  assert.equal(model.maxTokens, 128000);
+  assert.deepEqual(model.cost, { input: 1, output: 5, cacheRead: 0.05, cacheWrite: 1.25 });
+  assert.deepEqual(model.thinkingLevelMap, { off: 'none', minimal: null, xhigh: 'xhigh', max: 'max' });
+});
+
+test('Codex GPT-6 metadata uses subscription transport with per-model context', () => {
+  assert.equal(OPENAI_CODEX_GPT6_MODELS.length, 4);
   for (const model of OPENAI_CODEX_GPT6_MODELS) {
     assert.equal(model.api, 'openai-codex-responses');
     assert.equal(model.provider, 'openai-codex');
@@ -72,7 +84,7 @@ test('Codex GPT-6 metadata uses subscription transport with 272000 context', () 
     assert.equal(model.reasoning, true);
     assert.deepEqual(model.input, ['text', 'image']);
     assert.deepEqual(model.thinkingLevelMap, { off: null, minimal: null, xhigh: 'xhigh', max: 'max' });
-    assert.equal(model.contextWindow, 272000);
+    assert.equal(model.contextWindow, model.id === 'gpt-6.1-terra' ? 500000 : 272000);
     assert.equal(model.maxTokens, 128000);
   }
   assert.deepEqual(sol(OPENAI_CODEX_GPT6_MODELS).cost, sol(OPENAI_GPT6_MODELS).cost);
@@ -83,15 +95,17 @@ test('Codex GPT-6 metadata uses subscription transport with 272000 context', () 
 });
 
 test('STUDIO_MODELS bundles all supported models and pins the Codex client identity', () => {
-  assert.equal(STUDIO_MODELS.length, 7);
+  assert.equal(STUDIO_MODELS.length, 9);
   assert.deepEqual(STUDIO_MODELS.map((model) => `${model.provider}/${model.id}`).sort(), [
     'anthropic/claude-opus-5-5',
     'openai-codex/gpt-6-luna',
     'openai-codex/gpt-6-sol',
     'openai-codex/gpt-6.1-sol',
+    'openai-codex/gpt-6.1-terra',
     'openai/gpt-6-luna',
     'openai/gpt-6-sol',
     'openai/gpt-6.1-sol',
+    'openai/gpt-6.1-terra',
   ]);
   assert.ok(STUDIO_MODELS.includes(ANTHROPIC_OPUS_55));
   assert.equal(CODEX_CATALOG_CLIENT_VERSION, '0.159.1');
@@ -365,7 +379,7 @@ test('Codex effort mapping: off and minimal clamp to low, none guarded, low..max
   assert.equal(none.reasoning?.effort, 'none');
 });
 
-test('native picker catalog exposes GPT-6.1 Sol with supported efforts, without changing defaults', async (t) => {
+test('native picker catalog exposes GPT-6.1 Sol and Terra with supported efforts, without changing defaults', async (t) => {
   const cli = discoverCli();
   if (!cli?.packageDir) return t.skip('Prime Agent integration requires the installed runtime');
   const dir = await mkdtemp(join(tmpdir(), 'prime-studio-sol61-catalog-'));
@@ -391,6 +405,10 @@ test('native picker catalog exposes GPT-6.1 Sol with supported efforts, without 
   assert.equal(model.maxTokens, 128000);
   assert.deepEqual(model.input, ['text', 'image']);
   assert.deepEqual(model.thinkingLevels, ['low', 'medium', 'high', 'xhigh', 'max']);
+  const terra = result.models.find((item) => item.provider === 'openai' && item.id === 'gpt-6.1-terra');
+  assert.equal(terra.name, 'GPT-6.1 Terra');
+  assert.equal(terra.contextWindow, 1050000);
+  assert.deepEqual(terra.thinkingLevels, ['off', 'low', 'medium', 'high', 'xhigh', 'max']);
   assert.equal(JSON.stringify(result).includes(secret), false);
   assert.equal(await readFile(join(dir, 'auth.json'), 'utf8'), authText);
   assert.equal(await readFile(join(dir, 'settings.json'), 'utf8'), settingsText);
@@ -399,7 +417,7 @@ test('native picker catalog exposes GPT-6.1 Sol with supported efforts, without 
   assert.ok(!signedOut.models.some((item) => item.provider === 'openai'));
 });
 
-test('mocked Codex catalog uses client 0.159.1 and preserves GPT-6.1 Sol account access checks', async (t) => {
+test('mocked Codex catalog uses client 0.159.1 and preserves GPT-6.1 Sol and Terra account access checks', async (t) => {
   const cli = discoverCli();
   if (!cli?.packageDir) return t.skip('Prime Agent integration requires the installed runtime');
   registerStudioModelSupport(cli.packageDir);
@@ -452,7 +470,7 @@ test('mocked Codex catalog uses client 0.159.1 and preserves GPT-6.1 Sol account
   const realFetch = globalThis.fetch;
   const previousOffline = process.env.PI_OFFLINE;
   process.env.PI_OFFLINE = '1';
-  let allowedIds = ['gpt-6-sol', 'gpt-6-luna', 'gpt-6.1-sol', 'gpt-5.6-luna'];
+  let allowedIds = ['gpt-6-sol', 'gpt-6-luna', 'gpt-6.1-sol', 'gpt-6.1-terra', 'gpt-5.6-luna'];
   globalThis.fetch = async (url, init) => {
     seen.push({ url: String(url), init });
     return {
@@ -480,12 +498,14 @@ test('mocked Codex catalog uses client 0.159.1 and preserves GPT-6.1 Sol account
   assert.ok(codexIds.has('gpt-6-sol'));
   assert.ok(codexIds.has('gpt-6-luna'));
   assert.ok(codexIds.has('gpt-6.1-sol'));
+  assert.ok(codexIds.has('gpt-6.1-terra'));
   assert.ok(!codexIds.has('gpt-6-stale-fixture'));
   // A fresh native registry must hide the same built-in when the account's
   // server catalog does not grant it. No permissive Studio fallback is added.
-  allowedIds = allowedIds.filter((id) => id !== 'gpt-6.1-sol');
+  allowedIds = allowedIds.filter((id) => !['gpt-6.1-sol', 'gpt-6.1-terra'].includes(id));
   const restricted = await ModelRegistry.create(auth, join(dir, 'models.json')).getExecutableModels();
   assert.equal(seen.length, 2);
   assert.ok(restricted.some((model) => model.provider === 'openai-codex' && model.id === 'gpt-6-sol'));
   assert.ok(!restricted.some((model) => model.provider === 'openai-codex' && model.id === 'gpt-6.1-sol'));
+  assert.ok(!restricted.some((model) => model.provider === 'openai-codex' && model.id === 'gpt-6.1-terra'));
 });

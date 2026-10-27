@@ -6,6 +6,7 @@ import { createComputerPreferences } from './computer-preferences.js';
 import { createVoiceSettings } from './voice-settings.js';
 import { createSyncSettings } from './sync-settings.js';
 import { createPublicApiSettings } from './api-settings.js';
+import { createFilePreviewSettings } from './file-preview-settings.js';
 import {
   isDesktopComponentsAvailable,
   isNewComponentsBridgeAvailable,
@@ -55,6 +56,8 @@ export function createSettings({
   voiceSettings.start();
   const syncSettings = createSyncSettings({ api, getContext, toast, ...scope });
   const publicApi = createPublicApiSettings({ api, getContext, copyText, toast, icon, ...scope });
+  const filePreview = createFilePreviewSettings({ api, getContext, ...scope });
+  filePreview.start();
   const showLegacyComponentsRow = isDesktopComponentsAvailable() && !isNewComponentsBridgeAvailable();
   if (showLegacyComponentsRow) {
     $('settings-components-row').hidden = false;
@@ -131,9 +134,11 @@ export function createSettings({
       if (id === 'remote' && !getContext().readOnly) void refreshNetwork();
       if (id === 'api' && !getContext().readOnly && !getContext().remote) void publicApi.refresh();
       if (id === 'sync' && !getContext().readOnly) void syncSettings.refresh();
+      if (id === 'appearance' && !getContext().readOnly) void filePreview.refresh();
       if (id === 'system') {
         void refreshSystem();
         void refreshAutostart();
+        void refreshPort();
       }
       if (id === 'updates') void updates.refresh();
       if (id === 'models') {
@@ -223,6 +228,7 @@ export function createSettings({
       tr(unavailable ? 'settings.choose_project' : 'settings.resources_scope'),
     );
     $('settings-logs-row').hidden = context.readOnly;
+    try { filePreview.render(); } catch {}
   }
   function opened() {
     if (!dialog.open) return;
@@ -841,10 +847,239 @@ export function createSettings({
       if (note) {
         const key = known ? 'settings.autostart_note' : 'settings.autostart_unavailable';
         note.dataset.i18n = key;
-        bindText(note, () => t(key));
+        bindText(note, () => tr(key));
       }
     }
   }
+  // desktop-port:start — pure helpers (no DOM), covered by test/desktop-port-settings.test.mjs.
+  function parseDesktopPort(value) {
+    const text = String(value ?? '').trim();
+    if (!/^\d{1,5}$/.test(text)) return null;
+    const port = Number(text);
+    return Number.isInteger(port) && port >= 1 && port <= 65535 ? port : null;
+  }
+  function desktopPortErrorKey(code) {
+    const reason = String(code ?? '');
+    for (const [token, key] of [
+      ['port_invalid', 'settings.port_invalid'],
+      ['port_env_override', 'settings.port_env_override'],
+      ['port_unavailable', 'settings.port_unavailable'],
+      ['server_not_managed', 'settings.port_not_managed'],
+      ['server_stop_failed', 'settings.port_stop_failed'],
+      ['port_save_failed', 'settings.port_save_failed'],
+      ['update_busy', 'settings.port_busy'],
+    ])
+      if (reason.includes(token)) return key;
+    return '';
+  }
+  // desktop-port:end
+  function isPortAvailable() {
+    try {
+      const context = getContext();
+      // Desktop-only Tauri bridge: remote browsers never have it, so they stay hidden.
+      if (context?.readOnly === true) return false;
+    } catch {
+      return false;
+    }
+    return isNewComponentsBridgeAvailable();
+  }
+  function portStatus(message) {
+    const node = $('settings-port-status');
+    if (!node) return;
+    if (!message) {
+      node.hidden = true;
+      bindText(node, () => '');
+      return;
+    }
+    node.hidden = false;
+    bindText(node, message);
+  }
+  function portEffectiveUrl(port) {
+    return `http://127.0.0.1:${port}/`;
+  }
+  async function refreshPort() {
+    const row = $('settings-port-row');
+    const input = $('settings-port');
+    const apply = $('settings-port-apply');
+    if (!row || !input || !apply) return;
+    if (!isPortAvailable()) {
+      row.hidden = true;
+      portStatus(null);
+      return;
+    }
+    row.hidden = false;
+    input.disabled = true;
+    apply.disabled = true;
+    error('settings-system-error');
+    try {
+      const state = await window.__TAURI__.core.invoke('desktop_port_state');
+      const port = Number(state?.port);
+      if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('port_unavailable');
+      input.value = String(port);
+      const envOverride = state?.envOverride === true;
+      const movedFrom = Number(state?.movedFrom);
+      const moved = Number.isInteger(movedFrom) && movedFrom >= 1 && movedFrom <= 65535 && movedFrom !== port;
+      input.disabled = envOverride;
+      apply.disabled = envOverride;
+      if (envOverride) portStatus(() => tr('settings.port_env_override'));
+      else if (moved)
+        portStatus(
+          () =>
+            `${tr('settings.port_fallback', { preferred: movedFrom, port })} ${tr('settings.port_effective', { url: portEffectiveUrl(port) })}`,
+        );
+      else portStatus(() => tr('settings.port_effective', { url: portEffectiveUrl(port) }));
+    } catch (e) {
+      input.disabled = false;
+      apply.disabled = false;
+      const key = desktopPortErrorKey(e?.message);
+      error('settings-system-error', key || String(e?.message || e));
+      portStatus(null);
+    }
+  }
+  function confirmPortRestart(port, activeRuns) {
+    const dialog = $('studio-update-confirm');
+    const title = $('studio-update-confirm-title');
+    const note = $('studio-update-confirm-note');
+    const cancel = $('studio-update-cancel');
+    const proceed = $('studio-update-proceed');
+    if (!dialog || !title || !note || !cancel || !proceed) return Promise.resolve(false);
+    if (dialog.open) return Promise.resolve(false);
+    bindText(title, () => tr('settings.port_agents_title'));
+    bindText(note, () =>
+      [
+        tr('settings.port_agents_note', { port }),
+        activeRuns == null
+          ? ''
+          : activeRuns
+            ? tr('updates.confirm_agents', { count: activeRuns })
+            : tr('updates.no_agents'),
+      ]
+        .filter(Boolean)
+        .join(' '),
+    );
+    bindText(proceed, () => tr('settings.port_apply'));
+    return new Promise((resolve) => {
+      dialog.returnValue = '';
+      cancel.onclick = () => dialog.close('cancel');
+      proceed.onclick = () => dialog.close('proceed');
+      dialog.addEventListener('close', () => resolve(dialog.returnValue === 'proceed'), { once: true });
+      dialog.showModal();
+      cancel.focus();
+    });
+  }
+  async function applyPort() {
+    const input = $('settings-port');
+    const apply = $('settings-port-apply');
+    if (!input || !apply || !isPortAvailable()) return;
+    error('settings-system-error');
+    const port = parseDesktopPort(input.value);
+    if (port === null) {
+      error('settings-system-error', 'settings.port_invalid');
+      return;
+    }
+    input.disabled = true;
+    apply.disabled = true;
+    // The server stop may take seconds: show busy status, not a silent disabled control.
+    portStatus(() => tr('settings.port_applying'));
+    let restarted = false;
+    let sameNotice = false;
+    let cancelled = false;
+    // Requested-port failures stay prominent with the requested value kept
+    // for correction; a stale startup fallback notice must never replace them.
+    let problem = '';
+    const fail = (key, raw) => {
+      problem = key ? tr(key) : String(raw);
+      error('settings-system-error', key || String(raw));
+      portStatus(() => problem);
+    };
+    try {
+      // Always an explicit initial confirmation before any stop/restart,
+      // even with no known active runs.
+      const knownRuns = system && system.activeRuns != null ? Number(system.activeRuns) : null;
+      if (!(await confirmPortRestart(port, Number.isFinite(knownRuns) ? knownRuns : null))) {
+        cancelled = true;
+        return;
+      }
+      const attempt = async (force) =>
+        window.__TAURI__.core.invoke('desktop_port_set', { port, force });
+      const settleNoop = (result) =>
+        // No-op without a reason: already on this port, nothing restarts.
+        Boolean(result && result.changed === false && !result.reason);
+      const first = await attempt(false);
+      if (first?.changed === true) {
+        restarted = true;
+        portStatus(() => tr('settings.port_restarting'));
+        return;
+      }
+      if (settleNoop(first)) {
+        sameNotice = true;
+        return;
+      }
+      if (first?.reason === 'agents_running') {
+        const activeRuns = Number(first?.activeRuns ?? system?.activeRuns) || 0;
+        // Second, explicit confirmation to force past active agents.
+        if (!(await confirmPortRestart(port, activeRuns))) {
+          cancelled = true;
+          return;
+        }
+        const retry = await attempt(true);
+        if (retry?.changed === true) {
+          restarted = true;
+          portStatus(() => tr('settings.port_restarting'));
+          return;
+        }
+        if (settleNoop(retry)) {
+          sameNotice = true;
+          return;
+        }
+        if (retry?.reason) fail(desktopPortErrorKey(retry.reason) || String(retry.reason));
+        else fail('settings.port_busy');
+        return;
+      }
+      if (first?.reason) fail(desktopPortErrorKey(first.reason) || String(first.reason));
+      else fail('settings.port_busy');
+    } catch (e) {
+      const message = String(e?.message || e);
+      // A thrown agents_running is a refusal, never a silent proceed.
+      if (message.includes('agents_running')) {
+        const activeRuns = Number(system?.activeRuns) || 0;
+        if (await confirmPortRestart(port, activeRuns)) {
+          try {
+            const retry = await window.__TAURI__.core.invoke('desktop_port_set', { port, force: true });
+            if (retry?.changed === true) {
+              restarted = true;
+              portStatus(() => tr('settings.port_restarting'));
+              return;
+            }
+            if (settleNoop(retry)) {
+              sameNotice = true;
+              return;
+            }
+            if (retry?.reason) fail(desktopPortErrorKey(retry.reason) || String(retry.reason));
+            else fail('settings.port_busy');
+          } catch (retryError) {
+            const retryMessage = String(retryError?.message || retryError);
+            fail(desktopPortErrorKey(retryMessage) || retryMessage);
+          }
+        } else cancelled = true;
+      } else fail(desktopPortErrorKey(message) || message);
+    } finally {
+      // A requested restart keeps its notice with disabled controls; a
+      // failure keeps the requested value with its notice. Only cancels and
+      // the benign no-op re-read the persisted state.
+      if (restarted || problem) {
+        if (problem) {
+          input.disabled = false;
+          apply.disabled = false;
+        }
+        return;
+      }
+      await refreshPort();
+      if (sameNotice) portStatus(() => tr('settings.port_same'));
+    }
+  }
+  const portApply = $('settings-port-apply');
+  if (portApply) portApply.onclick = () => void applyPort();
   const autostartInput = $('settings-autostart');
   if (autostartInput) {
     autostartInput.onchange = async () => {
@@ -1094,6 +1329,7 @@ export function createSettings({
     getComputerBackend: () => computerPreferences.getBackend(),
     getComputerModel: () => computerPreferences.getModel(),
     getComputerThinking: () => computerPreferences.getThinking(),
+    filePreview,
     refreshComputerPreferences: () => computerPreferences.refresh(),
     get root() {
       return dialog;
@@ -1141,7 +1377,7 @@ export function createSettings({
       try {
         offLanguage?.();
       } catch {}
-      for (const child of [updates, interactions, engineSettings, computerPreferences, voiceSettings, syncSettings, publicApi])
+      for (const child of [updates, interactions, engineSettings, computerPreferences, voiceSettings, syncSettings, publicApi, filePreview])
         try {
           child?.dispose?.();
         } catch {}

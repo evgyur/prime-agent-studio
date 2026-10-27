@@ -597,24 +597,41 @@ mod tests {
             let thread = thread::spawn(move || {
                 while !running.load(Ordering::Relaxed) {
                     if let Ok((mut stream, _)) = listener.accept() {
-                        stream
-                            .set_read_timeout(Some(Duration::from_secs(2)))
-                            .unwrap();
-                        let mut buffer = [0; 4096];
-                        let size = stream.read(&mut buffer).unwrap_or(0);
-                        let body = if String::from_utf8_lossy(&buffer[..size])
-                            .starts_with("GET /payload ")
-                        {
-                            &payload
-                        } else {
-                            &manifest
-                        };
-                        let _ = write!(
-                            stream,
+                        // Read the complete request before writing and closing the response.
+                        // Match the Windows-safe Feed fixture in update_tests.rs.
+                        let _ = stream.set_nonblocking(false);
+                        let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
+                        let _ = stream.set_write_timeout(Some(Duration::from_secs(2)));
+                        let mut request = Vec::with_capacity(1024);
+                        let mut buffer = [0; 1024];
+                        loop {
+                            match stream.read(&mut buffer) {
+                                Ok(0) => break,
+                                Ok(size) => {
+                                    request.extend_from_slice(&buffer[..size]);
+                                    if request.windows(4).any(|w| w == b"\r\n\r\n")
+                                        || request.len() >= 8192
+                                    {
+                                        break;
+                                    }
+                                }
+                                Err(_) => break,
+                            }
+                        }
+                        let body =
+                            if String::from_utf8_lossy(&request).starts_with("GET /payload ") {
+                                &payload
+                            } else {
+                                &manifest
+                            };
+                        let header = format!(
                             "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
                             body.len()
                         );
+                        let _ = stream.write_all(header.as_bytes());
                         let _ = stream.write_all(body);
+                        let _ = stream.flush();
+                        let _ = stream.shutdown(std::net::Shutdown::Both);
                     } else {
                         thread::sleep(Duration::from_millis(5));
                     }

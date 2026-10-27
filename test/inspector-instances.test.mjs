@@ -75,9 +75,11 @@ test('dynamic IDs go through domId for unique clones', () => {
 });
 
 test('git and file writes keep originating cwd and refuse readOnly', () => {
-  assert.match(source, /!owns\('files'\) \|\| !current\.cwd \|\| current\.readOnly \|\| gitAction/);
+  // Writes keep the originating Files-context cwd (worktree override or project).
+  assert.match(source, /!owns\('files'\) \|\| !filesCwd\(\) \|\| current\.readOnly \|\| gitAction/);
   assert.match(source, /body: \{ cwd, \.\.\.body \}/);
-  assert.match(source, /const cwd = current\.cwd,\s*\n?\s*token = generation;/);
+  assert.match(source, /const cwd = filesCwd\(\),\s*\n?\s*token = generation;/);
+  assert.match(source, /const filesCwd = \(\) => filesCwdOverride \|\| current\.cwd;/);
   assert.match(source, /filesUrlFor\(docCwd, 'resolve'/);
   assert.match(source, /openFile\([\s\S]*?result\.path[\s\S]*?'preview',[\s\S]*?docCwd/);
 });

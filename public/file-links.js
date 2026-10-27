@@ -1,4 +1,5 @@
 import { t as tr, bindAttribute } from './i18n.js';
+import { getAllowOutsidePreview } from './file-preview-settings.js';
 // Path-looking references in messages are candidates, whatever their extension.
 // Plain prose, code blocks and external URLs stay unchanged. The server checks
 // each candidate (GET /api/project-files/check) and only real, readable targets
@@ -40,6 +41,20 @@ export function fileLinkRenderer(marked, references, images) {
 // Statuses returned by GET /api/project-files/check that open something.
 const LINKABLE = new Set(['file', 'directory', 'ambiguous']);
 
+// Pure eligibility for tests and reuse: project files/dirs (and ambiguous)
+// are always linkable; unknown keeps the legacy clickable behavior; outside
+// needs the global outside-preview preference (never in read-only), and
+// otherwise falls back to the legacy folder-reveal rule.
+export function isLinkableFileStatus(status, context = {}) {
+  if (LINKABLE.has(status) || status === 'unknown') return true;
+  if (status !== 'outside') return false;
+  if (context.readOnly) return false;
+  try {
+    if (getAllowOutsidePreview() === true) return true;
+  } catch {}
+  return context.nativeFileOpen === true && context.online === true;
+}
+
 // Batches the checks of rendered references (one request per folder and short
 // delay) and caches the answers, so streaming re-renders reuse them at once and
 // links do not flicker. Missing files are retried sooner than found ones.
@@ -76,6 +91,11 @@ export function createReferenceChecker(
         );
   }
   return {
+    clear() {
+      // In-flight checks must still settle their consumers. Their path statuses
+      // remain valid; eligibility reads the current preference when rendered.
+      cache.clear();
+    },
     // A known status is returned at once; otherwise a promise of the status.
     check(cwd, basePath, reference) {
       if (!cwd) return 'unknown';
@@ -298,14 +318,12 @@ export function bindFileLinks(root, references, open, menu = null) {
   // With a checker, a reference becomes a link only once the server confirms
   // it opens something. An unknown answer (older server, network error) keeps
   // the previous behavior: clickable, and the viewer explains any problem.
-  // Outside paths stay useful only where the native folder reveal is allowed.
+  // Outside paths stay on the legacy folder-reveal rule unless the global
+  // outside-preview preference is enabled (and the session is not read-only),
+  // in which case they open a read-only external preview on explicit click.
   function verify(reference, apply) {
     if (!menu?.check) return apply(true, 'unknown');
-    const linkable = (status) => {
-      if (LINKABLE.has(status) || status === 'unknown') return true;
-      const context = menu.context();
-      return status === 'outside' && !context.readOnly && context.nativeFileOpen && context.online;
-    };
+    const linkable = (status) => isLinkableFileStatus(status, menu.context());
     const status = menu.check(reference, menu.context());
     if (typeof status === 'string') apply(linkable(status), status);
     else void status.then((value) => apply(linkable(value), value));

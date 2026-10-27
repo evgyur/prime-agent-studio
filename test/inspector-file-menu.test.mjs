@@ -50,8 +50,11 @@ test('inspector wires the file context menu on existing flows only', async () =>
   assert.match(source, /addEventListener\('contextmenu'/);
   assert.match(source, /ContextMenu/);
   assert.match(source, /inspector-file-menu/);
-  // Changed rows use the shared default view (images -> content).
-  assert.match(source, /openFile\(file, defaultFileView\(file\)\)/);
+  // Changed rows open the existing file viewer directly (no inline diff);
+  // the viewer keeps the shared default view (images -> content) with the
+  // Files-context cwd.
+  assert.doesNotMatch(source, /selectChangedFile\(file\.path\)/);
+  assert.match(source, /row\.onclick = \(\) => openFile\(file, defaultFileView\(file\), filesCwd\(\)\)/);
   // The three menu actions reuse existing navigation and clipboard flows.
   assert.match(source, /api\('\/api\/projects\/open'/);
   assert.match(source, /void copyFilePath\(path\)/);

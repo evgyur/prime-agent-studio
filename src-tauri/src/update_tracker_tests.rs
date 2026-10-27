@@ -296,6 +296,8 @@ fn persisted_nonterminal_getter_normalizes_to_interrupted_with_desktop() {
         root: dir.clone(),
         resources: dir.clone(),
         port: 3088,
+        preferred_port: 3088,
+        env_override: false,
         prefs: Mutex::new(Default::default()),
         starting: AtomicBool::new(false),
         restart_phase: Mutex::new(None),

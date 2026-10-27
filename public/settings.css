@@ -471,6 +471,23 @@
   padding: 8px 10px;
   font-size: 11px;
 }
+.settings-port-fields {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-shrink: 0;
+}
+.settings-port-fields input[type='number'] {
+  width: 96px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 36px;
+  font: inherit;
+  font-size: 11px;
+}
 .settings-modal .network-fields label {
   font-size: 10px;
   margin-bottom: 5px;

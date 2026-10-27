@@ -97,6 +97,25 @@
           <p id="import-note"></p>
           <p id="source" hidden></p>
         </div>
+        <div class="port-recovery" id="port-section" hidden>
+          <h2 id="port-heading"></h2>
+          <p id="port-note"></p>
+          <p id="port-fallback" hidden></p>
+          <p id="port-url" hidden></p>
+          <div class="port-fields">
+            <input
+              id="port-input"
+              type="number"
+              min="1"
+              max="65535"
+              step="1"
+              inputmode="numeric"
+              autocomplete="off"
+            />
+            <button id="port-apply" class="primary"></button>
+          </div>
+          <p id="port-error" class="port-error" role="alert" hidden></p>
+        </div>
       </section>
       <footer>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">

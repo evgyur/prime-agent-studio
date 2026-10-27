@@ -32,6 +32,8 @@
             "allow-desktop-update-cancel",
             "allow-desktop-server-restart",
             "allow-desktop-quit",
+            "allow-desktop-port-state",
+            "allow-desktop-port-set",
             "allow-desktop-update-check",
             "allow-desktop-update-install"
           ]

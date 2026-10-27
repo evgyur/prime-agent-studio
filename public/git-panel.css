@@ -3,20 +3,20 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
-  margin: 10px 0 4px;
-  padding: 8px 10px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--surface);
+  flex-wrap: nowrap;
+  margin: 0 12px 10px;
+  padding: 0 0 6px;
+  border-bottom: 1px solid var(--line);
 }
 .inspector-git-branch {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   min-height: 36px;
-  max-width: 100%;
-  padding: 6px 8px;
+  min-width: 0;
+  flex: 0 1 auto;
+  max-width: 40%;
+  padding: 4px;
   border-radius: 7px;
   font-size: 12px;
   font-weight: 600;
@@ -31,7 +31,7 @@
   flex-shrink: 0;
   color: var(--faint);
 }
-#git-branch-label {
+#git-branch-label, [data-panel-id='git-branch-label'] {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -47,12 +47,15 @@
   align-items: center;
   gap: 6px;
   margin-left: auto;
-  flex-wrap: wrap;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
 }
 .inspector-git-actions .primary-button,
-.inspector-git-actions .secondary-button {
-  min-height: 36px;
-  padding: 7px 12px;
+.inspector-git-actions .secondary-button,
+.inspector-git-actions .inspector-refresh {
+  min-height: 32px;
+  padding: 4px 6px;
+  font-size: 11px;
 }
 .inspector-git-commit {
   display: grid;
@@ -141,13 +144,4 @@
   padding: 8px 9px;
   font-size: 11px;
   color: var(--faint);
-}
-@media (max-width: 390px) {
-  .inspector-git-bar {
-    padding: 6px 8px;
-  }
-  .inspector-git-actions {
-    width: 100%;
-    margin-left: 0;
-  }
 }

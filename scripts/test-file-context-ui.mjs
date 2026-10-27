@@ -1,5 +1,6 @@
 // Isolated real server; desktop folder launches are captured, never opened.
-import { chromium, expect } from '@playwright/test';
+import { expect } from '@playwright/test';
+import { createDefaultLayout } from '../public/docking-layout.js';
 import { launchStudioBrowser } from './fixtures/browser.mjs';
 import { mkdtemp, mkdir, writeFile, rm, symlink, realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -52,11 +53,18 @@ try {
       headers: { 'Content-Type': 'application/json', Origin: url },
       body: JSON.stringify({ cwd, path }),
     });
-  // A nested folder is allowed; traversal, private paths and symlinks out are not.
-  expect((await post('docs')).status).toBe(200);
-  expect(opened.pop()).toBe(await realpath(join(cwd, 'docs')));
-  for (const path of ['../outside', '.git', 'escape', '/absolute', 'docs/notes.txt', 'missing']) {
+  // Native reveal is an explicit owner action, not a project-content read.
+  for (const path of ['docs', '../outside', '.git', 'escape', join(root, 'outside')]) {
+    expect((await post(path)).status).toBe(200);
+    expect(opened.pop()).toBe(await realpath(path === join(root, 'outside') ? path : join(cwd, path)));
+  }
+  for (const path of ['https://example.test', 'docs/notes.txt', 'missing']) {
     expect((await post(path)).status).toBeGreaterThanOrEqual(400);
+  }
+  // Project listing still rejects traversal, private paths and junctions out.
+  for (const path of ['../outside', '.git', 'escape']) {
+    const response = await fetch(`${url}/api/project-files?${new URLSearchParams({ cwd, path })}`);
+    expect(response.status).toBeGreaterThanOrEqual(400);
   }
   expect(opened).toEqual([]);
   expect((await post('')).status).toBe(200);
@@ -69,14 +77,14 @@ try {
   });
   // Fixture-only: keep the classic inspector home (opt out of the default-on
   // modular dock; honored via stored enabled:false). No production change.
-  await context.addInitScript(() => {
-    localStorage.setItem('prime-studio.docking.layout', JSON.stringify({ enabled: false }));
-  });
+  await context.addInitScript((layout) => {
+    localStorage.setItem('prime-studio.docking.layout', JSON.stringify(layout));
+  }, { ...createDefaultLayout(), enabled: false });
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
   let readOnly = false;
-  await page.route('**/api/bootstrap', async (route) => {
+  await page.route('**/api/bootstrap*', async (route) => {
     const response = await route.fetch();
     const body = await response.json();
     body.preferences = { ...body.preferences, readOnly, nativeFileOpen: true };

@@ -38,6 +38,22 @@ La progression expose les étapes réelles et les octets reçus, sans pourcentag
 
 **Réparer Studio** installe et vérifie les composants sans arrêter le serveur. Un seul bouton **Redémarrer maintenant** applique ensuite les changements prêts. Les composants validés restent conservés en cas d’échec. L’identité du serveur doit être prouvée avant tout arrêt : marqueur, PID, instance, exécutable, arguments, génération et port Windows. Un marqueur absent peut être récupéré uniquement si ces preuves concordent ; un port ou un processus non vérifié n’est jamais arrêté. Les générations précédentes restent disponibles.
 
+## Port local — 4.4.5
+
+L’application essaie le port mémorisé, ou **3088** au premier lancement. Si Windows réserve ce port (par exemple avec Hyper-V, WSL ou Docker), ou si une autre application l’utilise, Studio choisit un port disponible et le mémorise. Il n’est pas nécessaire de modifier les réservations réseau de Windows ni de lancer Studio en administrateur.
+
+Dans **Préférences → Système**, le réglage du port local affiche l’adresse utilisée et permet de choisir un autre port. Le changement demande confirmation, arrête le serveur puis relance l’application. Si des agents sont actifs, une confirmation supplémentaire est nécessaire pour les interrompre. En cas d’échec du lancement, le lanceur propose aussi de changer le port.
+
+Les projets et conversations sont conservés. Les préférences du navigateur et les brouillons stockés pour l’ancienne adresse peuvent ne plus être visibles, car le port fait partie de l’origine Web. Les ports d’accès distant restent indépendants et se règlent dans **Préférences → Accès distant → Options de connexion**.
+
+La variable d’environnement `PRIME_STUDIO_DESKTOP_PORT` reste prioritaire : elle impose un port et désactive ce réglage ainsi que le repli automatique. Si vous l’avez définie comme contournement de l’issue #15, supprimez-la dans **Modifier les variables d’environnement pour votre compte**, quittez complètement Studio puis relancez-le depuis le menu Démarrer pour retrouver la sélection automatique.
+
+## Chargement des conversations — 4.4.5
+
+Le premier chargement crée un index léger des conversations dans les données locales du Studio. Cette première construction peut encore prendre du temps avec de gros historiques. Aux lancements suivants, seuls les fichiers modifiés sont relus ; ouvrir une conversation charge son historique, sans relire ceux des autres conversations. Les historiques restent la source de référence : un index absent ou invalide est reconstruit.
+
+La liste des conversations s’affiche sans attendre la vérification du moteur ni le catalogue des modèles. L’envoi reste désactivé pendant leur chargement initial. Si la connexion initiale expire, Studio réessaie automatiquement, sans relancer l’application. Les étapes lentes ou bloquées sont datées dans `data/logs/server.log` sous le marqueur `[startup]`, avec leur durée, sans contenu de conversation ni identifiant secret.
+
 ## Fenêtre et arrière-plan
 
 - **Fermer la fenêtre** la masque et conserve l’icône près de l’horloge. Les agents, le serveur et les accès mobiles continuent.

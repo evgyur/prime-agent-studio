@@ -4,6 +4,36 @@
 
 Changes by version. See [GitHub releases](https://github.com/zerr0o/prime-agent-studio/releases) for installers and source archives.
 
+## 4.4.6
+
+- **GPT-6.1 Terra**: added to the OpenAI API and Codex catalogs with verified model metadata and reasoning levels. Codex availability still depends on your account; your default model is unchanged.
+- **Files**: simpler Changes and History views. The commit message and **Suggest a message** remain visible in Changes. History shows commits beside their files, with tags, automatic loading on bottom scroll, and GitHub Desktop status colors. Click a file to open its diff in the viewer.
+- **Worktrees**: a count in the tab, rounded selection, a **Current** badge, and separate path and change-status lines. Opening a worktree changes only the Files context, not the conversation.
+- **Stable layout**: background file refreshes no longer flash a loading message or reset checked files. Branch, status, and Fetch/Pull/Push share one compact toolbar. Active skill chips no longer collapse the primary message input.
+- **Git safety**: commits include only selected files and preserve unrelated staged files. File names are treated literally, and read-only access keeps Git write operations blocked.
+
+## 4.4.6-beta.2
+
+- **Input with an active skill**: fixed a CSS specificity conflict that collapsed the primary input to a few pixels and caused an unwanted scrollbar. The input now keeps its width with or without a skill on desktop, laptop, and mobile layouts.
+
+## 4.4.6-beta.1
+
+- **Files**: four separate views — **Changes**, **History**, **Worktrees**, and **Browse**. Wide panels show the diff next to the list; narrow panels offer an enlarged view.
+- **Git history**: paginated commits, visible tags, commit files, and diffs against the first parent, including the repository’s first commit. Search and the tags filter cover loaded commits; **Load more** extends the list.
+- **Worktrees**: list repository worktrees and select Studio-managed worktrees for the Files panel without changing the conversation. External worktrees remain visible without granting access to an unregistered file context.
+- **Commits**: the existing **Suggest a message** button is preserved, including in managed worktrees. Commits include only selected files and leave unrelated staged files in the index. Names containing Git pathspec characters are treated literally. No automatic commit or push.
+- **Read-only access**: history and diffs remain available in consultation mode; Git write actions remain blocked. History reads run neither hooks nor external diff tools.
+
+## 4.4.5
+
+- **Windows reserved ports**: if the local port is unavailable, Studio selects another port and remembers it. You can also change it in **Preferences → System**, or from the launcher after a startup failure. The change confirms the server shutdown and restarts the application safely, with an extra confirmation if agents are working. `PRIME_STUDIO_DESKTOP_PORT` still takes priority.
+- **Startup and conversations**: a lightweight local index avoids rereading every history on each launch. Only changed files are parsed again, and opening a conversation loads only its history. The first index build can still take time. The list appears without waiting for the engine or models; stalled requests retry automatically, and slow stages are logged without conversation content.
+- **Outside-project previews**: **File previews outside the project**, in **Preferences → Appearance**, is enabled by default. Links to local files outside the project open a read-only preview with their full path. Disabling the option is enforced on the server. Protected directories, network paths and remote consultation access remain excluded; no extra edit or execution permissions are granted.
+- **Preferences**: fixed a translation error in the Windows autostart status.
+- **Security**: updated DOMPurify to 3.4.17.
+
+> Changing the port changes the Web origin: layouts and drafts saved for the previous address may no longer be visible. Projects and conversations are preserved.
+
 ## 4.4.4
 
 - **Code highlighting**: file previews and code blocks in conversations are colored like in VS Code (dark and light themes), with line numbers. highlight.js is served by Studio itself and loaded only when code is shown; very large files stay plain text. The **Syntax highlighting in conversations** option, in Preferences → Appearance, turns it off in conversations.

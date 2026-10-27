@@ -120,6 +120,41 @@ h1 {
   color: #a5a6ae;
   margin: 7px 0;
 }
+.port-recovery {
+  margin: 18px 0 26px;
+  padding-top: 18px;
+  border-top: 1px solid #35363b;
+}
+.port-recovery h2 {
+  font-size: 14px;
+  margin: 0 0 8px;
+}
+.port-recovery p {
+  font-size: 12px;
+  line-height: 1.6;
+  color: #a5a6ae;
+  margin: 7px 0;
+}
+.port-fields {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 10px;
+}
+.port-fields input[type='number'] {
+  width: 110px;
+  font: inherit;
+  font-size: 13px;
+  color: #ededea;
+  background: #242529;
+  border: 1px solid #484951;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+.port-error {
+  color: #f0b0b0;
+  overflow-wrap: anywhere;
+}
 #source {
   overflow-wrap: anywhere;
   color: #d4d0f4;
@@ -398,6 +433,20 @@ footer svg {
   }
   #source {
     color: #62588f;
+  }
+  .port-recovery {
+    border-color: #d4d2d9;
+  }
+  .port-recovery p {
+    color: #666874;
+  }
+  .port-fields input[type='number'] {
+    color: #28282e;
+    background: #fff;
+    border-color: #d4d2d9;
+  }
+  .port-error {
+    color: #963f4e;
   }
   #error {
     background: #fff0f0;

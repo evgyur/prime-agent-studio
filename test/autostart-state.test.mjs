@@ -5,7 +5,7 @@ import { readFile } from 'node:fs/promises';
 const source = await readFile(new URL('../public/settings.js', import.meta.url), 'utf8');
 const refreshSource = source.slice(
   source.indexOf('  async function refreshAutostart()'),
-  source.indexOf('  const autostartInput ='),
+  source.indexOf('  // desktop-port:start'),
 );
 for (const previous of [false, true]) {
   test(`autostart reads booleans but never presents unknown as OFF (previous ${previous})`, async () => {
@@ -17,7 +17,7 @@ for (const previous of [false, true]) {
     const context = vm.createContext({
       $: (id) => (id === 'settings-autostart-row' ? row : input),
       isAutostartAvailable: () => true,
-      t: (key) => key,
+      tr: (key) => key,
       bindText: (node, value) => {
         node.textContent = value();
       },

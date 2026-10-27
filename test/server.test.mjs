@@ -1111,10 +1111,12 @@ test('Rust Computer Use status advertises its unsupported boundary without enabl
 test('bootstrap advertises the native subagent setup boundary without enabling policy writes', async (t) => {
   const legacy = await fixture(t);
   assert.equal((await legacy.api('/api/bootstrap')).json.subagentDefaultsSupported, true);
+  assert.equal((await legacy.api('/api/bootstrap?light=1')).json.subagentDefaultsSupported, true);
   const runtime = fakeRuntime();
   runtime.engine = 'rust';
   const native = await fixture(t, { runtime });
   assert.equal((await native.api('/api/bootstrap')).json.subagentDefaultsSupported, false);
+  assert.equal((await native.api('/api/bootstrap?light=1')).json.subagentDefaultsSupported, false);
   const policy = (await native.api('/api/subagent-defaults')).json;
   assert.equal(policy.supported, false);
   assert.equal((await native.api('/api/subagent-defaults', {
